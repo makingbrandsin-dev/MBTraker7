@@ -1,0 +1,6 @@
+{
+  "name": "MB Traker",
+  "description": "Employee, Project, Lead & CRM Management with realtime attendance, tasks, calls, and team chat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
