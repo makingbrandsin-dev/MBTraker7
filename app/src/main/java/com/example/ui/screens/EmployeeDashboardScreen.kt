@@ -54,6 +54,30 @@ fun EmployeeDashboardScreen(
     val snackbarMsg by viewModel.attendanceSnackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    var currentDeviceTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            currentDeviceTime = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000L)
+        }
+    }
+
+    val deviceTimeString = remember(currentDeviceTime) {
+        java.text.SimpleDateFormat("hh:mm:ss a", java.util.Locale.getDefault()).format(java.util.Date(currentDeviceTime))
+    }
+    val deviceDateString = remember(currentDeviceTime) {
+        java.text.SimpleDateFormat("EEEE, dd MMMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(currentDeviceTime))
+    }
+    val greetingText = remember(currentDeviceTime) {
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = currentDeviceTime
+        when (cal.get(java.util.Calendar.HOUR_OF_DAY)) {
+            in 5..11 -> "Good Morning,"
+            in 12..16 -> "Good Afternoon,"
+            else -> "Good Evening,"
+        }
+    }
+
     LaunchedEffect(snackbarMsg) {
         snackbarMsg?.let { msg ->
             snackbarHostState.showSnackbar(msg)
@@ -125,25 +149,6 @@ fun EmployeeDashboardScreen(
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                         IconButton(
-                            onClick = { onNavigateToManager() }
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFF1E1B4B),
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Default.AdminPanelSettings,
-                                        contentDescription = "MB Admin Portal",
-                                        tint = AccentGold,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        IconButton(
                             onClick = { onNavigateToProfile?.invoke() }
                         ) {
                             Surface(
@@ -174,7 +179,7 @@ fun EmployeeDashboardScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Good Morning,", fontSize = 13.sp, color = TextSecondary)
+                    Text(greetingText, fontSize = 13.sp, color = TextSecondary)
                     Text(employeeName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     Text(employeeRole, fontSize = 12.sp, color = TextMuted)
                 }
@@ -183,6 +188,80 @@ fun EmployeeDashboardScreen(
                     text = if (isWorking) "Working" else "Off-Clock",
                     isGreen = isWorking
                 )
+            }
+        }
+
+        // Realtime Mobile Device Clock Card
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = ElectricBlueBg,
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.AccessTime,
+                                    contentDescription = null,
+                                    tint = BrandBlue,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = deviceTimeString,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 18.sp,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = deviceDateString,
+                                fontSize = 12.sp,
+                                color = TextSecondary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFFDCFCE7),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF166534))
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Device Live Time",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF166534)
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -206,7 +285,7 @@ fun EmployeeDashboardScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = Color(0xFFF59E0B),
+                                    color = if (isWorking) Color(0xFF4ADE80) else Color(0xFFF59E0B),
                                     modifier = Modifier.size(8.dp)
                                 ) {}
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -214,7 +293,7 @@ fun EmployeeDashboardScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                if (isWorking) (attendance?.checkInTime ?: "09:00 AM") else "--:--",
+                                if (attendance != null && attendance?.checkInTime != null) attendance!!.checkInTime!! else "--:--",
                                 color = Color.White,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 22.sp
@@ -247,13 +326,27 @@ fun EmployeeDashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Working Time (Realtime)", color = Color(0xFF93C5FD), fontSize = 12.sp)
-                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Apartment,
+                                    contentDescription = null,
+                                    tint = Color(0xFF93C5FD),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Today's Time in Office", color = Color(0xFF93C5FD), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = if (isWorking) formatLiveSeconds(liveSeconds) else "00:00:00",
+                                text = if (isWorking) formatLiveSeconds(liveSeconds) else if ((attendance?.durationMinutes ?: 0) > 0) "${(attendance?.durationMinutes ?: 0) / 60}h ${(attendance?.durationMinutes ?: 0) % 60}m" else "00:00:00",
                                 color = Color(0xFFFDE047), // Rich Yellow Gold Accent
                                 fontWeight = FontWeight.Black,
                                 fontSize = 26.sp
+                            )
+                            Text(
+                                text = if (isWorking) "${liveSeconds / 3600}h ${(liveSeconds % 3600) / 60}m logged today" else "Total office hours logged",
+                                color = Color(0xFFCBD5E1),
+                                fontSize = 11.sp
                             )
                         }
 
@@ -354,27 +447,6 @@ fun EmployeeDashboardScreen(
                                     color = Color(0xFF059669),
                                     fontWeight = FontWeight.SemiBold
                                 )
-                            }
-
-                            if (attendance != null) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        "Room DB: Entry #${attendance?.id ?: 1}",
-                                        fontSize = 10.sp,
-                                        color = TextSecondary,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "Epoch: ${attendance?.timestamp ?: System.currentTimeMillis()}",
-                                        fontSize = 10.sp,
-                                        color = TextMuted
-                                    )
-                                }
                             }
                         }
                     }

@@ -119,13 +119,13 @@ fun AttendanceScreen(
                         }
 
                         Text(
-                            text = if (isWorking) (attendance?.checkInTime ?: "09:00 AM") else "--:--",
+                            text = if (isWorking) (attendance?.checkInTime ?: "--:--") else (attendance?.checkOutTime ?: "--:--"),
                             fontSize = 32.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = TextPrimary
                         )
                         Text(
-                            text = attendance?.date ?: "Today",
+                            text = attendance?.date ?: java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date()),
                             fontSize = 13.sp,
                             color = TextSecondary
                         )
@@ -189,7 +189,7 @@ fun AttendanceScreen(
                         AttendanceTimelineRow(
                             icon = Icons.Default.Login,
                             label = "Check In",
-                            time = if (isWorking) "09:14 AM" else "09:14 AM",
+                            time = attendance?.checkInTime ?: "-- : --",
                             iconBg = StatusGreenBg,
                             iconTint = StatusGreen
                         )
@@ -198,7 +198,7 @@ fun AttendanceScreen(
                         AttendanceTimelineRow(
                             icon = Icons.Default.FreeBreakfast,
                             label = "Break Start",
-                            time = "01:05 PM",
+                            time = if (isWorking) "01:00 PM" else "-- : --",
                             iconBg = StatusOrangeBg,
                             iconTint = StatusOrange
                         )
@@ -207,7 +207,7 @@ fun AttendanceScreen(
                         AttendanceTimelineRow(
                             icon = Icons.Default.Work,
                             label = "Break End",
-                            time = "01:42 PM",
+                            time = if (isWorking) "01:30 PM" else "-- : --",
                             iconBg = StatusBlueBg,
                             iconTint = StatusBlue
                         )
@@ -216,7 +216,7 @@ fun AttendanceScreen(
                         AttendanceTimelineRow(
                             icon = Icons.Default.Logout,
                             label = "Check Out",
-                            time = if (!isWorking) "05:42 PM" else "-- : --",
+                            time = attendance?.checkOutTime ?: "-- : --",
                             iconBg = StatusRedBg,
                             iconTint = StatusRed
                         )

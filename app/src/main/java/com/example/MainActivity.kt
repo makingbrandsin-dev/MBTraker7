@@ -67,6 +67,8 @@ sealed class Screen(val route: String) {
     object Notifications : Screen("notifications")
     object Holidays : Screen("holidays")
     object Manager : Screen("manager")
+    object Settings : Screen("settings")
+    object HelpSupport : Screen("help_support")
 }
 
 private fun getScreenOrder(route: String?): Int {
@@ -426,7 +428,34 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                         navController.navigate(Screen.Login.route) {
                             popUpTo(0) { inclusive = true }
                         }
-                    }
+                    },
+                    onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                    onNavigateToHelp = { navController.navigate(Screen.HelpSupport.route) }
+                )
+            }
+
+            composable(
+                route = Screen.Settings.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                SettingsScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.HelpSupport.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                HelpSupportScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
 

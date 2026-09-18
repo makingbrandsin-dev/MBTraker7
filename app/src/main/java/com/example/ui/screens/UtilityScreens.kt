@@ -36,7 +36,9 @@ import com.example.ui.theme.*
 fun ProfileScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToHelp: () -> Unit = {}
 ) {
     var showEditProfileDialog by remember { mutableStateOf(false) }
     val empName by viewModel.currentEmployeeName.collectAsState()
@@ -189,9 +191,9 @@ fun ProfileScreen(
                     Column(modifier = Modifier.padding(12.dp)) {
                         ProfileNavRow(Icons.Default.Person, "My Profile", onClick = { showEditProfileDialog = true })
                         Divider(color = BorderLight)
-                        ProfileNavRow(Icons.Default.Settings, "Settings")
+                        ProfileNavRow(Icons.Default.Settings, "Settings", onClick = onNavigateToSettings)
                         Divider(color = BorderLight)
-                        ProfileNavRow(Icons.Default.HelpOutline, "Help & Support")
+                        ProfileNavRow(Icons.Default.HelpOutline, "Help & Support", onClick = onNavigateToHelp)
                         Divider(color = BorderLight)
                         ProfileNavRow(Icons.Default.Logout, "Logout", textColor = StatusRed, iconTint = StatusRed, onClick = onLogout)
                     }
@@ -1054,5 +1056,508 @@ fun HolidayRow(title: String, date: String, day: String) {
             Text(day, fontSize = 12.sp, color = TextSecondary)
         }
         Text(date, fontSize = 13.sp, color = ElectricBlue, fontWeight = FontWeight.Bold)
+    }
+}
+
+// ---------------- Screen 17: Settings Screen ----------------
+@Composable
+fun SettingsScreen(
+    viewModel: MainViewModel,
+    onBack: () -> Unit
+) {
+    val currencyCode by viewModel.currencyCode.collectAsState()
+    var pushNotificationsEnabled by remember { mutableStateOf(true) }
+    var soundEnabled by remember { mutableStateOf(true) }
+    var biometricEnabled by remember { mutableStateOf(false) }
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var toastMessage by remember { mutableStateOf<String?>(null) }
+
+    if (showPasswordDialog) {
+        var oldPass by remember { mutableStateOf("") }
+        var newPass by remember { mutableStateOf("") }
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showPasswordDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Change Password", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextPrimary)
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = oldPass,
+                        onValueChange = { oldPass = it },
+                        label = { Text("Current Password") },
+                        singleLine = true,
+                        colors = appTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = newPass,
+                        onValueChange = { newPass = it },
+                        label = { Text("New Password") },
+                        singleLine = true,
+                        colors = appTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { showPasswordDialog = false }) {
+                            Text("Cancel", color = TextSecondary)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                showPasswordDialog = false
+                                toastMessage = "Password updated successfully!"
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                        ) {
+                            Text("Update", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            AppHeader(
+                title = "Settings",
+                onBack = onBack
+            )
+        },
+        containerColor = SurfaceBg
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Toast / Confirmation Snackbar
+            if (toastMessage != null) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFDCFCE7),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(toastMessage!!, color = Color(0xFF166534), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            IconButton(onClick = { toastMessage = null }, modifier = Modifier.size(20.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = Color(0xFF166534))
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Currency Selection Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        ) {
+                            Icon(Icons.Default.AttachMoney, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Currency Preference", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                Text("Select display currency for leads & financials", fontSize = 12.sp, color = TextSecondary)
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            val isInr = currencyCode == "INR"
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isInr) ElectricBlueBg else Color(0xFFF1F5F9),
+                                border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isInr) ElectricBlue else Color.Transparent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        viewModel.setCurrency("INR")
+                                        toastMessage = "Currency set to Indian Rupee (₹)"
+                                    }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("₹ INR", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = if (isInr) ElectricBlue else TextPrimary)
+                                    Text("Indian Rupee", fontSize = 11.sp, color = TextSecondary)
+                                    if (isInr) {
+                                        Text("(Default)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = StatusGreen)
+                                    }
+                                }
+                            }
+
+                            val isUsd = currencyCode == "USD"
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isUsd) ElectricBlueBg else Color(0xFFF1F5F9),
+                                border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isUsd) ElectricBlue else Color.Transparent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        viewModel.setCurrency("USD")
+                                        toastMessage = "Currency set to US Dollar ($)"
+                                    }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("$ USD", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = if (isUsd) ElectricBlue else TextPrimary)
+                                    Text("US Dollar", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Notification Toggles Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Notifications", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        SettingToggleRow("Push Notifications", "Receive real-time lead & task updates", pushNotificationsEnabled) {
+                            pushNotificationsEnabled = it
+                        }
+                        Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                        SettingToggleRow("Sound & Vibration", "Play audio alert on new chat messages", soundEnabled) {
+                            soundEnabled = it
+                        }
+                    }
+                }
+            }
+
+            // Security Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Security & Privacy", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        SettingActionRow(Icons.Default.Lock, "Change Password", "Update your account password") {
+                            showPasswordDialog = true
+                        }
+                        Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                        SettingToggleRow("Biometric Unlock", "Use Fingerprint or Face ID to sign in", biometricEnabled) {
+                            biometricEnabled = it
+                        }
+                    }
+                }
+            }
+
+            // App Version Info Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("MB Traker Enterprise", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+                        Text("Version 2.4.0 (Build 2026)", fontSize = 12.sp, color = TextSecondary)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("© 2026 Making Brands. All Rights Reserved.", fontSize = 10.sp, color = TextMuted)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingToggleRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = TextPrimary)
+            Text(subtitle, fontSize = 11.sp, color = TextSecondary)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = ElectricBlue)
+        )
+    }
+}
+
+@Composable
+fun SettingActionRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Icon(icon, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = TextPrimary)
+                Text(subtitle, fontSize = 11.sp, color = TextSecondary)
+            }
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextMuted)
+    }
+}
+
+// ---------------- Screen 18: Help & Support Screen ----------------
+@Composable
+fun HelpSupportScreen(
+    onBack: () -> Unit
+) {
+    var ticketSubject by remember { mutableStateOf("") }
+    var ticketMessage by remember { mutableStateOf("") }
+    var submittedMessage by remember { mutableStateOf<String?>(null) }
+    var expandedFaqIndex by remember { mutableStateOf<Int?>(null) }
+
+    val faqs = listOf(
+        "How do I check in or check out?" to "Navigate to the Home screen and tap the 'Check In' gold button. Your live working timer will immediately start. When finishing your shift, tap 'Check Out' to log your total hours.",
+        "How do I apply for leave?" to "Go to the Attendance tab, scroll to the bottom or tap 'Apply Leave'. Select leave type, choose dates, enter your reason, and click 'Submit & Store'. Your manager will receive the request instantly.",
+        "How do I change currency between INR and USD?" to "Open Profile -> Settings -> Currency Preference. Select '₹ INR' or '$ USD'. All lead potential values and project financial figures will update accordingly.",
+        "How do I manage CRM leads and follow-ups?" to "Tap the CRM tab on the bottom bar. From there, you can view assigned leads, filter by pipeline stage, add new leads, schedule follow-up calls, and update lead notes."
+    )
+
+    Scaffold(
+        topBar = {
+            AppHeader(
+                title = "Help & Support",
+                onBack = onBack
+            )
+        },
+        containerColor = SurfaceBg
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Direct Contact Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Text("Need Immediate Help?", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+                        Text("Our support team is available 24/7 for assistance", fontSize = 12.sp, color = Color(0xFFCBD5E1))
+
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFF1E293B),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Phone, contentDescription = null, tint = StatusGreen, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text("Call Us", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                                        Text("+91 98765 43210", fontSize = 10.sp, color = Color(0xFF94A3B8))
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFF1E293B),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Email, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text("Email Support", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                                        Text("makingbrands.in@gmail.com", fontSize = 9.sp, color = Color(0xFF94A3B8))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // FAQ Section
+            item {
+                Text("Frequently Asked Questions", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextPrimary)
+            }
+
+            items(faqs.size) { index ->
+                val (question, answer) = faqs[index]
+                val isExpanded = expandedFaqIndex == index
+
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expandedFaqIndex = if (isExpanded) null else index }
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(question, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = TextPrimary, modifier = Modifier.weight(1f))
+                            Icon(
+                                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = ElectricBlue
+                            )
+                        }
+                        if (isExpanded) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Divider(color = BorderLight)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(answer, fontSize = 12.sp, color = TextSecondary, lineHeight = 18.sp)
+                        }
+                    }
+                }
+            }
+
+            // Submit Ticket Form Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Submit Support Ticket", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                        Text("Send a message to our technical support team", fontSize = 12.sp, color = TextSecondary)
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        if (submittedMessage != null) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFDCFCE7),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(submittedMessage!!, color = Color(0xFF166534), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    IconButton(onClick = { submittedMessage = null }, modifier = Modifier.size(20.dp)) {
+                                        Icon(Icons.Default.Close, contentDescription = null, tint = Color(0xFF166534))
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+
+                        OutlinedTextField(
+                            value = ticketSubject,
+                            onValueChange = { ticketSubject = it },
+                            label = { Text("Subject / Issue Title") },
+                            placeholder = { Text("e.g. Attendance sync delay") },
+                            singleLine = true,
+                            colors = appTextFieldColors(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedTextField(
+                            value = ticketMessage,
+                            onValueChange = { ticketMessage = it },
+                            label = { Text("Detailed Description") },
+                            placeholder = { Text("Describe what happened...") },
+                            minLines = 3,
+                            colors = appTextFieldColors(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Button(
+                            onClick = {
+                                if (ticketSubject.isNotBlank()) {
+                                    submittedMessage = "Ticket '#MB-${(1000..9999).random()}' submitted successfully! Our team will respond shortly."
+                                    ticketSubject = ""
+                                    ticketMessage = ""
+                                }
+                            },
+                            enabled = ticketSubject.isNotBlank(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Submit Ticket", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

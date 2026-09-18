@@ -77,6 +77,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val callLogs = callLogDao.getAllCallLogs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Currency Preference ("INR" vs "USD") - Default INR ("₹")
+    private val _currencyCode = MutableStateFlow("INR")
+    val currencyCode: StateFlow<String> = _currencyCode.asStateFlow()
+
+    val currencySymbol: StateFlow<String> = _currencyCode.map { code ->
+        if (code == "USD") "$" else "₹"
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "₹")
+
+    fun setCurrency(code: String) {
+        _currencyCode.value = code
+    }
+
     // Chat
     private val _currentChannel = MutableStateFlow("dev_team")
     val currentChannel: StateFlow<String> = _currentChannel.asStateFlow()
@@ -299,7 +311,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val inserted = newRecord.copy(id = recordId)
             FirebaseRealtimeManager.syncAttendanceToFirebase(inserted)
             _liveActiveDurationSeconds.value = 0
-            _attendanceSnackbarMessage.value = "Checked In at $nowTimeStr (Timestamp: $currentTimestamp, ID: #$recordId)"
+            _attendanceSnackbarMessage.value = "Checked In at $nowTimeStr"
             notificationDao.insert(
                 NotificationEntity(
                     title = "Punch In Recorded",
