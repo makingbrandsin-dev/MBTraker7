@@ -41,7 +41,7 @@ fun CallTrackerScreen(
             "Missed" -> log.status.equals("No Answer", ignoreCase = true)
             else -> true
         }
-    }
+    }.sortedByDescending { it.id }
 
     Scaffold(
         topBar = {

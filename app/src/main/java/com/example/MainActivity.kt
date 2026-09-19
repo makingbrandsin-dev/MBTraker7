@@ -66,6 +66,7 @@ sealed class Screen(val route: String) {
     }
     object Notifications : Screen("notifications")
     object Holidays : Screen("holidays")
+    object Invoices : Screen("invoices")
     object Manager : Screen("manager")
     object Settings : Screen("settings")
     object HelpSupport : Screen("help_support")
@@ -253,7 +254,9 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onNavigateToHolidays = { navController.navigate(Screen.Holidays.route) },
                     onNavigateToNotifications = { navController.navigate(Screen.Notifications.route) },
                     onNavigateToManager = { navController.navigate(Screen.Manager.route) },
-                    onNavigateToProfile = { navController.navigate(Screen.Profile.route) }
+                    onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+                    onNavigateToInvoices = { navController.navigate(Screen.Invoices.route) },
+                    onNavigateToChat = { navController.navigate(Screen.Chat.route) }
                 )
             }
 
@@ -374,7 +377,8 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                             restoreState = true
                         }
                     },
-                    onNavigateToProfile = { navController.navigate(Screen.Profile.route) }
+                    onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+                    onNavigateToChat = { navController.navigate(Screen.Chat.route) }
                 )
             }
 
@@ -595,6 +599,20 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 HolidaysLeaveScreen(
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.Invoices.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                InvoiceQuotationScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    onNavigateToChat = { navController.navigate(Screen.Chat.route) }
                 )
             }
 

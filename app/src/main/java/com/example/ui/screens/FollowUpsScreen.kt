@@ -28,6 +28,17 @@ fun FollowUpsScreen(
     var selectedFilterIndex by remember { mutableIntStateOf(0) }
     val filters = listOf("Today", "Upcoming", "Completed")
 
+    val filteredFollowUps = remember(followUps, selectedFilterIndex) {
+        val category = filters[selectedFilterIndex]
+        followUps.filter { item ->
+            if (category == "Completed") {
+                item.isCompleted || item.scheduledDateCategory.equals("Completed", ignoreCase = true)
+            } else {
+                item.scheduledDateCategory.equals(category, ignoreCase = true)
+            }
+        }.sortedByDescending { it.id }
+    }
+
     Scaffold(
         topBar = {
             AppHeader(
@@ -67,7 +78,7 @@ fun FollowUpsScreen(
             }
 
             // Follow-up Items
-            items(followUps) { item ->
+            items(filteredFollowUps) { item ->
                 FollowUpCardItem(item)
             }
         }

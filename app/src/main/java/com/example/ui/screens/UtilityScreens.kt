@@ -872,6 +872,7 @@ fun HolidaysLeaveScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .imePadding()
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 36.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)

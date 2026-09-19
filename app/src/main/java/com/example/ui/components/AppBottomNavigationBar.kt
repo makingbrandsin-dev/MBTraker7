@@ -104,9 +104,8 @@ fun AppBottomNavigationBar(
         modifier = modifier
             .fillMaxWidth()
             .shadow(elevation = 14.dp, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
-        color = Color.White,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+        color = Color(0xFFF0F6FE), // Lite background color of blue
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
         Row(
             modifier = Modifier
@@ -130,17 +129,6 @@ fun AppBottomNavigationBar(
                         .testTag(item.testTag)
                         .clip(RoundedCornerShape(16.dp))
                         .background(backgroundColor)
-                        .then(
-                            if (isSelected) {
-                                Modifier.border(
-                                    width = 1.dp,
-                                    color = item.activeColor.copy(alpha = 0.35f),
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                            } else {
-                                Modifier
-                            }
-                        )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = ripple(bounded = true, color = item.activeColor.copy(alpha = 0.2f))

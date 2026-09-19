@@ -23,6 +23,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.AppHeader
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
 
@@ -303,14 +304,9 @@ fun OtpVerificationScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("OTP Verification", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            AppHeader(
+                title = "OTP Verification",
+                onBack = onBack
             )
         },
         containerColor = SurfaceBg

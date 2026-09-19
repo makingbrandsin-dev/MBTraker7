@@ -1,11 +1,14 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +29,8 @@ import com.example.data.model.TaskEntity
 import com.example.ui.components.AppHeader
 import com.example.ui.components.CrmTasksAttendanceSwitcher
 import com.example.ui.components.PriorityBadge
+import com.example.ui.components.getCategoryConfig
+import com.example.ui.components.standardCategories
 import com.example.ui.theme.*
 
 @Composable
@@ -39,11 +44,13 @@ fun TasksScreen(
     val tasks by viewModel.tasks.collectAsState()
     var selectedScopeTab by remember { mutableIntStateOf(0) } // 0: All, 1: My Tasks
     var selectedStatusFilter by remember { mutableStateOf("All") }
+    var selectedCategoryFilter by remember { mutableStateOf("All") }
     var showAddTaskDialog by remember { mutableStateOf(false) }
 
     val statusFilters = listOf("All", "Backlog", "In Progress", "Completed")
 
     val filteredTasks = tasks.filter { task ->
+        val matchesCategory = if (selectedCategoryFilter == "All") true else task.category.equals(selectedCategoryFilter, ignoreCase = true)
         val matchesStatus = when (selectedStatusFilter) {
             "Backlog" -> task.status.equals("Backlog", ignoreCase = true)
             "In Progress" -> task.status.equals("In Progress", ignoreCase = true)
@@ -51,8 +58,8 @@ fun TasksScreen(
             else -> true
         }
         val matchesScope = if (selectedScopeTab == 1) task.assignee == "Rahul Sharma" else true
-        matchesStatus && matchesScope
-    }
+        matchesCategory && matchesStatus && matchesScope
+    }.sortedByDescending { it.id }
 
     Scaffold(
         topBar = {
@@ -137,6 +144,61 @@ fun TasksScreen(
                 }
             }
 
+            // Category Filter Chips
+            item {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item {
+                        val isAll = selectedCategoryFilter == "All"
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isAll) Color(0xFF0F172A) else Color(0xFFF1F5F9),
+                            border = BorderStroke(1.dp, if (isAll) Color(0xFF0F172A) else Color(0xFFE2E8F0)),
+                            modifier = Modifier.clickable { selectedCategoryFilter = "All" }
+                        ) {
+                            Text(
+                                "All Categories",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isAll) Color.White else Color(0xFF475569),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                    items(standardCategories) { catName ->
+                        val config = getCategoryConfig(catName)
+                        val isSel = selectedCategoryFilter.equals(catName, ignoreCase = true)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSel) config.leftAccentColor else config.tagBgColor,
+                            border = BorderStroke(1.dp, if (isSel) config.leftAccentColor else config.cardBorderColor),
+                            modifier = Modifier.clickable { selectedCategoryFilter = catName }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    config.icon,
+                                    contentDescription = null,
+                                    tint = if (isSel) Color.White else config.tagTextColor,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    catName,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) Color.White else config.tagTextColor
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Tasks List
             items(filteredTasks) { task ->
                 TaskCardItem(
@@ -151,6 +213,7 @@ fun TasksScreen(
 
     if (showAddTaskDialog) {
         var newTitle by remember { mutableStateOf("") }
+        var newCategory by remember { mutableStateOf(if (selectedCategoryFilter != "All") selectedCategoryFilter else "Work") }
         var newProject by remember { mutableStateOf("Website Revamp") }
         var newPriority by remember { mutableStateOf("High") }
 
@@ -184,6 +247,54 @@ fun TasksScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    // Category Selection Chips
+                    Column {
+                        Text(
+                            "Category (Color-Coded):",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF475569)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            standardCategories.forEach { catName ->
+                                val config = getCategoryConfig(catName)
+                                val isSel = newCategory.equals(catName, ignoreCase = true)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSel) config.leftAccentColor else config.tagBgColor,
+                                    border = BorderStroke(1.dp, if (isSel) config.leftAccentColor else config.cardBorderColor),
+                                    modifier = Modifier.clickable { newCategory = catName }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            config.icon,
+                                            contentDescription = null,
+                                            tint = if (isSel) Color.White else config.tagTextColor,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            catName,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSel) Color.White else config.tagTextColor
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = newProject,
                         onValueChange = { newProject = it },
@@ -199,7 +310,7 @@ fun TasksScreen(
                 Button(
                     onClick = {
                         if (newTitle.isNotBlank()) {
-                            viewModel.addTask(newTitle, newProject, newPriority, "30 Sep 2025")
+                            viewModel.addTask(newTitle, newProject, newPriority, "30 Sep 2025", newCategory)
                             showAddTaskDialog = false
                         }
                     },
@@ -230,38 +341,35 @@ fun TaskCardItem(
 ) {
     var showStatusMenu by remember { mutableStateOf(false) }
     val availableStatuses = listOf("Backlog", "In Progress", "In Review", "Completed")
+    val categoryConfig = getCategoryConfig(task.category)
 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        border = BorderStroke(1.dp, if (task.isCompleted) Color(0xFFE2E8F0) else categoryConfig.cardBorderColor.copy(alpha = 0.8f)),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(if (task.isCompleted) Color(0xFFCBD5E1) else categoryConfig.leftAccentColor)
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(14.dp)
             ) {
                 Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Checkbox(
-                        checked = task.isCompleted,
-                        onCheckedChange = { onToggle() },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = BrandBlue,
-                            uncheckedColor = TextMuted
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(
                             text = task.title,
                             fontWeight = FontWeight.Bold,
@@ -269,95 +377,124 @@ fun TaskCardItem(
                             color = if (task.isCompleted) TextMuted else Color(0xFF0F172A),
                             textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "${task.projectName} · Due: ${task.dueDate}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF334155)
-                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (task.isCompleted) Color(0xFFF1F5F9) else categoryConfig.tagBgColor,
+                                border = BorderStroke(1.dp, if (task.isCompleted) Color(0xFFE2E8F0) else categoryConfig.cardBorderColor)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        categoryConfig.icon,
+                                        contentDescription = null,
+                                        tint = if (task.isCompleted) Color(0xFF94A3B8) else categoryConfig.tagTextColor,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        categoryConfig.name,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (task.isCompleted) Color(0xFF94A3B8) else categoryConfig.tagTextColor
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "${task.projectName} · Due: ${task.dueDate}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF475569)
+                            )
+                        }
                     }
-                }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    PriorityBadge(priority = task.priority)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PriorityBadge(priority = task.priority)
 
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Delete task",
-                            tint = StatusRed,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Box {
                         IconButton(
-                            onClick = { showStatusMenu = true },
+                            onClick = onDelete,
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = "Task options",
-                                tint = Color(0xFF0F172A),
-                                modifier = Modifier.size(20.dp)
+                                Icons.Default.Delete,
+                                contentDescription = "Delete task",
+                                tint = StatusRed,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
-                        DropdownMenu(
-                            expanded = showStatusMenu,
-                            onDismissRequest = { showStatusMenu = false },
-                            modifier = Modifier.background(Color.White)
-                        ) {
-                            Text(
-                                "Update Status:",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextMuted,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                            availableStatuses.forEach { statusOption ->
+                        Box {
+                            IconButton(
+                                onClick = { showStatusMenu = true },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "Task options",
+                                    tint = Color(0xFF0F172A),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showStatusMenu,
+                                onDismissRequest = { showStatusMenu = false },
+                                modifier = Modifier.background(Color.White)
+                            ) {
+                                Text(
+                                    "Update Status:",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextMuted,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                                availableStatuses.forEach { statusOption ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                statusOption,
+                                                fontWeight = if (task.status.equals(statusOption, ignoreCase = true)) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (task.status.equals(statusOption, ignoreCase = true)) BrandBlue else Color(0xFF0F172A)
+                                            )
+                                        },
+                                        onClick = {
+                                            onStatusChange(statusOption)
+                                            showStatusMenu = false
+                                        },
+                                        leadingIcon = {
+                                            val iconVector = when (statusOption) {
+                                                "Completed" -> Icons.Default.CheckCircle
+                                                "In Progress" -> Icons.Default.Pending
+                                                "In Review" -> Icons.Default.FindInPage
+                                                else -> Icons.Default.Inventory
+                                            }
+                                            Icon(
+                                                iconVector,
+                                                contentDescription = null,
+                                                tint = if (task.status.equals(statusOption, ignoreCase = true)) BrandBlue else Color(0xFF64748B),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    )
+                                }
+                                Divider(color = BorderLight, thickness = 1.dp)
                                 DropdownMenuItem(
                                     text = {
-                                        Text(
-                                            statusOption,
-                                            fontWeight = if (task.status.equals(statusOption, ignoreCase = true)) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (task.status.equals(statusOption, ignoreCase = true)) BrandBlue else Color(0xFF0F172A)
-                                        )
+                                        Text("Delete Task", fontWeight = FontWeight.Bold, color = StatusRed)
                                     },
                                     onClick = {
-                                        onStatusChange(statusOption)
+                                        onDelete()
                                         showStatusMenu = false
                                     },
                                     leadingIcon = {
-                                        val iconVector = when (statusOption) {
-                                            "Completed" -> Icons.Default.CheckCircle
-                                            "In Progress" -> Icons.Default.Pending
-                                            "In Review" -> Icons.Default.FindInPage
-                                            else -> Icons.Default.Inventory
-                                        }
-                                        Icon(
-                                            iconVector,
-                                            contentDescription = null,
-                                            tint = if (task.status.equals(statusOption, ignoreCase = true)) BrandBlue else Color(0xFF64748B),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                )
-                            }
-                            Divider(color = BorderLight, thickness = 1.dp)
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Delete Task", fontWeight = FontWeight.Bold, color = StatusRed)
-                                },
-                                onClick = {
-                                    onDelete()
-                                    showStatusMenu = false
-                                },
-                                leadingIcon = {
                                     Icon(
                                         Icons.Default.Delete,
                                         contentDescription = "Delete Task",
@@ -405,4 +542,5 @@ fun TaskCardItem(
             }
         }
     }
+}
 }

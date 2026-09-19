@@ -265,6 +265,7 @@ fun ChatRoomScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             AppHeader(
                 title = channelTitle,
@@ -283,7 +284,9 @@ fun ChatRoomScreen(
             Surface(
                 color = Color.White,
                 shadowElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
             ) {
                 Row(
                     modifier = Modifier

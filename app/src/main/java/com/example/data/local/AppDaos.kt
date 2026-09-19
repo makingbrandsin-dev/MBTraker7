@@ -87,10 +87,10 @@ interface ProjectDao {
 
 @Dao
 interface TaskDao {
-    @Query("SELECT * FROM tasks ORDER BY id ASC")
+    @Query("SELECT * FROM tasks ORDER BY id DESC")
     fun getAllTasks(): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE projectId = :projectId")
+    @Query("SELECT * FROM tasks WHERE projectId = :projectId ORDER BY id DESC")
     fun getTasksByProject(projectId: Long): Flow<List<TaskEntity>>
 
     @Query("SELECT COUNT(*) FROM tasks WHERE isCompleted = 0")
@@ -114,11 +114,14 @@ interface TaskDao {
 
 @Dao
 interface LeadDao {
-    @Query("SELECT * FROM leads ORDER BY createdAt DESC")
+    @Query("SELECT * FROM leads ORDER BY id DESC, createdAt DESC")
     fun getAllLeads(): Flow<List<LeadEntity>>
 
     @Query("SELECT * FROM leads WHERE id = :id")
     fun getLeadById(id: Long): Flow<LeadEntity?>
+
+    @Query("SELECT * FROM leads WHERE source = :source ORDER BY id DESC, createdAt DESC")
+    fun getLeadsBySource(source: String): Flow<List<LeadEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(lead: LeadEntity): Long
@@ -128,11 +131,35 @@ interface LeadDao {
 
     @Update
     suspend fun update(lead: LeadEntity)
+
+    @Delete
+    suspend fun delete(lead: LeadEntity)
+}
+
+@Dao
+interface LeadSourceDao {
+    @Query("SELECT * FROM lead_source_configs ORDER BY displayName ASC")
+    fun getAllSourceConfigs(): Flow<List<LeadSourceConfigEntity>>
+
+    @Query("SELECT * FROM lead_source_configs WHERE sourceId = :sourceId LIMIT 1")
+    fun getSourceConfigById(sourceId: String): Flow<LeadSourceConfigEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(config: LeadSourceConfigEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(configs: List<LeadSourceConfigEntity>)
+
+    @Update
+    suspend fun update(config: LeadSourceConfigEntity)
+
+    @Delete
+    suspend fun delete(config: LeadSourceConfigEntity)
 }
 
 @Dao
 interface FollowUpDao {
-    @Query("SELECT * FROM follow_ups ORDER BY id ASC")
+    @Query("SELECT * FROM follow_ups ORDER BY id DESC")
     fun getAllFollowUps(): Flow<List<FollowUpEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -231,4 +258,116 @@ interface LeaveDao {
     @Delete
     suspend fun delete(leave: LeaveApplicationEntity)
 }
+
+@Dao
+interface CallRecordingDao {
+    @Query("SELECT * FROM call_recordings ORDER BY id DESC")
+    fun getAllRecordings(): Flow<List<CallRecordingEntity>>
+
+    @Query("SELECT * FROM call_recordings WHERE callMedium = :medium ORDER BY id DESC")
+    fun getRecordingsByMedium(medium: String): Flow<List<CallRecordingEntity>>
+
+    @Query("SELECT COUNT(*) FROM call_recordings")
+    fun getRecordingsCount(): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(recording: CallRecordingEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(recordings: List<CallRecordingEntity>)
+
+    @Update
+    suspend fun update(recording: CallRecordingEntity)
+
+    @Delete
+    suspend fun delete(recording: CallRecordingEntity)
+
+    @Query("DELETE FROM call_recordings WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
+@Dao
+interface InvoiceDao {
+    @Query("SELECT * FROM invoices ORDER BY id DESC")
+    fun getAllInvoices(): Flow<List<InvoiceEntity>>
+
+    @Query("SELECT * FROM invoices WHERE status = :status ORDER BY id DESC")
+    fun getInvoicesByStatus(status: String): Flow<List<InvoiceEntity>>
+
+    @Query("SELECT COUNT(*) FROM invoices")
+    fun getInvoiceCount(): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(invoice: InvoiceEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(invoices: List<InvoiceEntity>)
+
+    @Update
+    suspend fun update(invoice: InvoiceEntity)
+
+    @Delete
+    suspend fun delete(invoice: InvoiceEntity)
+
+    @Query("DELETE FROM invoices WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
+@Dao
+interface QuotationDao {
+    @Query("SELECT * FROM quotations ORDER BY id DESC")
+    fun getAllQuotations(): Flow<List<QuotationEntity>>
+
+    @Query("SELECT * FROM quotations WHERE status = :status ORDER BY id DESC")
+    fun getQuotationsByStatus(status: String): Flow<List<QuotationEntity>>
+
+    @Query("SELECT COUNT(*) FROM quotations")
+    fun getQuotationCount(): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(quotation: QuotationEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(quotations: List<QuotationEntity>)
+
+    @Update
+    suspend fun update(quotation: QuotationEntity)
+
+    @Delete
+    suspend fun delete(quotation: QuotationEntity)
+
+    @Query("DELETE FROM quotations WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
+@Dao
+interface AutoBrochureDao {
+    @Query("SELECT * FROM auto_brochure_configs WHERE id = 1 LIMIT 1")
+    fun getAutoBrochureConfig(): Flow<AutoBrochureConfigEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(config: AutoBrochureConfigEntity)
+
+    @Query("UPDATE auto_brochure_configs SET totalSentCount = totalSentCount + 1, lastSentTimestamp = :lastSent WHERE id = 1")
+    suspend fun incrementSentCount(lastSent: String)
+}
+
+@Dao
+interface SocialReviewDao {
+    @Query("SELECT * FROM social_review_configs ORDER BY platformName ASC")
+    fun getAllReviewConfigs(): Flow<List<SocialReviewConfigEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(config: SocialReviewConfigEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(configs: List<SocialReviewConfigEntity>)
+
+    @Update
+    suspend fun update(config: SocialReviewConfigEntity)
+
+    @Delete
+    suspend fun delete(config: SocialReviewConfigEntity)
+}
+
 

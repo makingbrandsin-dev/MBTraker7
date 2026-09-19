@@ -24,9 +24,15 @@ import java.util.Date
         ChatMessageEntity::class,
         NotificationEntity::class,
         UserProfileEntity::class,
-        LeaveApplicationEntity::class
+        LeaveApplicationEntity::class,
+        LeadSourceConfigEntity::class,
+        CallRecordingEntity::class,
+        InvoiceEntity::class,
+        QuotationEntity::class,
+        AutoBrochureConfigEntity::class,
+        SocialReviewConfigEntity::class
     ],
-    version = 6,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -42,6 +48,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun notificationDao(): NotificationDao
     abstract fun userProfileDao(): UserProfileDao
     abstract fun leaveDao(): LeaveDao
+    abstract fun leadSourceDao(): LeadSourceDao
+    abstract fun callRecordingDao(): CallRecordingDao
+    abstract fun invoiceDao(): InvoiceDao
+    abstract fun quotationDao(): QuotationDao
+    abstract fun autoBrochureDao(): AutoBrochureDao
+    abstract fun socialReviewDao(): SocialReviewDao
 
     companion object {
         @Volatile
@@ -164,18 +176,155 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
 
-            // Initial attendance history (previous day completed record so today starts fresh with Check In)
-            db.attendanceDao().insert(
+            // Initial attendance history across current month with month, day, hours, breaks, overtime
+            val attendanceHistory = listOf(
                 AttendanceRecord(
-                    date = "2025-09-15",
-                    checkInTime = "09:05 AM",
-                    checkOutTime = "06:12 PM",
-                    durationMinutes = 547, // 09h 07m
+                    date = "2026-09-01",
+                    checkInTime = "09:00 AM",
+                    checkOutTime = "06:15 PM",
+                    durationMinutes = 555, // 9h 15m
                     isWorking = false,
                     status = "Present",
-                    overtimeMinutes = 35
+                    overtimeMinutes = 45,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-02",
+                    checkInTime = "08:55 AM",
+                    checkOutTime = "06:00 PM",
+                    durationMinutes = 545, // 9h 05m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 35,
+                    breakMinutes = 40,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-03",
+                    checkInTime = "09:12 AM",
+                    checkOutTime = "06:30 PM",
+                    durationMinutes = 558, // 9h 18m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 48,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-04",
+                    checkInTime = "09:02 AM",
+                    checkOutTime = "06:05 PM",
+                    durationMinutes = 543, // 9h 03m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 30,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-05",
+                    checkInTime = "09:30 AM",
+                    checkOutTime = "02:00 PM",
+                    durationMinutes = 270, // 4h 30m
+                    isWorking = false,
+                    status = "Half Day",
+                    overtimeMinutes = 0,
+                    breakMinutes = 20,
+                    breakType = "Tea Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-08",
+                    checkInTime = "08:50 AM",
+                    checkOutTime = "06:20 PM",
+                    durationMinutes = 570, // 9h 30m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 60,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-09",
+                    checkInTime = "09:05 AM",
+                    checkOutTime = "06:10 PM",
+                    durationMinutes = 545, // 9h 05m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 35,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-10",
+                    checkInTime = "09:00 AM",
+                    checkOutTime = "06:00 PM",
+                    durationMinutes = 540, // 9h 00m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 30,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-11",
+                    checkInTime = "09:15 AM",
+                    checkOutTime = "06:45 PM",
+                    durationMinutes = 570, // 9h 30m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 60,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-12",
+                    checkInTime = "09:00 AM",
+                    checkOutTime = "05:30 PM",
+                    durationMinutes = 510, // 8h 30m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 0,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-15",
+                    checkInTime = "08:58 AM",
+                    checkOutTime = "06:15 PM",
+                    durationMinutes = 557, // 9h 17m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 45,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-16",
+                    checkInTime = "09:05 AM",
+                    checkOutTime = "06:20 PM",
+                    durationMinutes = 555, // 9h 15m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 45,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
+                ),
+                AttendanceRecord(
+                    date = "2026-09-17",
+                    checkInTime = "09:00 AM",
+                    checkOutTime = "06:10 PM",
+                    durationMinutes = 550, // 9h 10m
+                    isWorking = false,
+                    status = "Present",
+                    overtimeMinutes = 40,
+                    breakMinutes = 45,
+                    breakType = "Lunch Break"
                 )
             )
+            for (rec in attendanceHistory) {
+                db.attendanceDao().insert(rec)
+            }
 
             // Projects
             db.projectDao().insertAll(
@@ -240,15 +389,35 @@ abstract class AppDatabase : RoomDatabase() {
                         dueDate = "20 Sep 2025",
                         priority = "High",
                         status = "In Progress",
-                        isCompleted = false
+                        isCompleted = false,
+                        category = "Work"
                     ),
                     TaskEntity(
                         title = "API Integration",
                         projectName = "Mobile App Dev",
                         dueDate = "22 Sep 2025",
+                        priority = "High",
+                        status = "In Progress",
+                        isCompleted = false,
+                        category = "Urgent"
+                    ),
+                    TaskEntity(
+                        title = "Quarterly Sync Meeting",
+                        projectName = "Operations",
+                        dueDate = "Today, 3:00 PM",
                         priority = "Medium",
                         status = "In Progress",
-                        isCompleted = false
+                        isCompleted = false,
+                        category = "Meeting"
+                    ),
+                    TaskEntity(
+                        title = "Gym Workout & Health",
+                        projectName = "Personal Care",
+                        dueDate = "Today, 7:00 PM",
+                        priority = "Medium",
+                        status = "Backlog",
+                        isCompleted = false,
+                        category = "Personal"
                     ),
                     TaskEntity(
                         title = "Content Writing",
@@ -256,7 +425,8 @@ abstract class AppDatabase : RoomDatabase() {
                         dueDate = "26 Sep 2025",
                         priority = "Low",
                         status = "Completed",
-                        isCompleted = true
+                        isCompleted = true,
+                        category = "Work"
                     ),
                     TaskEntity(
                         title = "Testing & QA",
@@ -264,7 +434,8 @@ abstract class AppDatabase : RoomDatabase() {
                         dueDate = "28 Sep 2025",
                         priority = "High",
                         status = "Backlog",
-                        isCompleted = false
+                        isCompleted = false,
+                        category = "Review"
                     ),
                     TaskEntity(
                         title = "Database Migration",
@@ -272,7 +443,8 @@ abstract class AppDatabase : RoomDatabase() {
                         dueDate = "18 Sep 2025",
                         priority = "High",
                         status = "Completed",
-                        isCompleted = true
+                        isCompleted = true,
+                        category = "Work"
                     )
                 )
             )
@@ -290,7 +462,8 @@ abstract class AppDatabase : RoomDatabase() {
                         potentialValue = "₹ 2,50,000",
                         stage = "Interested",
                         assignedTo = "Arjun Mehta",
-                        nextFollowUp = "Today, 4:30 PM"
+                        nextFollowUp = "Today, 4:30 PM",
+                        source = "Justdial"
                     ),
                     LeadEntity(
                         name = "Suresh Patel",
@@ -302,7 +475,8 @@ abstract class AppDatabase : RoomDatabase() {
                         potentialValue = "₹ 1,80,000",
                         stage = "Contacted",
                         assignedTo = "Rahul Sharma",
-                        nextFollowUp = "Tomorrow, 11:00 AM"
+                        nextFollowUp = "Tomorrow, 11:00 AM",
+                        source = "Facebook"
                     ),
                     LeadEntity(
                         name = "Neha Gupta",
@@ -314,7 +488,47 @@ abstract class AppDatabase : RoomDatabase() {
                         potentialValue = "₹ 4,20,000",
                         stage = "Proposal",
                         assignedTo = "Arjun Mehta",
-                        nextFollowUp = "22 Sep, 2:00 PM"
+                        nextFollowUp = "22 Sep, 2:00 PM",
+                        source = "Google Ads"
+                    ),
+                    LeadEntity(
+                        name = "Vikas Malhotra",
+                        company = "Malhotra Logistics",
+                        phone = "+91 98333 44556",
+                        email = "vikas@malhotra.in",
+                        leadScore = 88,
+                        requirement = "Fleet GPS Tracking & Web Dashboard",
+                        potentialValue = "₹ 3,75,000",
+                        stage = "New",
+                        assignedTo = "Rahul Sharma",
+                        nextFollowUp = "Today, 5:00 PM",
+                        source = "WhatsApp"
+                    ),
+                    LeadEntity(
+                        name = "Ananya Roy",
+                        company = "Artisan Cafe Chain",
+                        phone = "+91 97444 55667",
+                        email = "ananya@artisancafe.com",
+                        leadScore = 79,
+                        requirement = "POS Billing & Mobile App",
+                        potentialValue = "$ 4,500",
+                        stage = "Negotiation",
+                        assignedTo = "Arjun Mehta",
+                        nextFollowUp = "Tomorrow, 3:30 PM",
+                        source = "Website"
+                    ),
+                    LeadEntity(
+                        name = "Deepak Verma",
+                        company = "Verma Electronics",
+                        phone = "+91 96555 66778",
+                        email = "deepak@vermaelec.com",
+                        leadScore = 68,
+                        requirement = "Inventory Management Software",
+                        potentialValue = "₹ 1,20,000",
+                        stage = "Contacted",
+                        assignedTo = "Rahul Sharma",
+                        nextFollowUp = "25 Sep, 11:30 AM",
+                        source = "OLX"
                     )
                 )
             )
@@ -504,6 +718,313 @@ abstract class AppDatabase : RoomDatabase() {
                     reason = "Viral fever and doctor consultation",
                     status = "Approved",
                     appliedDate = "05 Sep 2025"
+                )
+            )
+
+            // Lead Source Platform API Configs
+            db.leadSourceDao().insertAll(
+                listOf(
+                    LeadSourceConfigEntity(
+                        sourceId = "justdial",
+                        displayName = "Justdial Leads API",
+                        isEnabled = true,
+                        apiKey = "JD_API_SEC_8829104",
+                        apiSecret = "jd_oauth_key_77a9b",
+                        webhookUrl = "https://api.mbtraker.in/webhooks/justdial",
+                        defaultAssignee = "Arjun Mehta",
+                        lastSyncTime = "10 mins ago",
+                        totalLeadsIngested = 42
+                    ),
+                    LeadSourceConfigEntity(
+                        sourceId = "olx",
+                        displayName = "OLX Business Ingestion",
+                        isEnabled = true,
+                        apiKey = "OLX_BIZ_KEY_449102",
+                        apiSecret = "olx_partner_sec_991b",
+                        webhookUrl = "https://api.mbtraker.in/webhooks/olx",
+                        defaultAssignee = "Rahul Sharma",
+                        lastSyncTime = "25 mins ago",
+                        totalLeadsIngested = 18
+                    ),
+                    LeadSourceConfigEntity(
+                        sourceId = "facebook",
+                        displayName = "Facebook Lead Ads",
+                        isEnabled = true,
+                        apiKey = "EAABw...MetaToken",
+                        apiSecret = "fb_app_secret_892bca",
+                        webhookUrl = "https://api.mbtraker.in/webhooks/meta-lead-gen",
+                        defaultAssignee = "Rahul Sharma",
+                        lastSyncTime = "5 mins ago",
+                        totalLeadsIngested = 64
+                    ),
+                    LeadSourceConfigEntity(
+                        sourceId = "google_ads",
+                        displayName = "Google Ads Webhook",
+                        isEnabled = true,
+                        apiKey = "AIzaSy...GAdsApiKey",
+                        apiSecret = "gads_webhook_token_9934",
+                        webhookUrl = "https://api.mbtraker.in/webhooks/google-ads",
+                        defaultAssignee = "Arjun Mehta",
+                        lastSyncTime = "1 hour ago",
+                        totalLeadsIngested = 35
+                    ),
+                    LeadSourceConfigEntity(
+                        sourceId = "website",
+                        displayName = "Website Contact Form API",
+                        isEnabled = true,
+                        apiKey = "WEB_FORM_API_KEY_0019",
+                        apiSecret = "web_endpoint_secret_554a",
+                        webhookUrl = "https://api.mbtraker.in/webhooks/website-form",
+                        defaultAssignee = "Rahul Sharma",
+                        lastSyncTime = "Just now",
+                        totalLeadsIngested = 89
+                    ),
+                    LeadSourceConfigEntity(
+                        sourceId = "whatsapp",
+                        displayName = "WhatsApp Cloud API",
+                        isEnabled = true,
+                        apiKey = "WHATSAPP_TOKEN_BEARER_881",
+                        apiSecret = "wa_verify_token_mb39",
+                        webhookUrl = "https://api.mbtraker.in/webhooks/whatsapp",
+                        defaultAssignee = "Rahul Sharma",
+                        lastSyncTime = "Just now",
+                        totalLeadsIngested = 57
+                    ),
+                    LeadSourceConfigEntity(
+                        sourceId = "linkedin",
+                        displayName = "LinkedIn Lead Gen",
+                        isEnabled = false,
+                        apiKey = "",
+                        apiSecret = "",
+                        webhookUrl = "https://api.mbtraker.in/webhooks/linkedin",
+                        defaultAssignee = "Arjun Mehta",
+                        lastSyncTime = "Never",
+                        totalLeadsIngested = 0
+                    )
+                )
+            )
+
+            // Initial Call Recordings (SIM & WhatsApp calls saved to local DB)
+            db.callRecordingDao().insertAll(
+                listOf(
+                    CallRecordingEntity(
+                        contactName = "Vikram Aditya (Global Tech)",
+                        phoneNumber = "+91 98450 11223",
+                        callMedium = "SIM Call",
+                        callType = "Outgoing",
+                        durationText = "03:42",
+                        durationSeconds = 222,
+                        recordedAt = "Today, 11:15 AM",
+                        filePath = "/recordings/sim_rec_vikram.m4a",
+                        audioWaveform = "30,55,80,60,95,70,40,85,65,45,90,75,35,80,95,60,40",
+                        fileSizeText = "2.4 MB",
+                        transcriptionSnippet = "Confirmed scope for custom CRM, invoice automation, and Android app build.",
+                        isAutoSaved = true
+                    ),
+                    CallRecordingEntity(
+                        contactName = "Ananya Roy (Apex Retail)",
+                        phoneNumber = "+91 99123 45678",
+                        callMedium = "WhatsApp Call",
+                        callType = "Incoming",
+                        durationText = "05:18",
+                        durationSeconds = 318,
+                        recordedAt = "Today, 09:40 AM",
+                        filePath = "/recordings/wa_rec_ananya.m4a",
+                        audioWaveform = "20,40,60,85,90,75,60,80,95,70,50,65,85,70,45",
+                        fileSizeText = "3.6 MB",
+                        transcriptionSnippet = "Customer inquired about company profile PDF and quotation for digital marketing.",
+                        isAutoSaved = true
+                    ),
+                    CallRecordingEntity(
+                        contactName = "Rohan Verma (Solar Dynamics)",
+                        phoneNumber = "+91 98765 43210",
+                        callMedium = "SIM Call",
+                        callType = "Outgoing",
+                        durationText = "02:10",
+                        durationSeconds = 130,
+                        recordedAt = "Yesterday, 04:20 PM",
+                        filePath = "/recordings/sim_rec_rohan.m4a",
+                        audioWaveform = "35,60,75,50,65,90,80,45,70,85,55,40,75",
+                        fileSizeText = "1.5 MB",
+                        transcriptionSnippet = "Discussed milestone delivery dates and quotation terms.",
+                        isAutoSaved = true
+                    )
+                )
+            )
+
+            // Initial Invoices
+            db.invoiceDao().insertAll(
+                listOf(
+                    InvoiceEntity(
+                        invoiceNumber = "INV-2026-0042",
+                        clientName = "Vikram Aditya",
+                        clientCompany = "Global Tech Enterprises",
+                        clientEmail = "vikram@globaltech.com",
+                        clientPhone = "+91 98450 11223",
+                        issueDate = "15 Sep 2026",
+                        dueDate = "30 Sep 2026",
+                        currency = "₹",
+                        subtotal = 180000.0,
+                        taxPercent = 18.0,
+                        totalAmount = 212400.0,
+                        status = "Pending",
+                        itemsSummary = "Phase 1: Enterprise Android App & CRM Module Implementation",
+                        notes = "Payment terms: Net 15 days via NEFT / RTGS / UPI."
+                    ),
+                    InvoiceEntity(
+                        invoiceNumber = "INV-2026-0041",
+                        clientName = "Ananya Roy",
+                        clientCompany = "Apex Retail Brands",
+                        clientEmail = "ananya@apexretail.in",
+                        clientPhone = "+91 99123 45678",
+                        issueDate = "10 Sep 2026",
+                        dueDate = "25 Sep 2026",
+                        currency = "₹",
+                        subtotal = 95000.0,
+                        taxPercent = 18.0,
+                        totalAmount = 112100.0,
+                        status = "Paid",
+                        itemsSummary = "E-Commerce Ingestion Webhooks & Catalog Setup",
+                        notes = "Payment received with thanks."
+                    ),
+                    InvoiceEntity(
+                        invoiceNumber = "INV-2026-0040",
+                        clientName = "Michael Scott",
+                        clientCompany = "Dunder Cloud USA",
+                        clientEmail = "m.scott@dundercloud.com",
+                        clientPhone = "+1 555 019 2834",
+                        issueDate = "01 Sep 2026",
+                        dueDate = "16 Sep 2026",
+                        currency = "$",
+                        subtotal = 3200.0,
+                        taxPercent = 0.0,
+                        totalAmount = 3200.0,
+                        status = "Paid",
+                        itemsSummary = "Cloud API Integration & UI Dashboard Development",
+                        notes = "International Wire Transfer Completed."
+                    )
+                )
+            )
+
+            // Initial Quotations
+            db.quotationDao().insertAll(
+                listOf(
+                    QuotationEntity(
+                        quotationNumber = "QT-2026-0018",
+                        clientName = "Kunal Shah",
+                        clientCompany = "Credence Logistics",
+                        clientEmail = "kunal@credencelog.com",
+                        clientPhone = "+91 97110 33445",
+                        issueDate = "18 Sep 2026",
+                        validUntil = "05 Oct 2026",
+                        currency = "₹",
+                        subtotal = 250000.0,
+                        discountPercent = 5.0,
+                        taxPercent = 18.0,
+                        totalAmount = 280250.0,
+                        status = "Sent",
+                        scopeOfWork = "Fleet Management Mobile App, Real-Time Driver Attendance & Route Optimizer",
+                        termsAndConditions = "50% Advance upon work order, 30% after alpha build, 20% on final store launch."
+                    ),
+                    QuotationEntity(
+                        quotationNumber = "QT-2026-0017",
+                        clientName = "Priya Menon",
+                        clientCompany = "DesignCraft Studio",
+                        clientEmail = "priya@designcraft.in",
+                        clientPhone = "+91 98200 66778",
+                        issueDate = "12 Sep 2026",
+                        validUntil = "28 Sep 2026",
+                        currency = "₹",
+                        subtotal = 120000.0,
+                        discountPercent = 0.0,
+                        taxPercent = 18.0,
+                        totalAmount = 141600.0,
+                        status = "Accepted",
+                        scopeOfWork = "Branding, Company Profile PDF Brochure Design & Interactive Client Review Portal",
+                        termsAndConditions = "100% advance for creative assets milestone."
+                    )
+                )
+            )
+
+            // Initial Auto Company Profile PDF Brochure Config
+            db.autoBrochureDao().insertOrUpdate(
+                AutoBrochureConfigEntity(
+                    id = 1L,
+                    isAutoSendEnabled = true,
+                    sendViaWhatsApp = true,
+                    sendViaEmail = true,
+                    brochureFileName = "MakingBrands_Company_Profile_2026.pdf",
+                    brochureFileSize = "3.4 MB",
+                    emailSubject = "Welcome to Making Brands — Company Profile & Case Studies",
+                    customMessage = "Hello {NAME}, thank you for contacting Making Brands! We have attached our official Company Profile & Portfolio PDF to help you explore our services.",
+                    totalSentCount = 142,
+                    lastSentTimestamp = "Today, 11:20 AM"
+                )
+            )
+
+            // Initial Social Media Review & QR Code Configs
+            db.socialReviewDao().insertAll(
+                listOf(
+                    SocialReviewConfigEntity(
+                        platformId = "google",
+                        platformName = "Google Business Profile",
+                        reviewUrl = "https://g.page/r/makingbrands/review",
+                        qrCodePayload = "https://g.page/r/makingbrands/review",
+                        ratingText = "4.9 ★",
+                        totalReviewsCount = 184,
+                        isPrimary = true,
+                        customInviteText = "Thank you for choosing Making Brands! We'd love your 5-star Google review."
+                    ),
+                    SocialReviewConfigEntity(
+                        platformId = "trustpilot",
+                        platformName = "Trustpilot",
+                        reviewUrl = "https://www.trustpilot.com/evaluate/makingbrands.in",
+                        qrCodePayload = "https://www.trustpilot.com/evaluate/makingbrands.in",
+                        ratingText = "4.8 ★",
+                        totalReviewsCount = 92,
+                        isPrimary = false,
+                        customInviteText = "Share your verified experience on Trustpilot."
+                    ),
+                    SocialReviewConfigEntity(
+                        platformId = "whatsapp",
+                        platformName = "WhatsApp Business Feedback",
+                        reviewUrl = "https://wa.me/919876543210?text=I%20would%20like%20to%20rate%20Making%20Brands%20services",
+                        qrCodePayload = "https://wa.me/919876543210?text=I%20would%20like%20to%20rate%20Making%20Brands%20services",
+                        ratingText = "5.0 ★",
+                        totalReviewsCount = 310,
+                        isPrimary = false,
+                        customInviteText = "Send direct client feedback on our VIP WhatsApp support channel."
+                    ),
+                    SocialReviewConfigEntity(
+                        platformId = "instagram",
+                        platformName = "Instagram (@makingbrands)",
+                        reviewUrl = "https://instagram.com/makingbrands.in",
+                        qrCodePayload = "https://instagram.com/makingbrands.in",
+                        ratingText = "12.4k Followers",
+                        totalReviewsCount = 420,
+                        isPrimary = false,
+                        customInviteText = "Tag us in your project launch story on Instagram!"
+                    ),
+                    SocialReviewConfigEntity(
+                        platformId = "facebook",
+                        platformName = "Facebook Page",
+                        reviewUrl = "https://facebook.com/makingbrands.in/reviews",
+                        qrCodePayload = "https://facebook.com/makingbrands.in/reviews",
+                        ratingText = "4.9 ★",
+                        totalReviewsCount = 68,
+                        isPrimary = false,
+                        customInviteText = "Leave a recommendation on our Facebook page."
+                    ),
+                    SocialReviewConfigEntity(
+                        platformId = "linkedin",
+                        platformName = "LinkedIn Recommendation",
+                        reviewUrl = "https://linkedin.com/company/makingbrands",
+                        qrCodePayload = "https://linkedin.com/company/makingbrands",
+                        ratingText = "5.0 ★",
+                        totalReviewsCount = 45,
+                        isPrimary = false,
+                        customInviteText = "Recommend Making Brands on LinkedIn."
+                    )
                 )
             )
         }

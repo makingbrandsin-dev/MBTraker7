@@ -75,13 +75,16 @@ data class EmployeeEntity(
 @Entity(tableName = "attendance_records")
 data class AttendanceRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val date: String, // YYYY-MM-DD
+    val date: String, // YYYY-MM-DD or DD MMM YYYY
     val checkInTime: String, // HH:mm:ss or HH:mm
     val checkOutTime: String? = null,
     val durationMinutes: Long = 0,
     val isWorking: Boolean = false,
-    val status: String = "Present", // Present, Late, Half Day
+    val status: String = "Present", // Present, Late, Half Day, On Leave
     val overtimeMinutes: Long = 0,
+    val breakMinutes: Long = 0,
+    val breakType: String = "None", // Tea Break, Lunch Break, Short Break, Custom
+    val isOnBreak: Boolean = false,
     val timestamp: Long = System.currentTimeMillis(),
     val employeeName: String = "Rahul Sharma"
 )
@@ -117,7 +120,95 @@ data class TaskEntity(
     val priority: String, // High, Medium, Low
     val status: String, // Backlog, In Progress, Completed
     val isCompleted: Boolean = false,
-    val assignee: String = "Rahul Sharma"
+    val assignee: String = "Rahul Sharma",
+    val category: String = "Work", // Work, Personal, Urgent, Meeting, Review
+    val estimatedTimeNeeded: String = "4 Hours" // e.g. "2 Hours", "1 Day", "3 Days", "1 Week"
+)
+
+@Entity(tableName = "call_recordings")
+data class CallRecordingEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val contactName: String,
+    val phoneNumber: String,
+    val callMedium: String = "SIM Call", // "SIM Call", "WhatsApp Call"
+    val callType: String = "Outgoing", // "Incoming", "Outgoing"
+    val durationText: String = "02:45",
+    val durationSeconds: Long = 165,
+    val recordedAt: String = "Today, 10:45 AM",
+    val filePath: String = "/recordings/rec_001.m4a",
+    val audioWaveform: String = "25,45,70,85,60,95,75,50,80,65,40,90,60,35",
+    val fileSizeText: String = "1.8 MB",
+    val transcriptionSnippet: String = "Client discussed requirements for website revamp & custom CRM integration.",
+    val isAutoSaved: Boolean = true,
+    val isFavorite: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "invoices")
+data class InvoiceEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val invoiceNumber: String, // e.g. "INV-2026-0081"
+    val clientName: String,
+    val clientCompany: String,
+    val clientEmail: String,
+    val clientPhone: String,
+    val issueDate: String,
+    val dueDate: String,
+    val currency: String = "₹", // "₹" or "$"
+    val subtotal: Double,
+    val taxPercent: Double = 18.0, // 18% GST
+    val totalAmount: Double,
+    val status: String = "Pending", // "Paid", "Pending", "Overdue", "Draft"
+    val itemsSummary: String = "Website UI/UX Redesign & Android Application Development",
+    val notes: String = "Payment terms: Net 15 days. Thank you for your business.",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "quotations")
+data class QuotationEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val quotationNumber: String, // e.g. "QT-2026-0042"
+    val clientName: String,
+    val clientCompany: String,
+    val clientEmail: String,
+    val clientPhone: String,
+    val issueDate: String,
+    val validUntil: String,
+    val currency: String = "₹", // "₹" or "$"
+    val subtotal: Double,
+    val discountPercent: Double = 5.0,
+    val taxPercent: Double = 18.0,
+    val totalAmount: Double,
+    val status: String = "Sent", // "Draft", "Sent", "Accepted", "Converted to Invoice", "Declined"
+    val scopeOfWork: String = "Custom Mobile & Web Application Suite with Cloud Database & Lead Automation APIs",
+    val termsAndConditions: String = "50% Advance on project kickoff, 50% on final UAT milestone.",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "auto_brochure_configs")
+data class AutoBrochureConfigEntity(
+    @PrimaryKey val id: Long = 1L,
+    val isAutoSendEnabled: Boolean = true,
+    val sendViaWhatsApp: Boolean = true,
+    val sendViaEmail: Boolean = true,
+    val brochureFileName: String = "MakingBrands_Company_Profile_2026.pdf",
+    val brochureFileSize: String = "3.4 MB",
+    val emailSubject: String = "Welcome to Making Brands — Company Profile & Solutions Brochure",
+    val customMessage: String = "Hello {NAME}, thank you for contacting Making Brands! We have attached our official Company Profile & Solutions Portfolio PDF.",
+    val totalSentCount: Int = 142,
+    val lastSentTimestamp: String = "Today, 11:20 AM"
+)
+
+@Entity(tableName = "social_review_configs")
+data class SocialReviewConfigEntity(
+    @PrimaryKey val platformId: String, // "google", "trustpilot", "facebook", "instagram", "linkedin", "whatsapp", "custom"
+    val platformName: String,
+    val reviewUrl: String,
+    val qrCodePayload: String,
+    val ratingText: String = "4.9 ★",
+    val totalReviewsCount: Int = 184,
+    val isPrimary: Boolean = false,
+    val customInviteText: String = "We’d love to hear your feedback! Tap the link or scan our QR code to review Making Brands."
 )
 
 @Entity(tableName = "leads")
@@ -129,12 +220,27 @@ data class LeadEntity(
     val email: String,
     val leadScore: Int, // e.g. 85
     val requirement: String, // e.g. Website + App Development
-    val potentialValue: String, // e.g. ₹ 2,50,000
+    val potentialValue: String, // e.g. ₹ 2,50,000 or $ 3,500
     val stage: String, // New, Contacted, Interested, Follow-up, Proposal, Negotiation, Won
     val assignedTo: String = "Arjun Mehta",
     val nextFollowUp: String = "Today, 4:30 PM",
     val notes: String = "Client requested detailed quote with milestone breakdowns.",
+    val source: String = "Website", // Justdial, OLX, Facebook, Google Ads, Website, WhatsApp, LinkedIn, Other
     val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "lead_source_configs")
+data class LeadSourceConfigEntity(
+    @PrimaryKey val sourceId: String, // justdial, olx, facebook, google_ads, website, whatsapp, instagram, linkedin, custom
+    val displayName: String,
+    val isEnabled: Boolean = true,
+    val apiKey: String = "",
+    val apiSecret: String = "",
+    val webhookUrl: String = "",
+    val defaultAssignee: String = "Rahul Sharma",
+    val autoSyncIntervalMinutes: Int = 15,
+    val lastSyncTime: String = "Just now",
+    val totalLeadsIngested: Int = 0
 )
 
 @Entity(tableName = "follow_ups")
