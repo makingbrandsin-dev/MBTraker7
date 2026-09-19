@@ -19,6 +19,8 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.messaging.FirebaseMessaging
+import com.example.util.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -104,6 +106,9 @@ object FirebaseRealtimeManager {
     val syncStatus: StateFlow<String>
         get() = MutableStateFlow(_syncState.value.statusMessage)
 
+    private val _fcmToken = MutableStateFlow<String?>(null)
+    val fcmToken: StateFlow<String?> = _fcmToken.asStateFlow()
+
     fun initialize(
         context: Context,
         attendanceDao: AttendanceDao,
@@ -114,8 +119,12 @@ object FirebaseRealtimeManager {
     ) {
         appScope = scope
         registerNetworkCallback(context)
+        NotificationHelper.createNotificationChannels(context)
 
-        if (isInitialized && firestore != null) return
+        if (isInitialized && firestore != null) {
+            fetchAndRegisterFcmToken(context)
+            return
+        }
 
         try {
             if (FirebaseApp.getApps(context).isEmpty()) {
@@ -136,6 +145,9 @@ object FirebaseRealtimeManager {
                 statusMessage = "Firebase Realtime: Connected"
             )
 
+            // Register and fetch FCM token
+            fetchAndRegisterFcmToken(context)
+
             // Attach real-time snapshot listeners
             startRealtimeAttendanceListener(attendanceDao, scope)
             startRealtimeProfileListener(userProfileDao, scope)
@@ -150,6 +162,61 @@ object FirebaseRealtimeManager {
                 statusMessage = "Firebase Standby: Offline Mode"
             )
         }
+    }
+
+    private fun fetchAndRegisterFcmToken(context: Context) {
+        try {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val token = task.result
+                    Log.d(TAG, "Fetched Firebase Cloud Messaging Token: $token")
+                    updateFcmToken(token)
+                } else {
+                    Log.w(TAG, "Fetching FCM registration token failed", task.exception)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "FirebaseMessaging initialization skipped: ${e.message}")
+        }
+    }
+
+    fun updateFcmToken(token: String?) {
+        if (token.isNullOrBlank()) return
+        _fcmToken.value = token
+        appScope?.launch(Dispatchers.IO) {
+            try {
+                firestore?.collection("fcm_devices")?.document("device_default")?.set(
+                    mapOf(
+                        "token" to token,
+                        "updatedAt" to Date(),
+                        "platform" to "Android",
+                        "appVersion" to "1.0.0"
+                    ),
+                    SetOptions.merge()
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to upload FCM token to Firestore: ${e.message}")
+            }
+        }
+    }
+
+    fun triggerLocalChatAlert(
+        context: Context,
+        senderName: String,
+        messageText: String,
+        channelTitle: String = "Company Chat",
+        channelId: String = "company_chat"
+    ) {
+        NotificationHelper.showChatAlert(context, senderName, messageText, channelTitle, channelId)
+    }
+
+    fun triggerLocalTaskAlert(
+        context: Context,
+        title: String,
+        messageText: String,
+        taskId: Long = 0L
+    ) {
+        NotificationHelper.showTaskAlert(context, title, messageText, taskId)
     }
 
     private fun registerNetworkCallback(context: Context) {

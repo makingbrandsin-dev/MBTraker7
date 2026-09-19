@@ -1067,6 +1067,7 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val currencyCode by viewModel.currencyCode.collectAsState()
+    val fcmTokenVal by viewModel.fcmToken.collectAsState()
     var pushNotificationsEnabled by remember { mutableStateOf(true) }
     var soundEnabled by remember { mutableStateOf(true) }
     var biometricEnabled by remember { mutableStateOf(false) }
@@ -1236,6 +1237,95 @@ fun SettingsScreen(
                                     Text("$ USD", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = if (isUsd) ElectricBlue else TextPrimary)
                                     Text("US Dollar", fontSize = 11.sp, color = TextSecondary)
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Firebase Cloud Messaging (FCM) & Push Alerts Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFFFFBEB),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Firebase Cloud Messaging (FCM)", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                    Text("Background chat & task alerts", fontSize = 12.sp, color = TextSecondary)
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFDCFCE7)
+                            ) {
+                                Text(
+                                    "Active",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF166534),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "FCM delivers real-time notifications even when MB Traker is closed or running in the background.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF64748B),
+                            lineHeight = 16.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.testTriggerChatNotification()
+                                    toastMessage = "🔔 Sent Test Team Chat Push Alert!"
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricBlue)
+                            ) {
+                                Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Test Chat Alert", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    viewModel.testTriggerTaskNotification()
+                                    toastMessage = "⚡ Sent Test Task Update Alert!"
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                            ) {
+                                Icon(Icons.Default.AssignmentTurnedIn, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Test Task Alert", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                             }
                         }
                     }

@@ -81,10 +81,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val allAttendance = attendanceDao.getAllAttendance()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Firebase Realtime Status
+    // Firebase Realtime Status & FCM Push Notifications
     val syncState = FirebaseRealtimeManager.syncState
     val isFirebaseConnected = FirebaseRealtimeManager.isRealtimeConnected
     val firebaseSyncStatus = FirebaseRealtimeManager.syncStatus
+    val fcmToken = FirebaseRealtimeManager.fcmToken
 
     fun triggerManualSync() {
         FirebaseRealtimeManager.syncNow(viewModelScope)
@@ -92,6 +93,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setOfflineMode(forceOffline: Boolean) {
         FirebaseRealtimeManager.toggleSimulatedOffline(forceOffline)
+    }
+
+    fun testTriggerChatNotification(
+        sender: String = "Arjun Mehta",
+        message: String = "Please review the updated project proposal for client demo.",
+        channel: String = "Dev Team"
+    ) {
+        com.example.util.NotificationHelper.showChatAlert(
+            context = getApplication(),
+            senderName = sender,
+            messageText = message,
+            channelTitle = channel
+        )
+        viewModelScope.launch {
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "💬 $sender ($channel)",
+                    subtitle = message,
+                    timeAgo = "Just now",
+                    category = "chat",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    fun testTriggerTaskNotification(
+        title: String = "New Task Assigned: API Documentation",
+        message: String = "Assigned to Rahul Sharma with High priority. Due tomorrow."
+    ) {
+        com.example.util.NotificationHelper.showTaskAlert(
+            context = getApplication(),
+            title = title,
+            messageText = message
+        )
+        viewModelScope.launch {
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "⚡ $title",
+                    subtitle = message,
+                    timeAgo = "Just now",
+                    category = "task",
+                    isRead = false
+                )
+            )
+        }
     }
 
     private val _liveActiveDurationSeconds = MutableStateFlow(0L) // Default 0 when starting day fresh
@@ -561,6 +608,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = task.copy(status = newStatus, isCompleted = isComp)
             taskDao.update(updated)
             FirebaseRealtimeManager.syncTaskToFirebase(updated)
+            com.example.util.NotificationHelper.showTaskAlert(
+                context = getApplication(),
+                title = "Task Status: $newStatus",
+                messageText = "'${task.title}' updated to $newStatus",
+                taskId = task.id
+            )
             notificationDao.insert(
                 NotificationEntity(
                     title = "Task Status Updated",
@@ -859,6 +912,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     messageText = replyText,
                     timestampText = timeFormat.format(Date()),
                     isMe = false
+                )
+            )
+
+            // Post background / system push notification alert
+            com.example.util.NotificationHelper.showChatAlert(
+                context = getApplication(),
+                senderName = randomReplier.first,
+                messageText = replyText,
+                channelTitle = "Team Chat",
+                channelId = _currentChannel.value
+            )
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "💬 ${randomReplier.first}",
+                    subtitle = replyText,
+                    timeAgo = "Just now",
+                    category = "chat",
+                    isRead = false
                 )
             )
         }

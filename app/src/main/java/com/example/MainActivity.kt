@@ -21,6 +21,13 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import android.os.Build
+import android.Manifest
 import com.example.ui.components.AppBottomNavigationBar
 import com.example.ui.screens.*
 import com.example.ui.theme.*
@@ -146,6 +153,37 @@ fun MainAppNavHost(viewModel: MainViewModel) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val context = LocalContext.current
+
+    // Request notification permission for Android 13+ (Tiramisu / API 33+)
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permission = Manifest.permission.POST_NOTIFICATIONS
+            if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
+                permissionLauncher.launch(permission)
+            }
+        }
+    }
+
+    // Handle deep links when user taps a background notification alert
+    val activity = context as? ComponentActivity
+    LaunchedEffect(activity?.intent) {
+        activity?.intent?.let { intent ->
+            val destination = intent.getStringExtra("destination")
+            if (destination == "chat") {
+                val channelId = intent.getStringExtra("channelId") ?: "company_chat"
+                val channelTitle = intent.getStringExtra("channelTitle") ?: "Team Chat"
+                viewModel.selectChatChannel(channelId)
+                navController.navigate(Screen.ChatRoom.createRoute(channelId, channelTitle))
+            } else if (destination == "tasks") {
+                navController.navigate(Screen.Tasks.route)
+            }
+        }
+    }
 
     val bottomNavRoutes = listOf(
         Screen.Home.route,
