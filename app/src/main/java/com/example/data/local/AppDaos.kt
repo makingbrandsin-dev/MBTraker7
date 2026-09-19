@@ -17,6 +17,9 @@ interface AttendanceDao {
 
     @Update
     suspend fun update(record: AttendanceRecord)
+
+    @Query("DELETE FROM attendance_records")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -53,6 +56,9 @@ interface EmployeeDao {
 
     @Query("DELETE FROM employees WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM employees")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -83,6 +89,9 @@ interface ProjectDao {
 
     @Query("DELETE FROM projects WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM projects")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -99,6 +108,9 @@ interface TaskDao {
     @Query("SELECT COUNT(*) FROM tasks WHERE isCompleted = 1")
     fun getCompletedCount(): Flow<Int>
 
+    @Query("SELECT COUNT(*) FROM tasks")
+    suspend fun getTaskCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(task: TaskEntity): Long
 
@@ -110,6 +122,9 @@ interface TaskDao {
 
     @Delete
     suspend fun delete(task: TaskEntity)
+
+    @Query("DELETE FROM tasks")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -123,6 +138,9 @@ interface LeadDao {
     @Query("SELECT * FROM leads WHERE source = :source ORDER BY id DESC, createdAt DESC")
     fun getLeadsBySource(source: String): Flow<List<LeadEntity>>
 
+    @Query("SELECT COUNT(*) FROM leads")
+    suspend fun getLeadCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(lead: LeadEntity): Long
 
@@ -134,6 +152,9 @@ interface LeadDao {
 
     @Delete
     suspend fun delete(lead: LeadEntity)
+
+    @Query("DELETE FROM leads")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -170,6 +191,9 @@ interface FollowUpDao {
 
     @Update
     suspend fun update(followUp: FollowUpEntity)
+
+    @Query("DELETE FROM follow_ups")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -182,6 +206,9 @@ interface CallLogDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(logs: List<CallLogEntity>)
+
+    @Query("DELETE FROM call_logs")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -192,11 +219,17 @@ interface ChatDao {
     @Query("SELECT * FROM chat_messages ORDER BY id DESC")
     fun getAllMessages(): Flow<List<ChatMessageEntity>>
 
+    @Query("SELECT COUNT(*) FROM chat_messages")
+    suspend fun getMessageCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(message: ChatMessageEntity): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(messages: List<ChatMessageEntity>)
+
+    @Query("DELETE FROM chat_messages")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -206,6 +239,9 @@ interface NotificationDao {
 
     @Query("SELECT COUNT(*) FROM notifications WHERE isRead = 0")
     fun getUnreadCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM notifications")
+    suspend fun getNotificationCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(notification: NotificationEntity): Long
@@ -237,6 +273,9 @@ interface UserProfileDao {
     @Query("UPDATE user_profile SET name = :name, role = :role, updatedAt = :updatedAt WHERE id = 1")
     suspend fun updateNameAndRole(name: String, role: String, updatedAt: Long = System.currentTimeMillis())
 
+    @Query("UPDATE user_profile SET name = '', role = '', email = '', phone = '', department = '', emergencyContact = '', address = '', skills = '', bio = '', updatedAt = :updatedAt WHERE id = 1")
+    suspend fun clearProfileFields(updatedAt: Long = System.currentTimeMillis())
+
     @Query("DELETE FROM user_profile")
     suspend fun clearProfile()
 }
@@ -257,6 +296,9 @@ interface LeaveDao {
 
     @Delete
     suspend fun delete(leave: LeaveApplicationEntity)
+
+    @Query("DELETE FROM leave_applications")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -369,5 +411,123 @@ interface SocialReviewDao {
     @Delete
     suspend fun delete(config: SocialReviewConfigEntity)
 }
+
+@Dao
+interface ClientMeetingDao {
+    @Query("SELECT * FROM client_meetings ORDER BY id DESC")
+    fun getAllMeetings(): Flow<List<ClientMeetingEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(meeting: ClientMeetingEntity): Long
+
+    @Update
+    suspend fun update(meeting: ClientMeetingEntity)
+
+    @Query("DELETE FROM client_meetings WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM client_meetings")
+    suspend fun clearAll()
+}
+
+@Dao
+interface ExpenseClaimDao {
+    @Query("SELECT * FROM expense_claims ORDER BY id DESC")
+    fun getAllExpenses(): Flow<List<ExpenseClaimEntity>>
+
+    @Query("SELECT * FROM expense_claims WHERE status = :status ORDER BY id DESC")
+    fun getExpensesByStatus(status: String): Flow<List<ExpenseClaimEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(expense: ExpenseClaimEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(expenses: List<ExpenseClaimEntity>)
+
+    @Update
+    suspend fun update(expense: ExpenseClaimEntity)
+
+    @Query("UPDATE expense_claims SET status = :status, reviewedBy = :reviewedBy WHERE id = :id")
+    suspend fun updateStatus(id: Long, status: String, reviewedBy: String)
+
+    @Query("DELETE FROM expense_claims WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM expense_claims")
+    suspend fun clearAll()
+}
+
+@Dao
+interface ProjectMilestoneDao {
+    @Query("SELECT * FROM project_milestones ORDER BY id ASC")
+    fun getAllMilestones(): Flow<List<ProjectMilestoneEntity>>
+
+    @Query("SELECT * FROM project_milestones WHERE projectId = :projectId ORDER BY id ASC")
+    fun getMilestonesByProject(projectId: Long): Flow<List<ProjectMilestoneEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(milestone: ProjectMilestoneEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(milestones: List<ProjectMilestoneEntity>)
+
+    @Update
+    suspend fun update(milestone: ProjectMilestoneEntity)
+
+    @Query("UPDATE project_milestones SET completionPercent = :percent, isCompleted = :isCompleted WHERE id = :id")
+    suspend fun updateProgress(id: Long, percent: Int, isCompleted: Boolean)
+
+    @Query("DELETE FROM project_milestones WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM project_milestones")
+    suspend fun clearAll()
+}
+
+@Dao
+interface VaultDocumentDao {
+    @Query("SELECT * FROM vault_documents ORDER BY id DESC")
+    fun getAllDocuments(): Flow<List<VaultDocumentEntity>>
+
+    @Query("SELECT * FROM vault_documents WHERE category = :category ORDER BY id DESC")
+    fun getDocumentsByCategory(category: String): Flow<List<VaultDocumentEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(document: VaultDocumentEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(documents: List<VaultDocumentEntity>)
+
+    @Delete
+    suspend fun delete(document: VaultDocumentEntity)
+
+    @Query("DELETE FROM vault_documents WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM vault_documents")
+    suspend fun clearAll()
+}
+
+@Dao
+interface AttendanceRegularizationDao {
+    @Query("SELECT * FROM attendance_regularizations ORDER BY id DESC")
+    fun getAllRegularizations(): Flow<List<AttendanceRegularizationEntity>>
+
+    @Query("SELECT * FROM attendance_regularizations WHERE employeeName = :empName ORDER BY id DESC")
+    fun getRegularizationsForEmployee(empName: String): Flow<List<AttendanceRegularizationEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(regularization: AttendanceRegularizationEntity): Long
+
+    @Update
+    suspend fun update(regularization: AttendanceRegularizationEntity)
+
+    @Query("UPDATE attendance_regularizations SET status = :status WHERE id = :id")
+    suspend fun updateStatus(id: Long, status: String)
+
+    @Query("DELETE FROM attendance_regularizations")
+    suspend fun clearAll()
+}
+
 
 

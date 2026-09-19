@@ -30,9 +30,14 @@ import java.util.Date
         InvoiceEntity::class,
         QuotationEntity::class,
         AutoBrochureConfigEntity::class,
-        SocialReviewConfigEntity::class
+        SocialReviewConfigEntity::class,
+        ClientMeetingEntity::class,
+        ExpenseClaimEntity::class,
+        ProjectMilestoneEntity::class,
+        VaultDocumentEntity::class,
+        AttendanceRegularizationEntity::class
     ],
-    version = 10,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -54,6 +59,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun quotationDao(): QuotationDao
     abstract fun autoBrochureDao(): AutoBrochureDao
     abstract fun socialReviewDao(): SocialReviewDao
+    abstract fun clientMeetingDao(): ClientMeetingDao
+    abstract fun expenseClaimDao(): ExpenseClaimDao
+    abstract fun projectMilestoneDao(): ProjectMilestoneDao
+    abstract fun vaultDocumentDao(): VaultDocumentDao
+    abstract fun attendanceRegularizationDao(): AttendanceRegularizationDao
 
     companion object {
         @Volatile
@@ -91,6 +101,18 @@ abstract class AppDatabase : RoomDatabase() {
                         populateInitialData(database)
                     }
                 }
+            }
+        }
+
+        suspend fun ensurePopulated(db: AppDatabase) {
+            try {
+                val taskCount = db.taskDao().getTaskCount()
+                val chatCount = db.chatDao().getMessageCount()
+                val leadCount = db.leadDao().getLeadCount()
+                if (taskCount == 0 || chatCount == 0 || leadCount == 0) {
+                    populateInitialData(db)
+                }
+            } catch (_: Exception) {
             }
         }
 
@@ -613,14 +635,49 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
 
-            // Chat Messages
+            // Chat Messages for all channels and direct team chats
             db.chatDao().insertAll(
                 listOf(
+                    // Company Chat
+                    ChatMessageEntity(
+                        channelId = "company_chat",
+                        senderName = "Arjun Mehta",
+                        senderRole = "Engineering Manager",
+                        messageText = "Good morning everyone! Remember our all-hands sync at 3:00 PM today.",
+                        timestampText = "09:00 AM",
+                        isMe = false
+                    ),
+                    ChatMessageEntity(
+                        channelId = "company_chat",
+                        senderName = "Rahul Sharma",
+                        senderRole = "Senior Developer",
+                        messageText = "Good morning Arjun! The sprint milestones are tracking ahead of schedule.",
+                        timestampText = "09:15 AM",
+                        isMe = true
+                    ),
+                    ChatMessageEntity(
+                        channelId = "company_chat",
+                        senderName = "Neha Gupta",
+                        senderRole = "Product Designer",
+                        messageText = "Shared the updated design assets in Figma. Please review when you get a chance! 🎨",
+                        timestampText = "09:45 AM",
+                        isMe = false
+                    ),
+                    ChatMessageEntity(
+                        channelId = "company_chat",
+                        senderName = "Suresh Patel",
+                        senderRole = "Sales Lead",
+                        messageText = "Great work team! Closed the XYZ Traders contract this morning! 🎉",
+                        timestampText = "10:10 AM",
+                        isMe = false
+                    ),
+
+                    // Dev Team
                     ChatMessageEntity(
                         channelId = "dev_team",
                         senderName = "Rahul Sharma",
                         senderRole = "Senior Developer",
-                        messageText = "The new build is ready for testing.",
+                        messageText = "The new build is ready for testing with offline Room cache & biometric unlock.",
                         timestampText = "10:04 AM",
                         isMe = true
                     ),
@@ -649,6 +706,104 @@ abstract class AppDatabase : RoomDatabase() {
                         messageText = "Looks good. Deploying today after client approval.",
                         timestampText = "11:05 AM",
                         isMe = false
+                    ),
+
+                    // Sales Team
+                    ChatMessageEntity(
+                        channelId = "sales_team",
+                        senderName = "Suresh Patel",
+                        senderRole = "Sales Lead",
+                        messageText = "Rohit: New high-value lead received for Fleet GPS & Web ERP from Malhotra Logistics! 🔥",
+                        timestampText = "09:30 AM",
+                        isMe = false
+                    ),
+                    ChatMessageEntity(
+                        channelId = "sales_team",
+                        senderName = "Rahul Sharma",
+                        senderRole = "Technical Lead",
+                        messageText = "Auto-brochure PDF has been dispatched via WhatsApp to the client.",
+                        timestampText = "09:35 AM",
+                        isMe = true
+                    ),
+                    ChatMessageEntity(
+                        channelId = "sales_team",
+                        senderName = "Suresh Patel",
+                        senderRole = "Sales Lead",
+                        messageText = "Client responded warmly, scheduled follow-up call for 4:30 PM today.",
+                        timestampText = "10:00 AM",
+                        isMe = false
+                    ),
+
+                    // Marketing
+                    ChatMessageEntity(
+                        channelId = "marketing",
+                        senderName = "Priya Singh",
+                        senderRole = "Campaign Coordinator",
+                        messageText = "Google Ads & Facebook campaign metrics updated. Inbound lead count is up 34% this week! 📈",
+                        timestampText = "08:45 AM",
+                        isMe = false
+                    ),
+                    ChatMessageEntity(
+                        channelId = "marketing",
+                        senderName = "Neha Gupta",
+                        senderRole = "Creative Lead",
+                        messageText = "Company profile brochure v2026 is published with new case studies.",
+                        timestampText = "09:20 AM",
+                        isMe = false
+                    ),
+
+                    // Project Alpha
+                    ChatMessageEntity(
+                        channelId = "project_alpha",
+                        senderName = "Suresh Patel",
+                        senderRole = "Account Manager",
+                        messageText = "Client meeting scheduled with ABC Ltd technical directors tomorrow at 11 AM.",
+                        timestampText = "10:15 AM",
+                        isMe = false
+                    ),
+                    ChatMessageEntity(
+                        channelId = "project_alpha",
+                        senderName = "Rahul Sharma",
+                        senderRole = "Lead Architect",
+                        messageText = "Architecture deck and API specifications ready.",
+                        timestampText = "10:45 AM",
+                        isMe = true
+                    ),
+
+                    // Direct Messages with Priya Singh (dm_2)
+                    ChatMessageEntity(
+                        channelId = "dm_2",
+                        senderName = "Priya Singh",
+                        senderRole = "QA Engineer",
+                        messageText = "Hey Rahul, did you push the commit for biometric authentication?",
+                        timestampText = "10:15 AM",
+                        isMe = false
+                    ),
+                    ChatMessageEntity(
+                        channelId = "dm_2",
+                        senderName = "Rahul Sharma",
+                        senderRole = "Senior Developer",
+                        messageText = "Yes Priya, biometrics and WhatsApp OTP are fully integrated and verified!",
+                        timestampText = "10:18 AM",
+                        isMe = true
+                    ),
+
+                    // Direct Messages with Arjun Mehta (dm_3)
+                    ChatMessageEntity(
+                        channelId = "dm_3",
+                        senderName = "Arjun Mehta",
+                        senderRole = "Engineering Manager",
+                        messageText = "Rahul, outstanding speed on the CRM leads refactor. Client was very impressed.",
+                        timestampText = "11:20 AM",
+                        isMe = false
+                    ),
+                    ChatMessageEntity(
+                        channelId = "dm_3",
+                        senderName = "Rahul Sharma",
+                        senderRole = "Senior Developer",
+                        messageText = "Thank you Arjun! Happy to keep pushing quality forward.",
+                        timestampText = "11:22 AM",
+                        isMe = true
                     )
                 )
             )
@@ -1024,6 +1179,154 @@ abstract class AppDatabase : RoomDatabase() {
                         totalReviewsCount = 45,
                         isPrimary = false,
                         customInviteText = "Recommend Making Brands on LinkedIn."
+                    )
+                )
+            )
+
+            // Seed Client Meetings (Field Sales Check-ins)
+            db.clientMeetingDao().insert(
+                ClientMeetingEntity(
+                    clientName = "Vikram Singhania",
+                    company = "Apex Global Corp",
+                    meetingPurpose = "Enterprise Mobile App & Lead Automation Architecture Review",
+                    latitude = 28.6304,
+                    longitude = 77.2177,
+                    locationName = "Apex Tower, 4th Floor, Barakhamba Road, Connaught Place",
+                    checkInTime = "11:00 AM",
+                    checkOutTime = "12:15 PM",
+                    meetingNotes = "Client was impressed by real-time Firestore sync & biometric sign-in. Requested custom milestone deliverables by end of week.",
+                    outcome = "Proposal Requested"
+                )
+            )
+            db.clientMeetingDao().insert(
+                ClientMeetingEntity(
+                    clientName = "Ananya Sharma",
+                    company = "Zenith Retail Solutions",
+                    meetingPurpose = "E-Commerce Catalog & Payment Gateway Integration Pitch",
+                    latitude = 28.5355,
+                    longitude = 77.2410,
+                    locationName = "DLF Cyber City / South Court Saket",
+                    checkInTime = "02:30 PM",
+                    checkOutTime = "03:45 PM",
+                    meetingNotes = "Signed off on initial Phase 1 scoping document. Follow up on Tuesday with formal quotation.",
+                    outcome = "Deal Won"
+                )
+            )
+
+            // Seed Expense & Reimbursement Claims
+            db.expenseClaimDao().insertAll(
+                listOf(
+                    ExpenseClaimEntity(
+                        employeeName = "Rahul Sharma",
+                        category = "Travel & Fuel",
+                        amount = 650.0,
+                        date = "18 Sep 2026",
+                        merchant = "Uber Premier / Delhi NCR",
+                        description = "Travel to Apex Global Corp client office for executive demo.",
+                        status = "Approved",
+                        reviewedBy = "Finance Admin"
+                    ),
+                    ExpenseClaimEntity(
+                        employeeName = "Arjun Mehta",
+                        category = "Client Dinner",
+                        amount = 2450.0,
+                        date = "17 Sep 2026",
+                        merchant = "The Imperial Hotel, Janpath",
+                        description = "Working lunch with key stakeholders from Zenith Retail Solutions.",
+                        status = "Pending",
+                        reviewedBy = null
+                    ),
+                    ExpenseClaimEntity(
+                        employeeName = "Priya Patel",
+                        category = "Software & Tools",
+                        amount = 1800.0,
+                        date = "15 Sep 2026",
+                        merchant = "Figma Enterprise License",
+                        description = "Monthly UI/UX prototyping seat renewal for Client App project.",
+                        status = "Reimbursed",
+                        reviewedBy = "Operations Lead"
+                    )
+                )
+            )
+
+            // Seed Project Milestones
+            db.projectMilestoneDao().insertAll(
+                listOf(
+                    ProjectMilestoneEntity(
+                        projectId = 1L,
+                        projectName = "Enterprise Mobile Portal",
+                        title = "Sprint 1: Architecture & Auth Provider Setup",
+                        description = "Role-based authentication, WhatsApp OTP, biometric encryption.",
+                        targetDate = "10 Sep 2026",
+                        completionPercent = 100,
+                        isCompleted = true,
+                        approvedByClient = true
+                    ),
+                    ProjectMilestoneEntity(
+                        projectId = 1L,
+                        projectName = "Enterprise Mobile Portal",
+                        title = "Sprint 2: Geofence Attendance & Field Sales CRM",
+                        description = "Location verification, client meeting check-ins, lead tracking.",
+                        targetDate = "20 Sep 2026",
+                        completionPercent = 85,
+                        isCompleted = false,
+                        approvedByClient = false
+                    ),
+                    ProjectMilestoneEntity(
+                        projectId = 1L,
+                        projectName = "Enterprise Mobile Portal",
+                        title = "Sprint 3: Offline Vault & Automated Standup Reports",
+                        description = "Document asset vault, exportable timesheets, team digests.",
+                        targetDate = "30 Sep 2026",
+                        completionPercent = 40,
+                        isCompleted = false,
+                        approvedByClient = false
+                    )
+                )
+            )
+
+            // Seed Document & Asset Vault
+            db.vaultDocumentDao().insertAll(
+                listOf(
+                    VaultDocumentEntity(
+                        title = "Making Brands Company Profile 2026",
+                        category = "Brochures",
+                        fileType = "PDF",
+                        fileSize = "3.4 MB",
+                        downloadUrlOrPath = "https://makingbrands.in/brochure/MakingBrands_Company_Profile.pdf",
+                        description = "Comprehensive enterprise solutions portfolio, case studies, client testimonials.",
+                        isOfflineAvailable = true,
+                        uploadedAt = "Sep 2026"
+                    ),
+                    VaultDocumentEntity(
+                        title = "Standard Mobile & Web Project Proposal Template",
+                        category = "Proposal Templates",
+                        fileType = "DOCX",
+                        fileSize = "1.2 MB",
+                        downloadUrlOrPath = "https://makingbrands.in/templates/MB_Proposal_Template_v2.docx",
+                        description = "Standard RFP response template with SLA clauses and milestone scopes.",
+                        isOfflineAvailable = true,
+                        uploadedAt = "Aug 2026"
+                    ),
+                    VaultDocumentEntity(
+                        title = "Official Brand Identity & Vector Assets Kit",
+                        category = "Branding & Logos",
+                        fileType = "ZIP",
+                        fileSize = "12.8 MB",
+                        downloadUrlOrPath = "https://makingbrands.in/assets/MakingBrands_Brand_Kit.zip",
+                        description = "High-res PNGs, SVG vector logos, typography guides, presentation color palettes.",
+                        isOfflineAvailable = true,
+                        uploadedAt = "Sep 2026"
+                    ),
+                    VaultDocumentEntity(
+                        title = "Employee Code of Conduct & Remote Work Policy",
+                        category = "HR Policies",
+                        fileType = "PDF",
+                        fileSize = "850 KB",
+                        downloadUrlOrPath = "https://makingbrands.in/hr/MB_Employee_Handbook_2026.pdf",
+                        description = "Attendance guidelines, geofenced punch-in rules, leave regularization procedures.",
+                        isOfflineAvailable = true,
+                        uploadedAt = "Jul 2026"
                     )
                 )
             )

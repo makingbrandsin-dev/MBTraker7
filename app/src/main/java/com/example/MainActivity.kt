@@ -31,13 +31,15 @@ import android.Manifest
 import com.example.ui.components.AppBottomNavigationBar
 import com.example.ui.screens.*
 import com.example.ui.theme.*
+import com.example.util.WhatsAppHelper
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        com.example.util.NotificationHelper.createNotificationChannels(applicationContext)
         setContent {
             MyApplicationTheme {
                 MainAppNavHost(viewModel = viewModel)
@@ -77,6 +79,11 @@ sealed class Screen(val route: String) {
     object Manager : Screen("manager")
     object Settings : Screen("settings")
     object HelpSupport : Screen("help_support")
+    object ClientMeetings : Screen("client_meetings")
+    object ExpenseClaims : Screen("expense_claims")
+    object Timesheets : Screen("timesheets")
+    object Vault : Screen("vault")
+    object LiveTeamTracking : Screen("live_team_tracking")
 }
 
 private fun getScreenOrder(route: String?): Int {
@@ -155,22 +162,21 @@ fun MainAppNavHost(viewModel: MainViewModel) {
     val currentRoute = navBackStackEntry?.destination?.route
     val context = LocalContext.current
 
-    // Request notification permission for Android 13+ (Tiramisu / API 33+)
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { _ -> }
+    val activity = context as? androidx.fragment.app.FragmentActivity
 
+    // Request notification permission safely for Android 13+ (Tiramisu / API 33+)
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val permission = Manifest.permission.POST_NOTIFICATIONS
             if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
-                permissionLauncher.launch(permission)
+                activity?.let {
+                    androidx.core.app.ActivityCompat.requestPermissions(it, arrayOf(permission), 101)
+                }
             }
         }
     }
 
     // Handle deep links when user taps a background notification alert
-    val activity = context as? ComponentActivity
     LaunchedEffect(activity?.intent) {
         activity?.intent?.let { intent ->
             val destination = intent.getStringExtra("destination")
@@ -182,6 +188,20 @@ fun MainAppNavHost(viewModel: MainViewModel) {
             } else if (destination == "tasks") {
                 navController.navigate(Screen.Tasks.route)
             }
+        }
+    }
+
+    // Auto-dispatch Company Profile PDF & Brochure to WhatsApp on lead capture
+    LaunchedEffect(Unit) {
+        viewModel.whatsAppDispatchEvents.collect { event ->
+            val brochureCfg = viewModel.autoBrochureConfig.value
+            WhatsAppHelper.sendCompanyProfileToLead(
+                context = context,
+                leadName = event.leadName,
+                leadPhone = event.phone,
+                companyName = event.company,
+                brochureConfig = brochureCfg
+            )
         }
     }
 
@@ -220,7 +240,13 @@ fun MainAppNavHost(viewModel: MainViewModel) {
             ) {
                 SplashScreen(
                     onTimeout = {
-                        navController.navigate(Screen.Home.route) {
+                        val isLogged = viewModel.isUserLoggedIn()
+                        val destination = if (isLogged) {
+                            if (viewModel.userRole.value == "MB Admin") Screen.Manager.route else Screen.Home.route
+                        } else {
+                            Screen.Login.route
+                        }
+                        navController.navigate(destination) {
                             popUpTo(Screen.Splash.route) { inclusive = true }
                         }
                     }
@@ -244,6 +270,7 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 }
             ) {
                 LoginScreen(
+                    viewModel = viewModel,
                     onLoginSuccess = { isAdmin ->
                         val targetRoute = if (isAdmin) Screen.Manager.route else Screen.Home.route
                         navController.navigate(targetRoute) {
@@ -265,8 +292,10 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 popExitTransition = { detailPopExitTransition() }
             ) {
                 OtpVerificationScreen(
-                    onVerifySuccess = {
-                        navController.navigate(Screen.Home.route) {
+                    viewModel = viewModel,
+                    onVerifySuccess = { isAdmin ->
+                        val targetRoute = if (isAdmin) Screen.Manager.route else Screen.Home.route
+                        navController.navigate(targetRoute) {
                             popUpTo(Screen.Login.route) { inclusive = true }
                         }
                     },
@@ -294,7 +323,12 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onNavigateToManager = { navController.navigate(Screen.Manager.route) },
                     onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
                     onNavigateToInvoices = { navController.navigate(Screen.Invoices.route) },
-                    onNavigateToChat = { navController.navigate(Screen.Chat.route) }
+                    onNavigateToChat = { navController.navigate(Screen.Chat.route) },
+                    onNavigateToMeetings = { navController.navigate(Screen.ClientMeetings.route) },
+                    onNavigateToExpenses = { navController.navigate(Screen.ExpenseClaims.route) },
+                    onNavigateToTimesheets = { navController.navigate(Screen.Timesheets.route) },
+                    onNavigateToVault = { navController.navigate(Screen.Vault.route) },
+                    onNavigateToLiveTracking = { navController.navigate(Screen.LiveTeamTracking.route) }
                 )
             }
 
@@ -485,7 +519,12 @@ fun MainAppNavHost(viewModel: MainViewModel) {
             ) {
                 SettingsScreen(
                     viewModel = viewModel,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLogout = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
                 )
             }
 
@@ -666,7 +705,76 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onBack = { navController.popBackStack() },
                     onNavigateToProjects = { navController.navigate(Screen.Projects.route) },
                     onNavigateToLeads = { navController.navigate(Screen.Crm.route) },
-                    onNavigateToChat = { navController.navigate(Screen.Chat.route) }
+                    onNavigateToChat = { navController.navigate(Screen.Chat.route) },
+                    onNavigateToTracking = { navController.navigate(Screen.LiveTeamTracking.route) },
+                    onNavigateToTimesheets = { navController.navigate(Screen.Timesheets.route) },
+                    onNavigateToMeetings = { navController.navigate(Screen.ClientMeetings.route) },
+                    onNavigateToVault = { navController.navigate(Screen.Vault.route) }
+                )
+            }
+
+            composable(
+                route = Screen.ClientMeetings.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                ClientMeetingsScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.ExpenseClaims.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                ExpenseClaimsScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.Timesheets.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                TimesheetsScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.Vault.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                VaultScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.LiveTeamTracking.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                LiveTeamTrackingScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
                 )
             }
         }

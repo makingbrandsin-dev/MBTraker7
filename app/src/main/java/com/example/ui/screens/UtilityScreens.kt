@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -41,52 +42,209 @@ fun ProfileScreen(
     onNavigateToHelp: () -> Unit = {}
 ) {
     var showEditProfileDialog by remember { mutableStateOf(false) }
+    var showDeleteAllFieldsDialog by remember { mutableStateOf(false) }
+    var showResetAccountDialog by remember { mutableStateOf(false) }
+
     val empName by viewModel.currentEmployeeName.collectAsState()
     val empRole by viewModel.currentEmployeeRole.collectAsState()
+    val userProfile by viewModel.userProfile.collectAsState()
 
+    val email = userProfile?.email ?: "makingbrands.in@gmail.com"
+    val phone = userProfile?.phone ?: "+91 98765 43210"
+    val department = userProfile?.department ?: "Engineering"
+    val joiningDate = userProfile?.joiningDate ?: "15 Jan 2024"
+    val emergencyContact = userProfile?.emergencyContact ?: "+91 91234 56789"
+    val address = userProfile?.address ?: "Connaught Place, New Delhi"
+    val skills = userProfile?.skills ?: "Kotlin, Jetpack Compose, Android, Cloud, UI/UX"
+    val bio = userProfile?.bio ?: "Building enterprise mobile experiences for Making Brands"
+
+    // Edit Profile Dialog with all fields + Clear All Inputs button
     if (showEditProfileDialog) {
         androidx.compose.ui.window.Dialog(onDismissRequest = { showEditProfileDialog = false }) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color.White,
                 tonalElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.9f)
             ) {
                 var editName by remember { mutableStateOf(empName) }
                 var editRole by remember { mutableStateOf(empRole) }
+                var editEmail by remember { mutableStateOf(email) }
+                var editPhone by remember { mutableStateOf(phone) }
+                var editDepartment by remember { mutableStateOf(department) }
+                var editJoiningDate by remember { mutableStateOf(joiningDate) }
+                var editEmergencyContact by remember { mutableStateOf(emergencyContact) }
+                var editAddress by remember { mutableStateOf(address) }
+                var editSkills by remember { mutableStateOf(skills) }
+                var editBio by remember { mutableStateOf(bio) }
 
                 Column(
-                    modifier = Modifier.padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier
+                        .padding(20.dp)
                 ) {
-                    Text("Edit Profile", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextPrimary)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("Persists directly to Room database", fontSize = 12.sp, color = ElectricBlue, fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(14.dp))
-                    OutlinedTextField(
-                        value = editName,
-                        onValueChange = { editName = it },
-                        label = { Text("Employee Name") },
-                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = ElectricBlue) },
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
-                        colors = appTextFieldColors(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Edit Profile Fields", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = TextPrimary)
+                            Text("All fields sync with Room & Firebase", fontSize = 11.sp, color = ElectricBlue)
+                        }
+                        // Clear all inputs inside dialog
+                        TextButton(
+                            onClick = {
+                                editName = ""
+                                editRole = ""
+                                editEmail = ""
+                                editPhone = ""
+                                editDepartment = ""
+                                editJoiningDate = ""
+                                editEmergencyContact = ""
+                                editAddress = ""
+                                editSkills = ""
+                                editBio = ""
+                            }
+                        ) {
+                            Icon(Icons.Default.ClearAll, contentDescription = null, tint = StatusRed, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Clear All", fontSize = 12.sp, color = StatusRed, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = editRole,
-                        onValueChange = { editRole = it },
-                        label = { Text("Role / Designation") },
-                        leadingIcon = { Icon(Icons.Default.Work, contentDescription = null, tint = ElectricBlue) },
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
-                        colors = appTextFieldColors(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(18.dp))
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        item {
+                            OutlinedTextField(
+                                value = editName,
+                                onValueChange = { editName = it },
+                                label = { Text("Full Name") },
+                                leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = editRole,
+                                onValueChange = { editRole = it },
+                                label = { Text("Role / Designation") },
+                                leadingIcon = { Icon(Icons.Default.Work, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = editDepartment,
+                                onValueChange = { editDepartment = it },
+                                label = { Text("Department") },
+                                leadingIcon = { Icon(Icons.Default.Business, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = editEmail,
+                                onValueChange = { editEmail = it },
+                                label = { Text("Official Email") },
+                                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = editPhone,
+                                onValueChange = { editPhone = it },
+                                label = { Text("Phone Number") },
+                                leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = editEmergencyContact,
+                                onValueChange = { editEmergencyContact = it },
+                                label = { Text("Emergency Contact") },
+                                leadingIcon = { Icon(Icons.Default.ContactPhone, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = editJoiningDate,
+                                onValueChange = { editJoiningDate = it },
+                                label = { Text("Joining Date") },
+                                leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = editAddress,
+                                onValueChange = { editAddress = it },
+                                label = { Text("Work / Residential Address") },
+                                leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = editSkills,
+                                onValueChange = { editSkills = it },
+                                label = { Text("Skills & Expertise") },
+                                leadingIcon = { Icon(Icons.Default.Stars, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = editBio,
+                                onValueChange = { editBio = it },
+                                label = { Text("Bio / Status Note") },
+                                leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null, tint = ElectricBlue) },
+                                shape = RoundedCornerShape(12.dp),
+                                minLines = 2,
+                                colors = appTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
@@ -97,16 +255,24 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
-                                viewModel.updateEmployeeProfile(editName, editRole)
+                                viewModel.updateEmployeeProfile(
+                                    name = editName,
+                                    role = editRole,
+                                    email = editEmail,
+                                    phone = editPhone,
+                                    department = editDepartment,
+                                    joiningDate = editJoiningDate,
+                                    emergencyContact = editEmergencyContact,
+                                    address = editAddress,
+                                    skills = editSkills,
+                                    bio = editBio
+                                )
                                 showEditProfileDialog = false
                             },
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = ElectricBlue,
-                                contentColor = Color.White
-                            )
+                            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
                         ) {
-                            Text("Save Changes", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Save All Fields", fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
@@ -114,14 +280,50 @@ fun ProfileScreen(
         }
     }
 
+    // Confirmation Dialog for Delete / Clear All Profile Fields
+    if (showDeleteAllFieldsDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllFieldsDialog = false },
+            icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = StatusRed, modifier = Modifier.size(36.dp)) },
+            title = { Text("Delete All Profile Fields?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to delete and clear all fields in your employee profile? " +
+                    "This will reset your name, role, email, phone number, emergency contact, skills, and address to empty values.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteAllUserProfileFields()
+                        showDeleteAllFieldsDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusRed)
+                ) {
+                    Text("Yes, Delete All Fields", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllFieldsDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             AppHeader(
-                title = "Profile",
+                title = "Employee Profile",
                 onBack = onBack,
                 actions = {
                     IconButton(onClick = { showEditProfileDialog = true }) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit Profile", tint = TextPrimary)
+                    }
+                    IconButton(onClick = { showDeleteAllFieldsDialog = true }) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete All Fields", tint = StatusRed)
                     }
                 }
             )
@@ -136,26 +338,78 @@ fun ProfileScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Profile Header Card
             item {
-                Surface(
-                    shape = CircleShape,
-                    color = BrandBlue.copy(alpha = 0.15f),
-                    modifier = Modifier.size(90.dp)
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Person, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(50.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(contentAlignment = Alignment.BottomEnd) {
+                            Surface(
+                                shape = CircleShape,
+                                color = BrandBlue.copy(alpha = 0.15f),
+                                modifier = Modifier.size(86.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Person, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(48.dp))
+                                }
+                            }
+                            Surface(
+                                shape = CircleShape,
+                                color = ElectricBlue,
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .clickable { showEditProfileDialog = true }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = empName.ifEmpty { "No Name Assigned" },
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 20.sp,
+                            color = if (empName.isEmpty()) TextMuted else TextPrimary
+                        )
+                        Text(
+                            text = empRole.ifEmpty { "No Role Assigned" },
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (empRole.isEmpty()) TextMuted else ElectricBlue
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0xFFF1F5F9)
+                        ) {
+                            Text(
+                                text = "Department: $department",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF334155),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
                     }
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(empName, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = TextPrimary)
-                Text(empRole, fontSize = 13.sp, color = TextSecondary)
             }
 
-            // Summary Pills (3 Projects, 27 Tasks, 184 Completed)
+            // Summary Metric Badges
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     MetricBadge(
                         label = "Projects",
@@ -172,12 +426,93 @@ fun ProfileScreen(
                         modifier = Modifier.weight(1f)
                     )
                     MetricBadge(
-                        label = "Completed",
-                        value = "184",
+                        label = "Attendance",
+                        value = "98%",
                         backgroundColor = Color(0xFFDCFCE7),
                         textColor = Color(0xFF15803D),
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+
+            // Profile Fields Detail Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Profile Fields & Details", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                            TextButton(onClick = { showEditProfileDialog = true }) {
+                                Icon(Icons.Default.Edit, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Edit", fontSize = 12.sp, color = ElectricBlue, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        ProfileFieldRow(Icons.Default.Email, "Email Address", email)
+                        Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                        ProfileFieldRow(Icons.Default.Phone, "Phone Number", phone)
+                        Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                        ProfileFieldRow(Icons.Default.ContactPhone, "Emergency Contact", emergencyContact)
+                        Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                        ProfileFieldRow(Icons.Default.CalendarToday, "Joining Date", joiningDate)
+                        Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                        ProfileFieldRow(Icons.Default.LocationOn, "Office / Address", address)
+                        Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                        ProfileFieldRow(Icons.Default.Stars, "Skills", skills)
+                        Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                        ProfileFieldRow(Icons.Default.Notes, "Bio / Status", bio)
+                    }
+                }
+            }
+
+            // Field Management & Clear Actions Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Field & Data Actions", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                        Text("Manage and reset your profile fields", fontSize = 11.sp, color = TextSecondary)
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Delete All Profile Fields Button
+                        Button(
+                            onClick = { showDeleteAllFieldsDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEE2E2)),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Icon(Icons.Default.DeleteForever, contentDescription = null, tint = StatusRed, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Delete / Clear All Profile Fields", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = StatusRed)
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Edit Fields Button
+                        OutlinedButton(
+                            onClick = { showEditProfileDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, ElectricBlue),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Icon(Icons.Default.EditNote, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Edit & Update All Fields", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = ElectricBlue)
+                        }
+                    }
                 }
             }
 
@@ -189,16 +524,44 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        ProfileNavRow(Icons.Default.Person, "My Profile", onClick = { showEditProfileDialog = true })
+                        ProfileNavRow(Icons.Default.Person, "Edit Profile Fields", onClick = { showEditProfileDialog = true })
                         Divider(color = BorderLight)
-                        ProfileNavRow(Icons.Default.Settings, "Settings", onClick = onNavigateToSettings)
+                        ProfileNavRow(Icons.Default.Settings, "Settings & Preferences", onClick = onNavigateToSettings)
                         Divider(color = BorderLight)
                         ProfileNavRow(Icons.Default.HelpOutline, "Help & Support", onClick = onNavigateToHelp)
                         Divider(color = BorderLight)
-                        ProfileNavRow(Icons.Default.Logout, "Logout", textColor = StatusRed, iconTint = StatusRed, onClick = onLogout)
+                        ProfileNavRow(Icons.Default.Logout, "Logout Account", textColor = StatusRed, iconTint = StatusRed, onClick = onLogout)
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ProfileFieldRow(icon: ImageVector, label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = Color(0xFFF1F5F9),
+            modifier = Modifier.size(32.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(16.dp))
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
+            Text(
+                text = value.ifEmpty { "Not specified (Empty)" },
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (value.isEmpty()) TextMuted else TextPrimary
+            )
         }
     }
 }
@@ -1064,14 +1427,18 @@ fun HolidayRow(title: String, date: String, day: String) {
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onLogout: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val activity = context as? androidx.fragment.app.FragmentActivity
     val currencyCode by viewModel.currencyCode.collectAsState()
     val fcmTokenVal by viewModel.fcmToken.collectAsState()
     var pushNotificationsEnabled by remember { mutableStateOf(true) }
     var soundEnabled by remember { mutableStateOf(true) }
-    var biometricEnabled by remember { mutableStateOf(false) }
+    var biometricEnabled by remember { mutableStateOf(com.example.util.BiometricHelper.isBiometricSettingEnabled(context)) }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
 
     if (showPasswordDialog) {
@@ -1243,6 +1610,129 @@ fun SettingsScreen(
                 }
             }
 
+            // Firestore Cloud Auth Provider & Role Redirection Card
+            item {
+                val currentRoleStr by viewModel.userRole.collectAsState()
+                val firestoreMsg by viewModel.firestoreAuthStatus.collectAsState()
+                val isCurrentAdmin = currentRoleStr.contains("admin", ignoreCase = true) || currentRoleStr.contains("manager", ignoreCase = true)
+
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFEFF6FF),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Firestore Auth & Role Provider", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                    Text("Live role sync from collection 'users'", fontSize = 12.sp, color = TextSecondary)
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isCurrentAdmin) Color(0xFFFEF3C7) else Color(0xFFDCFCE7)
+                            ) {
+                                Text(
+                                    text = if (isCurrentAdmin) "MB Admin" else "Employee",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCurrentAdmin) Color(0xFF92400E) else Color(0xFF166534),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Active UI Destination:", fontSize = 12.sp, color = TextSecondary)
+                                    Text(
+                                        text = if (isCurrentAdmin) "Admin Dashboard (manager)" else "Employee Workspace (home)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isCurrentAdmin) Color(0xFFB45309) else Color(0xFF15803D)
+                                    )
+                                }
+                                if (firestoreMsg != null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Cloud Status: $firestoreMsg",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text("Test Dynamic Cloud Role Switching:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.updateRoleInFirestore("admin") { ok ->
+                                        toastMessage = if (ok) "Updated Firestore role to ADMIN! Next login routes to Admin Dashboard." else "Failed to update Firestore"
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = if (isCurrentAdmin) Color(0xFFB45309) else TextPrimary
+                                )
+                            ) {
+                                Text("Set Admin in Cloud", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.updateRoleInFirestore("employee") { ok ->
+                                        toastMessage = if (ok) "Updated Firestore role to EMPLOYEE! Next login routes to Employee Workspace." else "Failed to update Firestore"
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = if (!isCurrentAdmin) Color(0xFF15803D) else TextPrimary
+                                )
+                            ) {
+                                Text("Set Employee in Cloud", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+
             // Firebase Cloud Messaging (FCM) & Push Alerts Card
             item {
                 Card(
@@ -1369,8 +1859,55 @@ fun SettingsScreen(
                             showPasswordDialog = true
                         }
                         Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
-                        SettingToggleRow("Biometric Unlock", "Use Fingerprint or Face ID to sign in", biometricEnabled) {
-                            biometricEnabled = it
+                        SettingToggleRow("Biometric Unlock", "Use Fingerprint or Face ID to sign in", biometricEnabled) { isChecked ->
+                            if (isChecked && activity != null) {
+                                com.example.util.BiometricHelper.promptBiometricAuth(
+                                    activity = activity,
+                                    title = "Enable Biometric Security",
+                                    subtitle = "Authenticate to enable fingerprint unlock for MB Traker",
+                                    onSuccess = {
+                                        biometricEnabled = true
+                                        com.example.util.BiometricHelper.setBiometricSettingEnabled(context, true)
+                                        toastMessage = "Biometric unlock activated successfully!"
+                                    },
+                                    onError = { err ->
+                                        toastMessage = "Biometric setup: $err"
+                                    }
+                                )
+                            } else {
+                                biometricEnabled = isChecked
+                                com.example.util.BiometricHelper.setBiometricSettingEnabled(context, isChecked)
+                                toastMessage = if (isChecked) "Biometric unlock enabled" else "Biometric unlock disabled"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Session & Logout Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Session & Account", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.logout()
+                                onLogout()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Icon(Icons.Default.ExitToApp, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Sign Out & Lock App", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFDC2626))
                         }
                     }
                 }

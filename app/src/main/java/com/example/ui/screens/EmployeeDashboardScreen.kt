@@ -61,7 +61,12 @@ fun EmployeeDashboardScreen(
     onNavigateToManager: () -> Unit = {},
     onNavigateToProfile: (() -> Unit)? = null,
     onNavigateToInvoices: () -> Unit = {},
-    onNavigateToChat: () -> Unit = {}
+    onNavigateToChat: () -> Unit = {},
+    onNavigateToMeetings: () -> Unit = {},
+    onNavigateToExpenses: () -> Unit = {},
+    onNavigateToTimesheets: () -> Unit = {},
+    onNavigateToVault: () -> Unit = {},
+    onNavigateToLiveTracking: () -> Unit = {}
 ) {
     val attendance by viewModel.latestAttendance.collectAsState()
     val liveSeconds by viewModel.liveActiveDurationSeconds.collectAsState()
@@ -558,6 +563,43 @@ fun EmployeeDashboardScreen(
                             onClick = { showCallRecorderDialog = true }
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Row 3: Meetings, Expenses, Timesheets, Doc Vault
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        QuickActionItem(
+                            icon = Icons.Default.Place,
+                            label = "Meetings",
+                            bgColor = Color(0xFFF0FDF4),
+                            tintColor = Color(0xFF16A34A),
+                            onClick = onNavigateToMeetings
+                        )
+                        QuickActionItem(
+                            icon = Icons.Default.ReceiptLong,
+                            label = "Expenses",
+                            bgColor = Color(0xFFFEF3C7),
+                            tintColor = Color(0xFFD97706),
+                            onClick = onNavigateToExpenses
+                        )
+                        QuickActionItem(
+                            icon = Icons.Default.PunchClock,
+                            label = "Timesheet",
+                            bgColor = Color(0xFFEFF6FF),
+                            tintColor = BrandBlue,
+                            onClick = onNavigateToTimesheets
+                        )
+                        QuickActionItem(
+                            icon = Icons.Default.FolderSpecial,
+                            label = "Vault",
+                            bgColor = Color(0xFFFAF5FF),
+                            tintColor = Color(0xFF9333EA),
+                            onClick = onNavigateToVault
+                        )
+                    }
                 }
             }
         }
@@ -939,14 +981,15 @@ fun CompanyProfileBrochureDialog(
     viewModel: MainViewModel,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val rawBrochureConfig by viewModel.autoBrochureConfig.collectAsState()
     val brochureConfig = rawBrochureConfig ?: AutoBrochureConfigEntity()
     var isAutoSend by remember(brochureConfig) { mutableStateOf(brochureConfig.isAutoSendEnabled) }
     var sendWhatsApp by remember(brochureConfig) { mutableStateOf(brochureConfig.sendViaWhatsApp) }
     var sendEmail by remember(brochureConfig) { mutableStateOf(brochureConfig.sendViaEmail) }
     var showPreviewSheet by remember { mutableStateOf(false) }
-    var testRecipientName by remember { mutableStateOf("") }
-    var testRecipientPhone by remember { mutableStateOf("") }
+    var testRecipientName by remember { mutableStateOf("Client Prospect") }
+    var testRecipientPhone by remember { mutableStateOf("+91 98765 43210") }
     var isSendingTest by remember { mutableStateOf(false) }
 
     Dialog(
@@ -1082,7 +1125,12 @@ fun CompanyProfileBrochureDialog(
 
                                 Button(
                                     onClick = {
-                                        viewModel.testSendBrochureManual("Client Prospect", "+91 98765 43210", "prospect@example.com")
+                                        viewModel.testSendBrochureManual(
+                                            context = context,
+                                            recipientName = testRecipientName.ifBlank { "Client Prospect" },
+                                            recipientPhone = testRecipientPhone.ifBlank { "+91 98765 43210" },
+                                            recipientEmail = "prospect@example.com"
+                                        )
                                     },
                                     shape = RoundedCornerShape(10.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),

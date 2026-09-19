@@ -15,10 +15,13 @@ object NotificationHelper {
 
     const val CHANNEL_TEAM_CHAT = "team_chat_channel"
     const val CHANNEL_TASK_UPDATES = "task_updates_channel"
+    const val CHANNEL_LEAD_ALERTS = "lead_alerts_channel"
+    const val CHANNEL_AUTH_ALERTS = "auth_security_channel"
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                ?: return
 
             // 1. Team Chat & Mentions Channel
             val chatChannel = NotificationChannel(
@@ -44,8 +47,34 @@ object NotificationHelper {
                 setShowBadge(true)
             }
 
+            // 3. Lead & CRM Alerts Channel
+            val leadChannel = NotificationChannel(
+                CHANNEL_LEAD_ALERTS,
+                "Lead & CRM Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "New lead assignments, WhatsApp brochures, and scheduled follow-ups"
+                enableLights(true)
+                enableVibration(true)
+                setShowBadge(true)
+            }
+
+            // 4. Security & OTP Channel
+            val authChannel = NotificationChannel(
+                CHANNEL_AUTH_ALERTS,
+                "Security & WhatsApp OTP",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "One-time passcodes and login security verification alerts"
+                enableLights(true)
+                enableVibration(true)
+                setShowBadge(true)
+            }
+
             notificationManager.createNotificationChannel(chatChannel)
             notificationManager.createNotificationChannel(taskChannel)
+            notificationManager.createNotificationChannel(leadChannel)
+            notificationManager.createNotificationChannel(authChannel)
         }
     }
 
@@ -89,8 +118,7 @@ object NotificationHelper {
             val notificationManager = NotificationManagerCompat.from(context)
             val notificationId = (System.currentTimeMillis() % 10000).toInt() + 1000
             notificationManager.notify(notificationId, notificationBuilder.build())
-        } catch (e: SecurityException) {
-            // Android 13+ POST_NOTIFICATIONS permission not yet granted
+        } catch (_: SecurityException) {
         }
     }
 
@@ -132,8 +160,88 @@ object NotificationHelper {
             val notificationManager = NotificationManagerCompat.from(context)
             val notificationId = (System.currentTimeMillis() % 10000).toInt() + 2000
             notificationManager.notify(notificationId, notificationBuilder.build())
-        } catch (e: SecurityException) {
-            // Android 13+ POST_NOTIFICATIONS permission not yet granted
+        } catch (_: SecurityException) {
+        }
+    }
+
+    fun showLeadAlert(
+        context: Context,
+        leadName: String,
+        company: String,
+        requirement: String
+    ) {
+        createNotificationChannels(context)
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("destination", "crm")
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            System.currentTimeMillis().toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_LEAD_ALERTS)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("🎯 New Lead: $leadName ($company)")
+            .setContentText("Requirement: $requirement")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Requirement: $requirement\nAuto-brochure ready for dispatch."))
+            .setAutoCancel(true)
+            .setSound(defaultSound)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setContentIntent(pendingIntent)
+
+        try {
+            val notificationManager = NotificationManagerCompat.from(context)
+            val notificationId = (System.currentTimeMillis() % 10000).toInt() + 3000
+            notificationManager.notify(notificationId, notificationBuilder.build())
+        } catch (_: SecurityException) {
+        }
+    }
+
+    fun showOtpAlert(
+        context: Context,
+        otpCode: String,
+        phone: String
+    ) {
+        createNotificationChannels(context)
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("destination", "otp")
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            System.currentTimeMillis().toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_AUTH_ALERTS)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+            .setContentTitle("🔐 MB Traker OTP: $otpCode")
+            .setContentText("Your WhatsApp login code is $otpCode for $phone.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("One-Time Passcode for MB Traker sign-in is $otpCode. Valid for 10 minutes."))
+            .setAutoCancel(true)
+            .setSound(defaultSound)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setContentIntent(pendingIntent)
+
+        try {
+            val notificationManager = NotificationManagerCompat.from(context)
+            val notificationId = 9999
+            notificationManager.notify(notificationId, notificationBuilder.build())
+        } catch (_: SecurityException) {
         }
     }
 }

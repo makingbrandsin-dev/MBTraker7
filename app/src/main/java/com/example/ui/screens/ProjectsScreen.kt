@@ -115,13 +115,141 @@ fun ProjectsScreen(
             }
 
             // Projects List
-            items(filteredProjects) { project ->
-                ProjectCardItem(
-                    project = project,
-                    onClick = { onProjectClick(project.id) }
-                )
+            if (filteredProjects.isEmpty()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = TextMuted, modifier = Modifier.size(48.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("No Projects Found", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextPrimary)
+                            Text("Create a new project using the + button below", fontSize = 12.sp, color = TextSecondary)
+                        }
+                    }
+                }
+            } else {
+                items(filteredProjects) { project ->
+                    ProjectCardItem(
+                        project = project,
+                        onClick = { onProjectClick(project.id) }
+                    )
+                }
             }
         }
+    }
+
+    if (showAddDialog) {
+        var newName by remember { mutableStateOf("") }
+        var newClient by remember { mutableStateOf("") }
+        var newDeadline by remember { mutableStateOf("30 Oct 2026") }
+        var newPriority by remember { mutableStateOf("High") }
+        var newTeamSize by remember { mutableIntStateOf(4) }
+        var newTotalTasks by remember { mutableIntStateOf(10) }
+
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFEFF6FF),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.AddBusiness, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Create New Project", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text("Project Name *") },
+                        placeholder = { Text("e.g. Enterprise Mobile App") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = newClient,
+                        onValueChange = { newClient = it },
+                        label = { Text("Client Name *") },
+                        placeholder = { Text("e.g. Making Brands Tech") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = newDeadline,
+                        onValueChange = { newDeadline = it },
+                        label = { Text("Deadline Date") },
+                        leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null, tint = TextMuted) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = newPriority,
+                            onValueChange = { newPriority = it },
+                            label = { Text("Priority") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = newTeamSize.toString(),
+                            onValueChange = { newTeamSize = it.toIntOrNull() ?: 1 },
+                            label = { Text("Team Size") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newName.isNotBlank() && newClient.isNotBlank()) {
+                            viewModel.addProject(
+                                name = newName.trim(),
+                                clientName = newClient.trim(),
+                                deadline = newDeadline,
+                                priority = newPriority,
+                                teamSize = newTeamSize,
+                                totalTasks = newTotalTasks
+                            )
+                            showAddDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                ) {
+                    Text("Create Project", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
     }
 }
 

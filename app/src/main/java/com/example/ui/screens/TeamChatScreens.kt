@@ -21,12 +21,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.example.data.model.ChatMessageEntity
 import com.example.data.model.EmployeeEntity
 import com.example.data.model.PresenceStatus
 import com.example.ui.components.AppHeader
 import com.example.ui.components.StatusIndicatorBadge
 import com.example.ui.theme.*
+import com.example.util.AudioRecorderHelper
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -254,9 +257,26 @@ fun ChatRoomScreen(
     onBack: () -> Unit
 ) {
     val messages by viewModel.chatMessages.collectAsState()
+    val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
+    var isRecordingVoice by remember { mutableStateOf(false) }
+    var recordingDurationSeconds by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(isRecordingVoice) {
+        if (isRecordingVoice) {
+            recordingDurationSeconds = 0
+            while (isRecordingVoice) {
+                delay(1000)
+                recordingDurationSeconds += 1
+            }
+        }
+    }
+
+    LaunchedEffect(channelId) {
+        viewModel.selectChatChannel(channelId)
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -288,48 +308,121 @@ fun ChatRoomScreen(
                     .fillMaxWidth()
                     .imePadding()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = {
-                        // Quick send sample release APK file attachment
-                        viewModel.sendChatMessage(
-                            text = "Sharing the latest release build",
-                            fileName = "app-release-v1.3.0.apk",
-                            fileSize = "2.6 MB"
-                        )
-                    }) {
-                        Icon(Icons.Default.AttachFile, contentDescription = "Attach", tint = TextSecondary)
-                    }
-
-                    OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { inputText = it },
-                        placeholder = { Text("Type a message...", fontSize = 14.sp, color = Color(0xFF94A3B8)) },
-                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = appTextFieldColors()
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = {
-                            if (inputText.isNotBlank()) {
-                                viewModel.sendChatMessage(inputText)
-                                inputText = ""
-                            }
-                        },
+                if (isRecordingVoice) {
+                    // Voice Recording Active Bar
+                    Row(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(ElectricBlue)
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFE11D48))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Recording... ${recordingDurationSeconds}s",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = Color(0xFFE11D48)
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            IconButton(
+                                onClick = {
+                                    AudioRecorderHelper.cancelRecording()
+                                    isRecordingVoice = false
+                                }
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Cancel Recording", tint = TextMuted)
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    val duration = recordingDurationSeconds.coerceAtLeast(1)
+                                    val audioFile = AudioRecorderHelper.stopRecording()
+                                    isRecordingVoice = false
+                                    if (audioFile != null && audioFile.exists()) {
+                                        viewModel.sendVoiceChatMessage(audioFile.absolutePath, duration)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF22C55E))
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = "Send Voice Note", tint = Color.White)
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = {
+                            // Quick send sample release APK file attachment
+                            viewModel.sendChatMessage(
+                                text = "Sharing the latest release build",
+                                fileName = "app-release-v1.3.0.apk",
+                                fileSize = "2.6 MB"
+                            )
+                        }) {
+                            Icon(Icons.Default.AttachFile, contentDescription = "Attach", tint = TextSecondary)
+                        }
+
+                        OutlinedTextField(
+                            value = inputText,
+                            onValueChange = { inputText = it },
+                            placeholder = { Text("Type a message...", fontSize = 14.sp, color = Color(0xFF94A3B8)) },
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = appTextFieldColors()
+                        )
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Mic Button for Recording Voice Note
+                        IconButton(
+                            onClick = {
+                                val recordedFile = AudioRecorderHelper.startRecording(context)
+                                if (recordedFile != null) {
+                                    isRecordingVoice = true
+                                }
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFF1F5F9))
+                        ) {
+                            Icon(Icons.Default.Mic, contentDescription = "Record Voice Note", tint = BrandBlue, modifier = Modifier.size(20.dp))
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        IconButton(
+                            onClick = {
+                                if (inputText.isNotBlank()) {
+                                    viewModel.sendChatMessage(inputText)
+                                    inputText = ""
+                                }
+                            },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(ElectricBlue)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
                     }
                 }
             }
@@ -432,6 +525,61 @@ fun ChatBubble(message: ChatMessageEntity) {
                                 )
                                 Text(
                                     message.attachmentFileSize ?: "",
+                                    fontSize = 10.sp,
+                                    color = if (isMe) Color.White.copy(alpha = 0.7f) else TextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Voice Note Audio Player Bubble
+                if (message.isVoiceMessage) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isMe) BrandDarkBlue else Color(0xFFF1F5F9),
+                        modifier = Modifier.widthIn(min = 200.dp)
+                    ) {
+                        var isPlaying by remember { mutableStateOf(false) }
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (isPlaying) {
+                                        AudioRecorderHelper.stopPlaying()
+                                        isPlaying = false
+                                    } else {
+                                        val path = message.audioPath
+                                        if (path != null) {
+                                            AudioRecorderHelper.playAudio(path) {
+                                                isPlaying = false
+                                            }
+                                            isPlaying = true
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    if (isPlaying) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
+                                    contentDescription = "Play voice note",
+                                    tint = if (isMe) Color.White else BrandBlue,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    "Voice Note • ${message.audioDurationSeconds}s",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isMe) Color.White else TextPrimary
+                                )
+                                Text(
+                                    if (isPlaying) "Playing audio..." else "Tap to play",
                                     fontSize = 10.sp,
                                     color = if (isMe) Color.White.copy(alpha = 0.7f) else TextSecondary
                                 )

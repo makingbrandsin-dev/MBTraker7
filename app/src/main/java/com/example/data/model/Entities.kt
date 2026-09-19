@@ -86,7 +86,12 @@ data class AttendanceRecord(
     val breakType: String = "None", // Tea Break, Lunch Break, Short Break, Custom
     val isOnBreak: Boolean = false,
     val timestamp: Long = System.currentTimeMillis(),
-    val employeeName: String = "Rahul Sharma"
+    val employeeName: String = "Rahul Sharma",
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationAddress: String? = "Office HQ, Connaught Place, New Delhi",
+    val isGeofenceVerified: Boolean = true,
+    val selfieUri: String? = null
 )
 
 @Entity(tableName = "projects")
@@ -122,7 +127,9 @@ data class TaskEntity(
     val isCompleted: Boolean = false,
     val assignee: String = "Rahul Sharma",
     val category: String = "Work", // Work, Personal, Urgent, Meeting, Review
-    val estimatedTimeNeeded: String = "4 Hours" // e.g. "2 Hours", "1 Day", "3 Days", "1 Week"
+    val estimatedTimeNeeded: String = "4 Hours", // e.g. "2 Hours", "1 Day", "3 Days", "1 Week"
+    val dependsOnTaskId: Long? = null,
+    val dependsOnTaskTitle: String? = null
 )
 
 @Entity(tableName = "call_recordings")
@@ -276,7 +283,10 @@ data class ChatMessageEntity(
     val timestampText: String,
     val isMe: Boolean = false,
     val attachmentFileName: String? = null,
-    val attachmentFileSize: String? = null
+    val attachmentFileSize: String? = null,
+    val audioPath: String? = null,
+    val audioDurationSeconds: Int = 0,
+    val isVoiceMessage: Boolean = false
 )
 
 @Entity(tableName = "notifications")
@@ -292,12 +302,17 @@ data class NotificationEntity(
 @Entity(tableName = "user_profile")
 data class UserProfileEntity(
     @PrimaryKey val id: Long = 1L,
-    val name: String,
-    val role: String,
+    val name: String = "",
+    val role: String = "",
     val isOnboarded: Boolean = true,
     val email: String = "makingbrands.in@gmail.com",
     val phone: String = "+91 98765 43210",
     val department: String = "Engineering",
+    val joiningDate: String = "15 Jan 2024",
+    val emergencyContact: String = "+91 91234 56789",
+    val address: String = "Connaught Place, New Delhi",
+    val skills: String = "Kotlin, Jetpack Compose, Android, Cloud, UI/UX",
+    val bio: String = "Building enterprise mobile experiences for Making Brands",
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -314,4 +329,78 @@ data class LeaveApplicationEntity(
     val appliedDate: String = "18 Sep 2025",
     val createdAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "client_meetings")
+data class ClientMeetingEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val clientName: String,
+    val company: String,
+    val meetingPurpose: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationName: String = "Client Office",
+    val checkInTime: String,
+    val checkOutTime: String? = null,
+    val meetingNotes: String = "",
+    val outcome: String = "Follow-up Required", // "Follow-up Required", "Proposal Requested", "Deal Won", "Needs Revision"
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "expense_claims")
+data class ExpenseClaimEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val employeeName: String = "Rahul Sharma",
+    val category: String, // "Travel & Fuel", "Client Dinner", "Office Supplies", "Lodging", "Software & Tools"
+    val amount: Double,
+    val currency: String = "₹",
+    val date: String,
+    val merchant: String,
+    val description: String,
+    val receiptUri: String? = null,
+    val status: String = "Pending", // "Pending", "Approved", "Reimbursed", "Rejected"
+    val reviewedBy: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "project_milestones")
+data class ProjectMilestoneEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val projectId: Long = 1L,
+    val projectName: String = "Enterprise Portal",
+    val title: String,
+    val description: String = "",
+    val targetDate: String,
+    val completionPercent: Int = 0, // 0 to 100
+    val isCompleted: Boolean = false,
+    val approvedByClient: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "vault_documents")
+data class VaultDocumentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val category: String, // "Brochures", "Proposal Templates", "Branding & Logos", "Standard Contracts", "HR Policies"
+    val fileType: String = "PDF", // "PDF", "DOCX", "PNG", "ZIP"
+    val fileSize: String = "2.4 MB",
+    val downloadUrlOrPath: String = "https://makingbrands.in/docs/sample.pdf",
+    val description: String = "",
+    val isOfflineAvailable: Boolean = true,
+    val uploadedAt: String = "Today",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "attendance_regularizations")
+data class AttendanceRegularizationEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val employeeName: String = "Rahul Sharma",
+    val date: String,
+    val requestedInTime: String,
+    val requestedOutTime: String,
+    val reason: String,
+    val remarks: String = "",
+    val status: String = "PENDING", // PENDING, APPROVED, REJECTED
+    val appliedAt: Long = System.currentTimeMillis()
+)
+
 

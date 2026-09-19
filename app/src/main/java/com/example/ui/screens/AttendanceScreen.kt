@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +53,7 @@ fun AttendanceScreen(
     val unreadChatCount by viewModel.unreadChatCount.collectAsState()
     val employeeName by viewModel.currentEmployeeName.collectAsState()
     val employeeRole by viewModel.currentEmployeeRole.collectAsState()
+    val regularizations by viewModel.attendanceRegularizations.collectAsState()
 
     val isWorking = attendance?.isWorking ?: false
 
@@ -64,10 +66,13 @@ fun AttendanceScreen(
         SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault()).format(Date(liveClockMillis))
     }
 
+    val context = LocalContext.current
     var selectedViewMode by remember { mutableStateOf("visual_chart") } // "visual_chart", "daily_logs", "date_sheet", "monthly_sheet"
     var selectedMonth by remember { mutableStateOf("September 2026") }
     var selectedDateForSheet by remember { mutableStateOf("2026-09-17") }
     var showBreakDialog by remember { mutableStateOf(false) }
+    var showGeofencePunchDialog by remember { mutableStateOf(false) }
+    var showRegularizationDialog by remember { mutableStateOf(false) }
 
     val monthsList = listOf("September 2026", "August 2026", "July 2026")
 
@@ -139,6 +144,15 @@ fun AttendanceScreen(
             onSelectBreak = { breakType ->
                 viewModel.startBreak(breakType)
                 showBreakDialog = false
+            }
+        )
+    }
+
+    if (showRegularizationDialog) {
+        AttendanceRegularizationDialog(
+            onDismiss = { showRegularizationDialog = false },
+            onSubmit = { date, inTime, outTime, reason, remarks ->
+                viewModel.submitAttendanceRegularization(date, inTime, outTime, reason, remarks)
             }
         )
     }
@@ -467,7 +481,13 @@ fun AttendanceScreen(
 
                         // Big Punch In / Out Button (No border, no stroke)
                         Button(
-                            onClick = { viewModel.toggleCheckInCheckOut() },
+                            onClick = {
+                                if (isWorking) {
+                                    viewModel.checkOutUser()
+                                } else {
+                                    showGeofencePunchDialog = true
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp),
@@ -486,10 +506,91 @@ fun AttendanceScreen(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = if (isWorking) "Punch Out for the Day" else "Punch In Attendance",
+                                text = if (isWorking) "Punch Out for the Day" else "Punch In (Geofenced & Selfie)",
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 16.sp
                             )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Regularization Button
+                        OutlinedButton(
+                            onClick = { showRegularizationDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFF93C5FD).copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFF93C5FD)
+                            )
+                        ) {
+                            Icon(Icons.Default.EditCalendar, contentDescription = null, tint = Color(0xFF93C5FD), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Missed Punch? Request Regularization", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF93C5FD))
+                        }
+                    }
+                }
+            }
+
+            // Pending Regularization Requests
+            if (regularizations.isNotEmpty()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFDBEAFE)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Schedule, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Regularization Workflow (${regularizations.size})", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandBlue)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            regularizations.take(3).forEach { req ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("${req.date} (${req.requestedInTime} - ${req.requestedOutTime})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                        Text("${req.reason} • ${req.remarks.ifBlank { "Pending approval" }}", fontSize = 11.sp, color = TextSecondary, maxLines = 1)
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = when(req.status) {
+                                            "APPROVED" -> Color(0xFFDCFCE7)
+                                            "REJECTED" -> Color(0xFFFEE2E2)
+                                            else -> Color(0xFFFEF3C7)
+                                        }
+                                    ) {
+                                        Text(
+                                            req.status,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when(req.status) {
+                                                "APPROVED" -> Color(0xFF166534)
+                                                "REJECTED" -> Color(0xFF991B1B)
+                                                else -> Color(0xFF92400E)
+                                            },
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -721,6 +822,16 @@ fun AttendanceScreen(
                     )
                 }
             }
+        }
+
+        if (showGeofencePunchDialog) {
+            GeofenceSelfiePunchDialog(
+                onDismiss = { showGeofencePunchDialog = false },
+                onConfirmPunchIn = { isGeofenced, selfieUri ->
+                    viewModel.checkInUser(context = context, selfieUri = selfieUri)
+                    showGeofencePunchDialog = false
+                }
+            )
         }
     }
 }

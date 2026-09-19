@@ -30,7 +30,11 @@ fun ManagerDashboardScreen(
     onBack: () -> Unit,
     onNavigateToProjects: () -> Unit = {},
     onNavigateToLeads: () -> Unit = {},
-    onNavigateToChat: () -> Unit = {}
+    onNavigateToChat: () -> Unit = {},
+    onNavigateToTracking: () -> Unit = {},
+    onNavigateToTimesheets: () -> Unit = {},
+    onNavigateToMeetings: () -> Unit = {},
+    onNavigateToVault: () -> Unit = {}
 ) {
     val employees by viewModel.employees.collectAsState(initial = emptyList())
     val tasks by viewModel.tasks.collectAsState(initial = emptyList())
@@ -39,10 +43,152 @@ fun ManagerDashboardScreen(
     val leadsList by viewModel.leads.collectAsState(initial = emptyList())
 
     var searchQuery by remember { mutableStateOf("") }
+    var showStandupDialog by remember { mutableStateOf(false) }
+
+    // Admin Delete / Clear Dialog States
+    var showClearAllEnterpriseDialog by remember { mutableStateOf(false) }
+    var employeeToClearFields by remember { mutableStateOf<EmployeeEntity?>(null) }
+    var employeeToDelete by remember { mutableStateOf<EmployeeEntity?>(null) }
+    var sectionToClear by remember { mutableStateOf<String?>(null) }
 
     val filteredEmployees = employees.filter { emp ->
         emp.name.contains(searchQuery, ignoreCase = true) ||
         emp.designation.contains(searchQuery, ignoreCase = true)
+    }
+
+    // 1. Confirmation Dialog: Clear ALL Enterprise Data & Fields
+    if (showClearAllEnterpriseDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearAllEnterpriseDialog = false },
+            icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = StatusRed, modifier = Modifier.size(36.dp)) },
+            title = { Text("Delete / Clear ALL Fields in Admin?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "⚠️ DANGER: This will permanently delete and clear all tasks, attendance records, leaves, regularizations, leads, follow-up logs, calls, chat messages, meetings, expenses, and document records across the entire enterprise.\n\nAre you sure you want to proceed?",
+                    fontSize = 13.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearAllEnterpriseFields()
+                        showClearAllEnterpriseDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusRed)
+                ) {
+                    Text("Yes, Delete All Fields", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllEnterpriseDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    // 2. Confirmation Dialog: Clear All Fields for Specific Employee
+    if (employeeToClearFields != null) {
+        val emp = employeeToClearFields!!
+        AlertDialog(
+            onDismissRequest = { employeeToClearFields = null },
+            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = StatusOrange, modifier = Modifier.size(36.dp)) },
+            title = { Text("Clear All Fields for ${emp.name}?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "This will clear and reset all contact information, designation, assigned projects, skills, emergency contact, and salary fields for ${emp.name} to unassigned/blank defaults.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearEmployeeFields(emp.id)
+                        employeeToClearFields = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusOrange)
+                ) {
+                    Text("Clear Fields", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { employeeToClearFields = null }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    // 3. Confirmation Dialog: Delete Employee
+    if (employeeToDelete != null) {
+        val emp = employeeToDelete!!
+        AlertDialog(
+            onDismissRequest = { employeeToDelete = null },
+            icon = { Icon(Icons.Default.PersonRemove, contentDescription = null, tint = StatusRed, modifier = Modifier.size(36.dp)) },
+            title = { Text("Delete ${emp.name}?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to permanently delete employee ${emp.name} (ID #${emp.id}) from the company directory?",
+                    fontSize = 13.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteEmployee(emp)
+                        employeeToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusRed)
+                ) {
+                    Text("Delete Employee", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { employeeToDelete = null }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    // 4. Confirmation Dialog: Section Clear
+    if (sectionToClear != null) {
+        val section = sectionToClear!!
+        AlertDialog(
+            onDismissRequest = { sectionToClear = null },
+            icon = { Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = StatusRed, modifier = Modifier.size(36.dp)) },
+            title = { Text("Clear All $section?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Are you sure you want to permanently delete all records in $section?", fontSize = 13.sp, color = Color(0xFF475569))
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        when (section) {
+                            "Tasks" -> viewModel.clearAllTasks()
+                            "Attendance" -> viewModel.clearAllAttendance()
+                            "Leads" -> viewModel.clearAllLeads()
+                            "Leaves" -> viewModel.clearAllLeaves()
+                            "Chat Messages" -> viewModel.clearAllChat()
+                            "Expense Claims" -> viewModel.clearAllExpenses()
+                            "Employees" -> viewModel.clearAllEmployees()
+                        }
+                        sectionToClear = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusRed)
+                ) {
+                    Text("Delete $section", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { sectionToClear = null }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -51,8 +197,8 @@ fun ManagerDashboardScreen(
                 title = "MB Admin Portal",
                 onBack = onBack,
                 actions = {
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.Notifications, contentDescription = null, tint = TextPrimary)
+                    IconButton(onClick = { showClearAllEnterpriseDialog = true }) {
+                        Icon(Icons.Default.DeleteSweep, contentDescription = "Clear All Fields", tint = StatusRed)
                     }
                 }
             )
@@ -111,6 +257,80 @@ fun ManagerDashboardScreen(
                 }
             }
 
+            // Admin Master Data Reset & Delete All Fields Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFFFEE2E2),
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = StatusRed, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Admin System & Field Controls", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF0F172A))
+                                    Text("Bulk reset and delete fields across modules", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Delete All Enterprise Fields Master Action
+                        Button(
+                            onClick = { showClearAllEnterpriseDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = StatusRed),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(44.dp)
+                        ) {
+                            Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Delete / Clear ALL Fields in Admin", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text("Clear Specific Section Fields:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val sections = listOf("Tasks", "Attendance", "Leads", "Leaves", "Chat Messages", "Expense Claims", "Employees")
+                            items(sections) { sec ->
+                                OutlinedButton(
+                                    onClick = { sectionToClear = sec },
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF475569)),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = StatusRed, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Clear $sec", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Quick Overview Summary Cards
             item {
                 Text("Organization Pulse", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = Color(0xFF0F172A))
@@ -123,6 +343,70 @@ fun ManagerDashboardScreen(
                     MetricBadge(label = "Present", value = "${employees.count { it.presenceStatus.name != "OFFLINE" }}", backgroundColor = StatusGreenBg, textColor = StatusGreen, modifier = Modifier.weight(1f))
                     MetricBadge(label = "Pending Tasks", value = "${tasks.count { !it.isCompleted }}", backgroundColor = StatusOrangeBg, textColor = StatusOrange, modifier = Modifier.weight(1f))
                     MetricBadge(label = "Active Leads", value = "${leadsList.size}", backgroundColor = Color(0xFFF3E8FF), textColor = Color(0xFF9333EA), modifier = Modifier.weight(1f))
+                }
+            }
+
+            // Enterprise Management Shortcuts Row
+            item {
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    item {
+                        Button(
+                            onClick = onNavigateToTracking,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Live Field Map", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    item {
+                        Button(
+                            onClick = onNavigateToTimesheets,
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.PunchClock, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Timesheets", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    item {
+                        Button(
+                            onClick = { showStandupDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Summarize, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Daily Standup Digest", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    item {
+                        Button(
+                            onClick = onNavigateToMeetings,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Place, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Client Meetings", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    item {
+                        Button(
+                            onClick = onNavigateToVault,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Document Vault", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
 
@@ -181,33 +465,50 @@ fun ManagerDashboardScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        // Employee Header Row
+                        // Employee Header Row with Action Buttons (Delete Employee & Clear Fields)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                 Surface(
                                     shape = CircleShape,
                                     color = BrandBlue.copy(alpha = 0.12f),
                                     modifier = Modifier.size(44.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Text(emp.name.take(1), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = BrandBlue)
+                                        Text(emp.name.take(1).ifEmpty { "?" }, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = BrandBlue)
                                     }
                                 }
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
-                                    Text(emp.name, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
-                                    Text("${emp.designation} · ${emp.department.name}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF475569))
+                                    Text(emp.name.ifEmpty { "Unassigned Name" }, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                                    Text("${emp.designation.ifEmpty { "No Role" }} · ${emp.department.name}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF475569))
                                 }
                             }
 
-                            StatusIndicatorBadge(
-                                status = emp.presenceStatus,
-                                showLabel = true
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                StatusIndicatorBadge(
+                                    status = emp.presenceStatus,
+                                    showLabel = true
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                // Clear Employee Fields Button
+                                IconButton(
+                                    onClick = { employeeToClearFields = emp },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Default.CleaningServices, contentDescription = "Clear Fields", tint = StatusOrange, modifier = Modifier.size(18.dp))
+                                }
+                                // Delete Employee Button
+                                IconButton(
+                                    onClick = { employeeToDelete = emp },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete Employee", tint = StatusRed, modifier = Modifier.size(18.dp))
+                                }
+                            }
                         }
 
                         Divider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 12.dp))
@@ -284,33 +585,62 @@ fun ManagerDashboardScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Action Bar: Team Chat Shortcut
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onNavigateToChat() }
+                        // Action Bar: Team Chat & Employee Fields Management
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .weight(1f)
+                                    .clickable { onNavigateToChat() }
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Forum, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Team Chat & Communication", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Forum, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Team Chat", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                    }
+                                    Text("Open →", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = BrandBlue)
                                 }
-                                Text("Open Chat →", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = BrandBlue)
+                            }
+
+                            // Quick Clear Fields action
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFFEF2F2),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
+                                modifier = Modifier.clickable { employeeToClearFields = emp }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.CleaningServices, contentDescription = null, tint = StatusRed, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Clear Fields", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StatusRed)
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+
+        if (showStandupDialog) {
+            DailyStandupDialog(
+                viewModel = viewModel,
+                onDismiss = { showStandupDialog = false }
+            )
         }
     }
 }

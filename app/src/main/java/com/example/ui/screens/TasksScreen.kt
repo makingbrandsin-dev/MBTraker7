@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.TaskEntity
 import com.example.ui.components.AppHeader
 import com.example.ui.components.CrmTasksAttendanceSwitcher
+import com.example.ui.components.KanbanBoardView
 import com.example.ui.components.PriorityBadge
 import com.example.ui.components.getCategoryConfig
 import com.example.ui.components.standardCategories
@@ -46,6 +48,7 @@ fun TasksScreen(
     var selectedStatusFilter by remember { mutableStateOf("All") }
     var selectedCategoryFilter by remember { mutableStateOf("All") }
     var showAddTaskDialog by remember { mutableStateOf(false) }
+    var isKanbanMode by remember { mutableStateOf(false) }
 
     val statusFilters = listOf("All", "Backlog", "In Progress", "Completed")
 
@@ -98,23 +101,59 @@ fun TasksScreen(
                     modifier = Modifier.padding(bottom = 2.dp)
                 )
             }
-            // Scope Tabs (All vs My Tasks)
+            // Scope Tabs & View Mode Switcher
             item {
-                TabRow(
-                    selectedTabIndex = selectedScopeTab,
-                    containerColor = Color.White,
-                    modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Tab(
-                        selected = selectedScopeTab == 0,
-                        onClick = { selectedScopeTab = 0 },
-                        text = { Text("All", fontWeight = FontWeight.Bold) }
-                    )
-                    Tab(
-                        selected = selectedScopeTab == 1,
-                        onClick = { selectedScopeTab = 1 },
-                        text = { Text("My Tasks", fontWeight = FontWeight.Bold) }
-                    )
+                    TabRow(
+                        selectedTabIndex = selectedScopeTab,
+                        containerColor = Color.White,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                    ) {
+                        Tab(
+                            selected = selectedScopeTab == 0,
+                            onClick = { selectedScopeTab = 0 },
+                            text = { Text("All", fontWeight = FontWeight.Bold) }
+                        )
+                        Tab(
+                            selected = selectedScopeTab == 1,
+                            onClick = { selectedScopeTab = 1 },
+                            text = { Text("My Tasks", fontWeight = FontWeight.Bold) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, BorderLight),
+                        modifier = Modifier.clickable { isKanbanMode = !isKanbanMode }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (isKanbanMode) Icons.Default.ViewList else Icons.Default.ViewKanban,
+                                contentDescription = null,
+                                tint = ElectricBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                if (isKanbanMode) "List View" else "Kanban",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElectricBlue
+                            )
+                        }
+                    }
                 }
             }
 
@@ -199,14 +238,25 @@ fun TasksScreen(
                 }
             }
 
-            // Tasks List
-            items(filteredTasks) { task ->
-                TaskCardItem(
-                    task = task,
-                    onToggle = { viewModel.toggleTaskCompletion(task) },
-                    onStatusChange = { newStatus -> viewModel.updateTaskStatus(task, newStatus) },
-                    onDelete = { viewModel.deleteTask(task) }
-                )
+            // Tasks List or Kanban Board
+            if (isKanbanMode) {
+                item {
+                    KanbanBoardView(
+                        tasks = filteredTasks,
+                        onUpdateStatus = { task, newStatus ->
+                            viewModel.updateTaskStatus(task, newStatus)
+                        }
+                    )
+                }
+            } else {
+                items(filteredTasks) { task ->
+                    TaskCardItem(
+                        task = task,
+                        onToggle = { viewModel.toggleTaskCompletion(task) },
+                        onStatusChange = { newStatus -> viewModel.updateTaskStatus(task, newStatus) },
+                        onDelete = { viewModel.deleteTask(task) }
+                    )
+                }
             }
         }
     }
@@ -216,6 +266,10 @@ fun TasksScreen(
         var newCategory by remember { mutableStateOf(if (selectedCategoryFilter != "All") selectedCategoryFilter else "Work") }
         var newProject by remember { mutableStateOf("Website Revamp") }
         var newPriority by remember { mutableStateOf("High") }
+        var newDueDate by remember { mutableStateOf("30 Sep 2026") }
+        var newEstimatedTime by remember { mutableStateOf("4 Hours") }
+        var selectedDependencyTaskId by remember { mutableStateOf<Long?>(null) }
+        var selectedDependencyTitle by remember { mutableStateOf<String?>(null) }
 
         AlertDialog(
             onDismissRequest = { showAddTaskDialog = false },
@@ -237,7 +291,12 @@ fun TasksScreen(
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     OutlinedTextField(
                         value = newTitle,
                         onValueChange = { newTitle = it },
@@ -295,22 +354,152 @@ fun TasksScreen(
                         }
                     }
 
+                    // Priority Selection Chips
+                    Column {
+                        Text(
+                            "Priority Level:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF475569)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("High", "Medium", "Low").forEach { p ->
+                                val isSel = newPriority.equals(p, ignoreCase = true)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSel) when (p) {
+                                        "High" -> Color(0xFFEF4444)
+                                        "Medium" -> Color(0xFFF59E0B)
+                                        else -> Color(0xFF10B981)
+                                    } else Color(0xFFF1F5F9),
+                                    modifier = Modifier.clickable { newPriority = p }
+                                ) {
+                                    Text(
+                                        p,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSel) Color.White else Color(0xFF475569),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = newProject,
                         onValueChange = { newProject = it },
                         label = { Text("Project Name") },
-                        textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
+                        textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 14.sp),
                         colors = appTextFieldColors(),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = newDueDate,
+                            onValueChange = { newDueDate = it },
+                            label = { Text("Deadline / Due") },
+                            textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 13.sp),
+                            colors = appTextFieldColors(),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = newEstimatedTime,
+                            onValueChange = { newEstimatedTime = it },
+                            label = { Text("Est. Time") },
+                            textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 13.sp),
+                            colors = appTextFieldColors(),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // Task Dependencies Selector
+                    Column {
+                        Text(
+                            "Prerequisite Dependency (Optional):",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF475569)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (selectedDependencyTaskId == null) ElectricBlue else Color(0xFFF1F5F9),
+                                modifier = Modifier.clickable {
+                                    selectedDependencyTaskId = null
+                                    selectedDependencyTitle = null
+                                }
+                            ) {
+                                Text(
+                                    "No Dependency",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selectedDependencyTaskId == null) Color.White else Color(0xFF475569),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                )
+                            }
+                            tasks.filter { !it.isCompleted }.take(5).forEach { depTask ->
+                                val isSelected = selectedDependencyTaskId == depTask.id
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) ElectricBlue else Color(0xFFF1F5F9),
+                                    modifier = Modifier.clickable {
+                                        selectedDependencyTaskId = depTask.id
+                                        selectedDependencyTitle = depTask.title
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Link,
+                                            contentDescription = null,
+                                            tint = if (isSelected) Color.White else Color(0xFF64748B),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            depTask.title.take(18) + if (depTask.title.length > 18) "..." else "",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isSelected) Color.White else Color(0xFF475569)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         if (newTitle.isNotBlank()) {
-                            viewModel.addTask(newTitle, newProject, newPriority, "30 Sep 2025", newCategory)
+                            viewModel.addTask(
+                                title = newTitle,
+                                projectName = newProject,
+                                priority = newPriority,
+                                dueDate = newDueDate,
+                                category = newCategory,
+                                estimatedTimeNeeded = newEstimatedTime,
+                                dependsOnTaskId = selectedDependencyTaskId,
+                                dependsOnTaskTitle = selectedDependencyTitle
+                            )
                             showAddTaskDialog = false
                         }
                     },
@@ -407,12 +596,58 @@ fun TaskCardItem(
                                 }
                             }
 
-                            Text(
-                                text = "${task.projectName} · Due: ${task.dueDate}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFF475569)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = task.projectName,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF475569)
+                                )
+                                Text("•", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                                Icon(
+                                    Icons.Default.AccessTime,
+                                    contentDescription = null,
+                                    tint = if (task.isCompleted) Color(0xFF94A3B8) else Color(0xFFD97706),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Text(
+                                    text = task.dueDate,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (task.isCompleted) Color(0xFF94A3B8) else Color(0xFFB45309)
+                                )
+                            }
+                        }
+
+                        if (!task.dependsOnTaskTitle.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFFEF3C7),
+                                border = BorderStroke(0.5.dp, Color(0xFFFDE68A))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Link,
+                                        contentDescription = null,
+                                        tint = Color(0xFFB45309),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        "Depends on: ${task.dependsOnTaskTitle}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF92400E)
+                                    )
+                                }
+                            }
                         }
                     }
 

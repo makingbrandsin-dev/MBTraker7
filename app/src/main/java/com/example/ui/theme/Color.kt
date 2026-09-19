@@ -42,4 +42,6 @@ val BlueGradientStart = Color(0xFF1D4ED8)
 val BlueGradientEnd = Color(0xFF3B82F6)
 
 val AccentGold = Color(0xFFF59E0B)
+val BrandGreen = Color(0xFF16A34A)
+val AccentGreen = Color(0xFF10B981)
 

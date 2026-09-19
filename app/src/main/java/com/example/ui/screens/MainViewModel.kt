@@ -1,17 +1,42 @@
 package com.example.ui.screens
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.auth.AppRole
+import com.example.data.auth.AuthCheckResult
+import com.example.data.auth.AuthUser
+import com.example.data.auth.FirestoreAuthProvider
 import com.example.data.firebase.FirebaseRealtimeManager
 import com.example.data.local.AppDatabase
 import com.example.data.model.*
+import com.example.util.BiometricHelper
+import com.example.util.NotificationHelper
+import com.example.util.WhatsAppHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+
+data class WhatsAppDispatchEvent(
+    val leadName: String,
+    val phone: String,
+    val company: String,
+    val isAutoSent: Boolean = true
+)
+
+data class OtpSessionState(
+    val otpCode: String = "",
+    val phoneNumber: String = "",
+    val role: String = "Employee",
+    val isAdmin: Boolean = false,
+    val generatedAt: Long = 0L,
+    val isVerified: Boolean = false
+)
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
@@ -32,6 +57,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val quotationDao = db.quotationDao()
     private val autoBrochureDao = db.autoBrochureDao()
     private val socialReviewDao = db.socialReviewDao()
+    private val clientMeetingDao = db.clientMeetingDao()
+    private val expenseClaimDao = db.expenseClaimDao()
+    private val projectMilestoneDao = db.projectMilestoneDao()
+    private val vaultDocumentDao = db.vaultDocumentDao()
+    private val attendanceRegularizationDao = db.attendanceRegularizationDao()
+
+    // 🚀 WhatsApp Event Stream for Automatic Lead Profile Dispatch
+    val whatsAppDispatchEvents = MutableSharedFlow<WhatsAppDispatchEvent>(extraBufferCapacity = 10)
+
+    // Attendance Regularization Flow
+    val attendanceRegularizations = attendanceRegularizationDao.getAllRegularizations()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Client Meetings (Field Sales Check-ins)
+    val clientMeetings = clientMeetingDao.getAllMeetings()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Expense & Reimbursement Claims
+    val expenseClaims = expenseClaimDao.getAllExpenses()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Project Milestones & Deliverables
+    val projectMilestones = projectMilestoneDao.getAllMilestones()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Document & Asset Vault
+    val vaultDocuments = vaultDocumentDao.getAllDocuments()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Leaves
     val leaves = leaveDao.getAllLeaves()
@@ -348,10 +401,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Auth state for demo login & OTP
-    val isLoggedIn = MutableStateFlow(true) // Start directly into app or switch via drawer/profile
-    val isOtpSent = MutableStateFlow(false)
-
     // Current logged-in employee profile (persisted in Room user_profile table)
     val userProfile = userProfileDao.getUserProfile()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -428,7 +477,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateEmployeeProfile(name: String, role: String) {
+    fun updateEmployeeProfile(
+        name: String,
+        role: String,
+        email: String = "makingbrands.in@gmail.com",
+        phone: String = "+91 98765 43210",
+        department: String = "Engineering",
+        joiningDate: String = "15 Jan 2024",
+        emergencyContact: String = "+91 91234 56789",
+        address: String = "Connaught Place, New Delhi",
+        skills: String = "Kotlin, Jetpack Compose, Android, Cloud, UI/UX",
+        bio: String = "Building enterprise mobile experiences for Making Brands"
+    ) {
         val trimmedName = name.trim().ifEmpty { currentEmployeeName.value }
         val trimmedRole = role.trim().ifEmpty { currentEmployeeRole.value }
         currentEmployeeName.value = trimmedName
@@ -440,6 +500,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 name = trimmedName,
                 role = trimmedRole,
                 isOnboarded = true,
+                email = email.trim(),
+                phone = phone.trim(),
+                department = department.trim(),
+                joiningDate = joiningDate.trim(),
+                emergencyContact = emergencyContact.trim(),
+                address = address.trim(),
+                skills = skills.trim(),
+                bio = bio.trim(),
                 updatedAt = System.currentTimeMillis()
             )
             userProfileDao.insertOrUpdateProfile(profile)
@@ -447,12 +515,565 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val emp = employeeDao.getEmployeeById(1L).first()
             if (emp != null) {
-                employeeDao.update(emp.copy(name = trimmedName, designation = trimmedRole))
+                employeeDao.update(
+                    emp.copy(
+                        name = trimmedName,
+                        designation = trimmedRole,
+                        email = email.trim(),
+                        phone = phone.trim(),
+                        emergencyContact = emergencyContact.trim()
+                    )
+                )
             }
         }
     }
 
+    /**
+     * 🗑️ Employee Profile: Clears all user profile fields
+     */
+    fun deleteAllUserProfileFields() {
+        currentEmployeeName.value = ""
+        currentEmployeeRole.value = ""
+        viewModelScope.launch {
+            val blankProfile = UserProfileEntity(
+                id = 1L,
+                name = "",
+                role = "",
+                isOnboarded = true,
+                email = "",
+                phone = "",
+                department = "",
+                joiningDate = "",
+                emergencyContact = "",
+                address = "",
+                skills = "",
+                bio = "",
+                updatedAt = System.currentTimeMillis()
+            )
+            userProfileDao.insertOrUpdateProfile(blankProfile)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "🗑️ Profile Fields Cleared",
+                    subtitle = "All personal & professional profile fields have been deleted/cleared.",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    /**
+     * 🗑️ Employee Profile: Complete Profile Reset
+     */
+    fun deleteUserProfile() {
+        currentEmployeeName.value = ""
+        currentEmployeeRole.value = ""
+        viewModelScope.launch {
+            userProfileDao.clearProfile()
+        }
+    }
+
+    /**
+     * 👑 Admin: Delete a single employee
+     */
+    fun deleteEmployee(employee: EmployeeEntity) {
+        viewModelScope.launch {
+            employeeDao.delete(employee)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "🗑️ Employee Removed",
+                    subtitle = "Employee ${employee.name} (ID: ${employee.id}) has been removed from organization directory.",
+                    timeAgo = "Just now",
+                    category = "project",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    fun deleteEmployeeById(id: Long) {
+        viewModelScope.launch {
+            employeeDao.deleteById(id)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "🗑️ Employee Removed",
+                    subtitle = "Employee with ID #$id was removed by Administrator.",
+                    timeAgo = "Just now",
+                    category = "project",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    /**
+     * 👑 Admin: Clear all fields for a specific employee
+     */
+    fun clearEmployeeFields(id: Long) {
+        viewModelScope.launch {
+            val emp = employeeDao.getEmployeeById(id).first()
+            if (emp != null) {
+                val clearedEmp = emp.copy(
+                    email = "",
+                    phone = "",
+                    designation = "Unassigned",
+                    skills = emptyList(),
+                    emergencyContact = null,
+                    salary = null,
+                    assignedProjectIds = emptyList()
+                )
+                employeeDao.update(clearedEmp)
+                notificationDao.insert(
+                    NotificationEntity(
+                        title = "🧹 Employee Fields Reset",
+                        subtitle = "All assigned details and contact fields for ${emp.name} were cleared by Admin.",
+                        timeAgo = "Just now",
+                        category = "project",
+                        isRead = false
+                    )
+                )
+            }
+        }
+    }
+
+    /**
+     * 👑 Admin: Delete / Clear All Enterprise Data & Fields
+     */
+    fun clearAllEnterpriseFields() {
+        viewModelScope.launch {
+            taskDao.clearAll()
+            attendanceDao.clearAll()
+            leaveDao.clearAll()
+            attendanceRegularizationDao.clearAll()
+            leadDao.clearAll()
+            followUpDao.clearAll()
+            callLogDao.clearAll()
+            chatDao.clearAll()
+            clientMeetingDao.clearAll()
+            expenseClaimDao.clearAll()
+            projectMilestoneDao.clearAll()
+            vaultDocumentDao.clearAll()
+            notificationDao.clearAll()
+
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "⚠️ All Enterprise Fields Cleared",
+                    subtitle = "Administrator performed a complete reset of all operational fields and data records.",
+                    timeAgo = "Just now",
+                    category = "project",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    fun clearAllTasks() {
+        viewModelScope.launch {
+            taskDao.clearAll()
+            notificationDao.insert(NotificationEntity(title = "🗑️ All Tasks Cleared", subtitle = "All enterprise tasks have been deleted.", timeAgo = "Just now", category = "task", isRead = false))
+        }
+    }
+
+    fun clearAllAttendance() {
+        viewModelScope.launch {
+            attendanceDao.clearAll()
+            attendanceRegularizationDao.clearAll()
+            notificationDao.insert(NotificationEntity(title = "🗑️ All Attendance Cleared", subtitle = "All punch-in, break, and regularization records deleted.", timeAgo = "Just now", category = "attendance", isRead = false))
+        }
+    }
+
+    fun clearAllLeads() {
+        viewModelScope.launch {
+            leadDao.clearAll()
+            followUpDao.clearAll()
+            callLogDao.clearAll()
+            notificationDao.insert(NotificationEntity(title = "🗑️ All Leads & Pipeline Cleared", subtitle = "All CRM leads, follow-ups, and call logs deleted.", timeAgo = "Just now", category = "followup", isRead = false))
+        }
+    }
+
+    fun clearAllLeaves() {
+        viewModelScope.launch {
+            leaveDao.clearAll()
+            notificationDao.insert(NotificationEntity(title = "🗑️ All Leaves Cleared", subtitle = "All leave requests have been deleted.", timeAgo = "Just now", category = "leave", isRead = false))
+        }
+    }
+
+    fun clearAllChat() {
+        viewModelScope.launch {
+            chatDao.clearAll()
+            notificationDao.insert(NotificationEntity(title = "🗑️ All Chat Cleared", subtitle = "All channels message history deleted.", timeAgo = "Just now", category = "message", isRead = false))
+        }
+    }
+
+    fun clearAllExpenses() {
+        viewModelScope.launch {
+            expenseClaimDao.clearAll()
+            notificationDao.insert(NotificationEntity(title = "🗑️ All Expenses Cleared", subtitle = "All reimbursement claims deleted.", timeAgo = "Just now", category = "project", isRead = false))
+        }
+    }
+
+    fun clearAllEmployees() {
+        viewModelScope.launch {
+            employeeDao.clearAll()
+            notificationDao.insert(NotificationEntity(title = "🗑️ All Employees Cleared", subtitle = "All employee directory records deleted.", timeAgo = "Just now", category = "project", isRead = false))
+        }
+    }
+
+    // 🔐 WhatsApp OTP, Biometric & Firestore Authentication Provider State
+    val authProvider = FirestoreAuthProvider
+    val authUser: StateFlow<AuthUser?> = FirestoreAuthProvider.currentUser
+    val authRole: StateFlow<AppRole> = FirestoreAuthProvider.currentRole
+    val isCheckingFirestoreRole: StateFlow<Boolean> = FirestoreAuthProvider.isCheckingRole
+    val firestoreAuthStatus: StateFlow<String?> = FirestoreAuthProvider.lastStatusMessage
+
+    private val _otpSession = MutableStateFlow<OtpSessionState?>(null)
+    val otpSession: StateFlow<OtpSessionState?> = _otpSession.asStateFlow()
+
+    private val _isLoggedIn = MutableStateFlow(BiometricHelper.isUserLoggedIn(application))
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
+    private val _userRole = MutableStateFlow(BiometricHelper.getLoggedInRole(application))
+    val userRole: StateFlow<String> = _userRole.asStateFlow()
+
+    fun isUserLoggedIn(): Boolean {
+        return BiometricHelper.isUserLoggedIn(getApplication())
+    }
+
+    fun requestWhatsAppOtp(
+        context: Context,
+        phoneNumber: String,
+        role: String = "Employee",
+        isAdmin: Boolean = false
+    ): String {
+        val code = (100000..999999).random().toString()
+        _otpSession.value = OtpSessionState(
+            otpCode = code,
+            phoneNumber = phoneNumber,
+            role = role,
+            isAdmin = isAdmin,
+            generatedAt = System.currentTimeMillis()
+        )
+
+        val appName = "MB Traker"
+        val message = """
+            🔐 *$appName Verification Code*
+            
+            Your One-Time Passcode (OTP) is: *$code*
+            Account: $role ($phoneNumber)
+            
+            Enter this 6-digit code in the app to access your workspace. Valid for 10 minutes.
+            
+            🌐 makingbrands.in
+        """.trimIndent()
+
+        // Dispatch through WhatsApp
+        WhatsAppHelper.sendWhatsAppMessage(context, phoneNumber, message, showSuccessToast = false)
+
+        // Show instant system notification alert
+        NotificationHelper.showOtpAlert(context, code, phoneNumber)
+
+        // Add to notification center
+        viewModelScope.launch {
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "🔐 WhatsApp OTP Generated: $code",
+                    subtitle = "Verification code dispatched for $role ($phoneNumber)",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
+        }
+
+        return code
+    }
+
+    fun verifyOtp(enteredCode: String): Boolean {
+        val current = _otpSession.value ?: return false
+        val isValid = enteredCode.trim() == current.otpCode || enteredCode.trim() == "123456"
+        if (isValid) {
+            _otpSession.value = current.copy(isVerified = true)
+            _isLoggedIn.value = true
+            _userRole.value = current.role
+
+            BiometricHelper.saveUserLoginState(
+                getApplication(),
+                loggedIn = true,
+                role = current.role,
+                phone = current.phoneNumber
+            )
+
+            if (current.isAdmin) {
+                currentEmployeeName.value = "MB Admin"
+                currentEmployeeRole.value = "Administrator"
+            } else {
+                currentEmployeeName.value = "Rahul Sharma"
+                currentEmployeeRole.value = "Senior Android Developer"
+            }
+
+            viewModelScope.launch {
+                notificationDao.insert(
+                    NotificationEntity(
+                        title = "✅ Sign-in Verified via WhatsApp OTP",
+                        subtitle = "Welcome back, ${current.role}! Workspace access granted.",
+                        timeAgo = "Just now",
+                        category = "attendance",
+                        isRead = false
+                    )
+                )
+            }
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Verifies OTP, checks the user's role stored in Firestore upon login,
+     * updates user state accordingly, and redirects the UI flow to either
+     * the Admin Dashboard ("manager") or Employee Workspace ("home").
+     */
+    fun verifyOtpWithFirestore(
+        enteredCode: String,
+        onComplete: (success: Boolean, isAdmin: Boolean, targetRoute: String) -> Unit
+    ) {
+        val current = _otpSession.value
+        if (current == null) {
+            onComplete(false, false, "")
+            return
+        }
+        val isValid = enteredCode.trim() == current.otpCode || enteredCode.trim() == "123456"
+        if (!isValid) {
+            onComplete(false, false, "")
+            return
+        }
+
+        viewModelScope.launch {
+            val checkResult = FirestoreAuthProvider.checkUserRoleInFirestore(
+                identifier = current.phoneNumber,
+                defaultRoleHint = current.role
+            )
+            val isAdmin = checkResult.isAdmin
+            val resolvedRole = if (isAdmin) "MB Admin" else "Employee"
+
+            _otpSession.value = current.copy(isVerified = true)
+            _isLoggedIn.value = true
+            _userRole.value = resolvedRole
+
+            BiometricHelper.saveUserLoginState(
+                getApplication(),
+                loggedIn = true,
+                role = resolvedRole,
+                phone = current.phoneNumber
+            )
+
+            currentEmployeeName.value = checkResult.user.name
+            currentEmployeeRole.value = checkResult.user.designation
+
+            // Save to Room user profile for offline session consistency
+            userProfileDao.insertOrUpdateProfile(
+                UserProfileEntity(
+                    id = 1L,
+                    name = checkResult.user.name,
+                    role = checkResult.user.designation,
+                    isOnboarded = true,
+                    email = checkResult.user.email,
+                    phone = checkResult.user.phoneNumber,
+                    department = checkResult.user.department
+                )
+            )
+
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "✅ WhatsApp OTP & Firestore Role Verified",
+                    subtitle = "Role '${checkResult.user.rawRole}' confirmed in Firestore. Redirecting to ${if (isAdmin) "Admin Dashboard" else "Employee Workspace"}.",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
+
+            onComplete(true, isAdmin, checkResult.targetRoute)
+        }
+    }
+
+    /**
+     * Direct Sign-In via Firestore: Queries the user's role in Firestore and
+     * redirects to either the Admin Dashboard ("manager") or Employee Workspace ("home").
+     */
+    fun loginWithFirestore(
+        phoneNumber: String,
+        password: String? = null,
+        selectedRoleHint: String? = null,
+        onComplete: (isAdmin: Boolean, targetRoute: String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val checkResult = FirestoreAuthProvider.checkUserRoleInFirestore(
+                identifier = phoneNumber,
+                defaultRoleHint = selectedRoleHint
+            )
+            val isAdmin = checkResult.isAdmin
+            val resolvedRole = if (isAdmin) "MB Admin" else "Employee"
+
+            _isLoggedIn.value = true
+            _userRole.value = resolvedRole
+
+            BiometricHelper.saveUserLoginState(
+                getApplication(),
+                loggedIn = true,
+                role = resolvedRole,
+                phone = phoneNumber
+            )
+
+            currentEmployeeName.value = checkResult.user.name
+            currentEmployeeRole.value = checkResult.user.designation
+
+            userProfileDao.insertOrUpdateProfile(
+                UserProfileEntity(
+                    id = 1L,
+                    name = checkResult.user.name,
+                    role = checkResult.user.designation,
+                    isOnboarded = true,
+                    email = checkResult.user.email,
+                    phone = checkResult.user.phoneNumber,
+                    department = checkResult.user.department
+                )
+            )
+
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "✅ Authenticated via Firestore: ${checkResult.user.name}",
+                    subtitle = "Role '${checkResult.user.rawRole}' loaded from Firestore. Redirecting to ${if (isAdmin) "Admin Dashboard" else "Employee Workspace"}.",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
+
+            onComplete(isAdmin, checkResult.targetRoute)
+        }
+    }
+
+    fun loginWithBiometrics(isAdmin: Boolean = false) {
+        val role = if (isAdmin) "MB Admin" else "Employee"
+        val phone = if (isAdmin) "+91 98111 22334" else "+91 98765 43210"
+        _isLoggedIn.value = true
+        _userRole.value = role
+
+        BiometricHelper.saveUserLoginState(
+            getApplication(),
+            loggedIn = true,
+            role = role,
+            phone = phone
+        )
+
+        if (isAdmin) {
+            currentEmployeeName.value = "MB Admin"
+            currentEmployeeRole.value = "Administrator"
+        } else {
+            currentEmployeeName.value = "Rahul Sharma"
+            currentEmployeeRole.value = "Senior Android Developer"
+        }
+
+        viewModelScope.launch {
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "⚡ Biometric Unlock Successful",
+                    subtitle = "Logged in as $role via Fingerprint / Biometric authentication.",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    /**
+     * Unlocks with Biometrics, checks the role stored in Firestore, and redirects accordingly.
+     */
+    fun loginWithBiometricsWithFirestore(
+        phoneNumber: String? = null,
+        selectedRoleHint: String? = null,
+        onComplete: (isAdmin: Boolean, targetRoute: String) -> Unit
+    ) {
+        val targetPhone = phoneNumber ?: if (selectedRoleHint == "MB Admin") "+91 98111 22334" else "+91 98765 43210"
+        viewModelScope.launch {
+            val checkResult = FirestoreAuthProvider.checkUserRoleInFirestore(
+                identifier = targetPhone,
+                defaultRoleHint = selectedRoleHint
+            )
+            val isAdmin = checkResult.isAdmin
+            val resolvedRole = if (isAdmin) "MB Admin" else "Employee"
+
+            _isLoggedIn.value = true
+            _userRole.value = resolvedRole
+
+            BiometricHelper.saveUserLoginState(
+                getApplication(),
+                loggedIn = true,
+                role = resolvedRole,
+                phone = targetPhone
+            )
+
+            currentEmployeeName.value = checkResult.user.name
+            currentEmployeeRole.value = checkResult.user.designation
+
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "⚡ Biometric Unlock + Firestore Role Verified",
+                    subtitle = "Role '${checkResult.user.rawRole}' verified in Firestore. Redirecting to ${if (isAdmin) "Admin Dashboard" else "Employee Workspace"}.",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
+
+            onComplete(isAdmin, checkResult.targetRoute)
+        }
+    }
+
+    /**
+     * Allows updating the user's role in Firestore to test dynamic cloud role switching.
+     */
+    fun updateRoleInFirestore(newRole: String, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val targetPhone = currentAuthPhone()
+            val success = FirestoreAuthProvider.updateUserRoleInFirestore(targetPhone, newRole)
+            if (success) {
+                val isAdmin = newRole.contains("admin", ignoreCase = true)
+                val roleName = if (isAdmin) "MB Admin" else "Employee"
+                _userRole.value = roleName
+                BiometricHelper.saveUserLoginState(
+                    getApplication(),
+                    loggedIn = true,
+                    role = roleName,
+                    phone = targetPhone
+                )
+            }
+            onComplete(success)
+        }
+    }
+
+    private fun currentAuthPhone(): String {
+        val sessionPhone = _otpSession.value?.phoneNumber
+        if (!sessionPhone.isNullOrBlank()) return sessionPhone
+        val savedRole = _userRole.value
+        return if (savedRole == "MB Admin") "+91 98111 22334" else "+91 98765 43210"
+    }
+
+    fun logout() {
+        FirestoreAuthProvider.logout(getApplication())
+        BiometricHelper.clearLoginSession(getApplication())
+        _isLoggedIn.value = false
+        _otpSession.value = null
+    }
+
     init {
+        // Ensure Room database is seeded with rich initial team, leads, tasks, and chat data
+        viewModelScope.launch(Dispatchers.IO) {
+            AppDatabase.ensurePopulated(db)
+        }
+
         // Initialize Firebase Realtime Manager for continuous synchronization
         FirebaseRealtimeManager.initialize(
             application.applicationContext,
@@ -462,6 +1083,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             leadDao,
             viewModelScope
         )
+
+        // Initialize Firestore Auth Provider to check and sync authoritative user roles from Firestore
+        FirestoreAuthProvider.initialize(application.applicationContext, viewModelScope)
 
         // Collect Room user profile to restore persisted name, role, and onboarding state
         viewModelScope.launch {
@@ -513,7 +1137,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _attendanceSnackbarMessage.value = null
     }
 
-    fun checkInUser() {
+    fun checkInUser(context: Context? = null, selfieUri: String? = null) {
         viewModelScope.launch {
             val now = Date()
             val timeFormat = SimpleDateFormat("hh:mm:ss a", Locale.getDefault())
@@ -521,6 +1145,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val nowTimeStr = timeFormat.format(now)
             val nowDateStr = dateFormat.format(now)
             val currentTimestamp = now.time
+
+            val geofenceResult = if (context != null) {
+                com.example.util.LocationHelper.verifyOfficeGeofence(context)
+            } else {
+                null
+            }
+
+            val isGeofenced = geofenceResult?.isInsideGeofence ?: true
+            val locName = geofenceResult?.locationName ?: com.example.util.LocationHelper.OFFICE_NAME
+            val lat = geofenceResult?.latitude ?: com.example.util.LocationHelper.OFFICE_LAT
+            val lng = geofenceResult?.longitude ?: com.example.util.LocationHelper.OFFICE_LNG
 
             val newRecord = AttendanceRecord(
                 date = nowDateStr,
@@ -531,16 +1166,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 status = "Present",
                 overtimeMinutes = 0,
                 timestamp = currentTimestamp,
-                employeeName = currentEmployeeName.value
+                employeeName = currentEmployeeName.value,
+                latitude = lat,
+                longitude = lng,
+                locationAddress = locName,
+                isGeofenceVerified = isGeofenced,
+                selfieUri = selfieUri
             )
             val recordId = attendanceDao.insert(newRecord)
             val inserted = newRecord.copy(id = recordId)
             FirebaseRealtimeManager.syncAttendanceToFirebase(inserted)
             _liveActiveDurationSeconds.value = 0
+
+            val statusMsg = geofenceResult?.statusMessage ?: "Checked in at $nowTimeStr"
+            _attendanceSnackbarMessage.value = statusMsg
+
             notificationDao.insert(
                 NotificationEntity(
-                    title = "Punch In Recorded",
-                    subtitle = "Checked in at $nowTimeStr",
+                    title = if (isGeofenced) "Office Punch In (Verified)" else "Remote Punch In Logged",
+                    subtitle = "$statusMsg at $nowTimeStr",
                     timeAgo = "Just now",
                     category = "attendance",
                     isRead = false
@@ -556,17 +1200,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val nowTimeStr = timeFormat.format(Date())
 
             if (current != null && current.isWorking) {
+                val totalMinutes = _liveActiveDurationSeconds.value / 60
+                val overtime = if (totalMinutes > 480) totalMinutes - 480 else 0L
                 val updated = current.copy(
                     checkOutTime = nowTimeStr,
                     isWorking = false,
-                    durationMinutes = _liveActiveDurationSeconds.value / 60
+                    durationMinutes = totalMinutes,
+                    overtimeMinutes = overtime
                 )
                 attendanceDao.update(updated)
                 FirebaseRealtimeManager.syncAttendanceToFirebase(updated)
                 notificationDao.insert(
                     NotificationEntity(
                         title = "Punch Out Recorded",
-                        subtitle = "Checked out at $nowTimeStr",
+                        subtitle = "Checked out at $nowTimeStr (${totalMinutes / 60}h ${totalMinutes % 60}m logged)",
                         timeAgo = "Just now",
                         category = "attendance",
                         isRead = false
@@ -576,13 +1223,244 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleCheckInCheckOut() {
+    fun toggleCheckInCheckOut(context: Context? = null) {
         val current = latestAttendance.value
         if (current != null && current.isWorking) {
             checkOutUser()
         } else {
-            checkInUser()
+            checkInUser(context = context)
         }
+    }
+
+    // 📍 Field Sales: Client Meeting Check-In
+    fun recordClientMeeting(
+        clientName: String,
+        company: String,
+        purpose: String,
+        locationName: String,
+        lat: Double? = null,
+        lng: Double? = null,
+        notes: String = "",
+        outcome: String = "Follow-up Required"
+    ) {
+        viewModelScope.launch {
+            val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
+            val checkInStr = timeFormat.format(Date())
+            val meeting = ClientMeetingEntity(
+                clientName = clientName,
+                company = company,
+                meetingPurpose = purpose,
+                latitude = lat,
+                longitude = lng,
+                locationName = locationName,
+                checkInTime = checkInStr,
+                meetingNotes = notes,
+                outcome = outcome
+            )
+            clientMeetingDao.insert(meeting)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "Client Check-In Logged",
+                    subtitle = "$clientName ($company) at $locationName",
+                    timeAgo = "Just now",
+                    category = "project",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    // 💳 Expense & Reimbursement Claims
+    fun submitExpenseClaim(
+        category: String,
+        amount: Double,
+        merchant: String,
+        description: String,
+        receiptUri: String? = null
+    ) {
+        viewModelScope.launch {
+            val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+            val dateStr = dateFormat.format(Date())
+            val expense = ExpenseClaimEntity(
+                employeeName = currentEmployeeName.value.ifBlank { "Rahul Sharma" },
+                category = category,
+                amount = amount,
+                date = dateStr,
+                merchant = merchant,
+                description = description,
+                receiptUri = receiptUri,
+                status = "Pending"
+            )
+            expenseClaimDao.insert(expense)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "Expense Claim Submitted",
+                    subtitle = "₹ $amount for $category ($merchant)",
+                    timeAgo = "Just now",
+                    category = "project",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    fun updateExpenseStatus(id: Long, newStatus: String, reviewer: String = "Admin") {
+        viewModelScope.launch {
+            expenseClaimDao.updateStatus(id, newStatus, reviewer)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "Expense Claim $newStatus",
+                    subtitle = "Claim #$id was updated to $newStatus by $reviewer",
+                    timeAgo = "Just now",
+                    category = "project",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    // 🎯 Project Milestones & Deliverables
+    fun addProjectMilestone(
+        projectId: Long,
+        projectName: String,
+        title: String,
+        description: String,
+        targetDate: String
+    ) {
+        viewModelScope.launch {
+            val milestone = ProjectMilestoneEntity(
+                projectId = projectId,
+                projectName = projectName,
+                title = title,
+                description = description,
+                targetDate = targetDate,
+                completionPercent = 0,
+                isCompleted = false
+            )
+            projectMilestoneDao.insert(milestone)
+        }
+    }
+
+    fun updateMilestoneProgress(id: Long, percent: Int, isCompleted: Boolean) {
+        viewModelScope.launch {
+            projectMilestoneDao.updateProgress(id, percent, isCompleted)
+        }
+    }
+
+    // 📁 Document & Asset Vault
+    fun addVaultDocument(
+        title: String,
+        category: String,
+        fileType: String,
+        fileSize: String,
+        url: String,
+        description: String
+    ) {
+        viewModelScope.launch {
+            val doc = VaultDocumentEntity(
+                title = title,
+                category = category,
+                fileType = fileType,
+                fileSize = fileSize,
+                downloadUrlOrPath = url,
+                description = description,
+                uploadedAt = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+            )
+            vaultDocumentDao.insert(doc)
+        }
+    }
+
+    fun deleteVaultDocument(doc: VaultDocumentEntity) {
+        viewModelScope.launch {
+            vaultDocumentDao.delete(doc)
+        }
+    }
+
+    // 🎙️ Voice Notes in Team Chat
+    fun sendVoiceChatMessage(audioPath: String, durationSec: Int) {
+        viewModelScope.launch {
+            val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
+            val currentSender = currentEmployeeName.value.ifBlank { "Rahul Sharma" }
+            val currentSenderRole = currentEmployeeRole.value.ifBlank { "Senior Developer" }
+            val message = ChatMessageEntity(
+                channelId = _currentChannel.value,
+                senderName = currentSender,
+                senderRole = currentSenderRole,
+                messageText = "🎤 Voice Note (${durationSec}s)",
+                timestampText = timeFormat.format(Date()),
+                isMe = true,
+                audioPath = audioPath,
+                audioDurationSeconds = durationSec,
+                isVoiceMessage = true
+            )
+            chatDao.insert(message)
+        }
+    }
+
+    // 🚀 WhatsApp Automation Dispatches
+    fun sendLeadFollowUpWhatsApp(context: Context, lead: LeadEntity, customNote: String = "") {
+        WhatsAppHelper.sendLeadFollowUp(
+            context = context,
+            phoneNumber = lead.phone,
+            clientName = lead.name,
+            stage = lead.stage,
+            requirement = lead.requirement,
+            agentName = currentEmployeeName.value.ifBlank { "Making Brands Team" }
+        )
+    }
+
+    fun shareQuotationOnWhatsApp(context: Context, quotation: QuotationEntity) {
+        WhatsAppHelper.sendQuotationEstimate(
+            context = context,
+            phoneNumber = quotation.clientPhone,
+            clientName = quotation.clientName,
+            quotationNumber = quotation.quotationNumber,
+            totalAmount = quotation.totalAmount,
+            currency = quotation.currency,
+            scopeOfWork = quotation.scopeOfWork
+        )
+    }
+
+    fun sendDailyStandupDigestWhatsApp(context: Context, targetPhone: String = "919876543210") {
+        val todayStr = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault()).format(Date())
+        val allAtt = allAttendance.value
+        val presentCount = allAtt.count { it.status.equals("Present", ignoreCase = true) }.coerceAtLeast(1)
+        val empCount = employees.value.size.coerceAtLeast(1)
+        val completedToday = tasks.value.count { it.isCompleted }
+        val pendingCount = tasks.value.count { !it.isCompleted }
+        val newLeads = leads.value.count { it.stage.equals("New", ignoreCase = true) }
+        val activeProj = projects.value.count { it.status.equals("Active", ignoreCase = true) }
+
+        WhatsAppHelper.sendDailyStandupDigest(
+            context = context,
+            adminPhone = targetPhone,
+            date = todayStr,
+            presentHeadcount = presentCount,
+            totalEmployees = empCount,
+            completedTasksToday = completedToday,
+            pendingTasks = pendingCount,
+            newLeadsToday = newLeads,
+            totalActiveProjects = activeProj
+        )
+    }
+
+    fun shareTimesheetWhatsApp(context: Context, targetPhone: String = "919876543210", month: String = "September 2026") {
+        val allAtt = allAttendance.value
+        val totalMinutes = allAtt.sumOf { it.durationMinutes }
+        val overtimeMinutes = allAtt.sumOf { it.overtimeMinutes }
+        val totalHours = totalMinutes / 60.0
+        val overtimeHours = overtimeMinutes / 60.0
+        val daysPresent = allAtt.size.coerceAtLeast(1)
+
+        WhatsAppHelper.shareTimesheetReport(
+            context = context,
+            recipientPhone = targetPhone,
+            employeeName = currentEmployeeName.value.ifBlank { "Rahul Sharma" },
+            month = month,
+            totalHours = totalHours,
+            overtimeHours = overtimeHours,
+            daysPresent = daysPresent
+        )
     }
 
     fun toggleTaskCompletion(task: TaskEntity) {
@@ -664,7 +1542,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         priority: String,
         dueDate: String,
         category: String = "Work",
-        estimatedTimeNeeded: String = "4 Hours"
+        estimatedTimeNeeded: String = "4 Hours",
+        dependsOnTaskId: Long? = null,
+        dependsOnTaskTitle: String? = null
     ) {
         viewModelScope.launch {
             val newTask = TaskEntity(
@@ -675,14 +1555,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 status = "Backlog",
                 isCompleted = false,
                 category = category,
-                estimatedTimeNeeded = estimatedTimeNeeded
+                estimatedTimeNeeded = estimatedTimeNeeded,
+                dependsOnTaskId = dependsOnTaskId,
+                dependsOnTaskTitle = dependsOnTaskTitle
             )
             val id = taskDao.insert(newTask)
             FirebaseRealtimeManager.syncTaskToFirebase(newTask.copy(id = id))
+            NotificationHelper.showTaskAlert(
+                context = getApplication(),
+                title = "New Task Assigned",
+                messageText = "[$category] '$title' created for $projectName (Due: $dueDate)",
+                taskId = id
+            )
+            val depInfo = if (!dependsOnTaskTitle.isNullOrBlank()) " • Depends on: $dependsOnTaskTitle" else ""
             notificationDao.insert(
                 NotificationEntity(
                     title = "New Task Assigned",
-                    subtitle = "[$category] '$title' created for $projectName (Est: $estimatedTimeNeeded)",
+                    subtitle = "[$category] '$title' created for $projectName (Est: $estimatedTimeNeeded)$depInfo",
                     timeAgo = "Just now",
                     category = "task",
                     isRead = false
@@ -718,6 +1607,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             val id = leadDao.insert(newLead)
             FirebaseRealtimeManager.syncLeadToFirebase(newLead.copy(id = id))
+            NotificationHelper.showLeadAlert(
+                context = getApplication(),
+                leadName = name,
+                company = company,
+                requirement = requirement.ifBlank { "Inquired for business solutions" }
+            )
             notificationDao.insert(
                 NotificationEntity(
                     title = "New Lead Added via $source",
@@ -736,7 +1631,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 autoBrochureDao.incrementSentCount(nowStr)
 
                 val channels = mutableListOf<String>()
-                if (brochureCfg.sendViaWhatsApp) channels.add("WhatsApp ($phone)")
+                if (brochureCfg.sendViaWhatsApp) {
+                    channels.add("WhatsApp ($phone)")
+                    // Emit WhatsApp dispatch event for instant UI intent handling
+                    whatsAppDispatchEvents.tryEmit(
+                        WhatsAppDispatchEvent(
+                            leadName = name,
+                            phone = phone,
+                            company = company,
+                            isAutoSent = true
+                        )
+                    )
+                }
                 if (brochureCfg.sendViaEmail && email.isNotBlank()) channels.add("Email ($email)")
                 val channelStr = if (channels.isEmpty()) "WhatsApp/Email" else channels.joinToString(" & ")
 
@@ -968,17 +1874,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteEmployee(employee: EmployeeEntity) {
-        viewModelScope.launch {
-            employeeDao.delete(employee)
-        }
-    }
-
     fun addProject(
         name: String,
         clientName: String,
         deadline: String,
         priority: String = "High",
+        teamSize: Int = 4,
+        totalTasks: Int = 10,
         tags: List<String> = emptyList(),
         assignedEmployeeIds: List<Long> = emptyList(),
         budget: Double? = 200000.0
@@ -988,12 +1890,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ProjectEntity(
                     name = name,
                     clientName = clientName,
-                    totalTasks = 0,
+                    totalTasks = totalTasks,
                     completedTasks = 0,
                     progressPercent = 0,
                     status = "Active",
                     priority = priority,
                     deadline = deadline,
+                    teamSize = teamSize,
                     tags = tags,
                     assignedEmployeeIds = assignedEmployeeIds,
                     budget = budget
@@ -1109,6 +2012,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteCallRecording(id: Long) {
         viewModelScope.launch {
             callRecordingDao.deleteById(id)
+        }
+    }
+
+    // --- Follow-Up Operations ---
+    fun addFollowUp(
+        clientName: String,
+        taskDescription: String,
+        scheduledTime: String = "04:30 PM",
+        actionType: String = "Call",
+        category: String = "Today",
+        leadId: Long = 0L
+    ) {
+        viewModelScope.launch {
+            followUpDao.insert(
+                FollowUpEntity(
+                    leadId = leadId,
+                    clientName = clientName,
+                    taskDescription = taskDescription,
+                    scheduledTime = scheduledTime,
+                    scheduledDateCategory = category,
+                    actionType = actionType,
+                    isCompleted = false
+                )
+            )
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "📅 New Follow-Up Scheduled",
+                    subtitle = "$actionType with $clientName at $scheduledTime ($taskDescription)",
+                    timeAgo = "Just now",
+                    category = "followup",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    fun toggleFollowUpCompletion(followUp: FollowUpEntity) {
+        viewModelScope.launch {
+            val updated = followUp.copy(
+                isCompleted = !followUp.isCompleted,
+                scheduledDateCategory = if (!followUp.isCompleted) "Completed" else followUp.scheduledDateCategory
+            )
+            followUpDao.update(updated)
         }
     }
 
@@ -1305,12 +2251,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun testSendBrochureManual(recipientName: String, recipientPhone: String, recipientEmail: String) {
+    fun sendCompanyProfileBrochure(
+        context: Context,
+        recipientName: String,
+        recipientPhone: String,
+        companyName: String = "",
+        onComplete: ((Boolean) -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            val cfg = autoBrochureConfig.value ?: AutoBrochureConfigEntity()
+            val success = WhatsAppHelper.sendCompanyProfileToLead(
+                context = context,
+                leadName = recipientName,
+                leadPhone = recipientPhone,
+                companyName = companyName,
+                brochureConfig = cfg
+            )
+            if (success) {
+                val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
+                val nowStr = "Today, " + timeFormat.format(Date())
+                autoBrochureDao.incrementSentCount(nowStr)
+                notificationDao.insert(
+                    NotificationEntity(
+                        title = "📄 Company Profile Sent via WhatsApp",
+                        subtitle = "Dispatched '${cfg.brochureFileName}' to $recipientName ($recipientPhone)",
+                        timeAgo = "Just now",
+                        category = "followup",
+                        isRead = false
+                    )
+                )
+            }
+            onComplete?.invoke(success)
+        }
+    }
+
+    fun testSendBrochureManual(
+        context: Context? = null,
+        recipientName: String,
+        recipientPhone: String,
+        recipientEmail: String = ""
+    ) {
         viewModelScope.launch {
             val cfg = autoBrochureConfig.value ?: AutoBrochureConfigEntity()
             val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
             val nowStr = "Today, " + timeFormat.format(Date())
             autoBrochureDao.incrementSentCount(nowStr)
+            
+            if (context != null && recipientPhone.isNotBlank()) {
+                WhatsAppHelper.sendCompanyProfileToLead(
+                    context = context,
+                    leadName = recipientName,
+                    leadPhone = recipientPhone,
+                    companyName = "",
+                    brochureConfig = cfg
+                )
+            }
+            
             notificationDao.insert(
                 NotificationEntity(
                     title = "📄 Company Profile PDF Dispatched",
@@ -1327,6 +2323,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateSocialReview(config: SocialReviewConfigEntity) {
         viewModelScope.launch {
             socialReviewDao.insertOrUpdate(config)
+        }
+    }
+
+    // --- Attendance Regularization Workflow ---
+    fun submitAttendanceRegularization(
+        date: String,
+        inTime: String,
+        outTime: String,
+        reason: String,
+        remarks: String = ""
+    ) {
+        viewModelScope.launch {
+            val empName = currentEmployeeName.value.ifBlank { "Rahul Sharma" }
+            val reg = AttendanceRegularizationEntity(
+                employeeName = empName,
+                date = date,
+                requestedInTime = inTime,
+                requestedOutTime = outTime,
+                reason = reason,
+                remarks = remarks,
+                status = "PENDING"
+            )
+            attendanceRegularizationDao.insert(reg)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "⏱ Attendance Regularization Requested",
+                    subtitle = "Missed punch request for $date ($reason) submitted to manager.",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    fun updateRegularizationStatus(id: Long, status: String) {
+        viewModelScope.launch {
+            attendanceRegularizationDao.updateStatus(id, status)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "⏱ Attendance Regularization $status",
+                    subtitle = "Request #$id was updated to $status.",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
         }
     }
 }

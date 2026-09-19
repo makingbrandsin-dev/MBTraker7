@@ -36,6 +36,7 @@ import com.example.ui.components.AppHeader
 import com.example.ui.components.CrmTasksAttendanceSwitcher
 import com.example.ui.components.MetricBadge
 import com.example.ui.theme.*
+import com.example.util.WhatsAppHelper
 
 data class LeadSourceMeta(
     val name: String,
@@ -55,6 +56,40 @@ fun getSourceMeta(sourceName: String): LeadSourceMeta {
         "website" -> LeadSourceMeta("Website", Icons.Default.Language, Color(0xFF0D9488), Color(0xFFCCFBF1), "Contact Form API")
         "linkedin" -> LeadSourceMeta("LinkedIn", Icons.Default.Work, Color(0xFF0284C7), Color(0xFFE0F2FE), "LinkedIn Lead Gen")
         else -> LeadSourceMeta(sourceName.ifBlank { "Direct" }, Icons.Default.Public, Color(0xFF4F46E5), Color(0xFFEEF2FF), "Custom Ingestion API")
+    }
+}
+
+fun getInitials(name: String): String {
+    val parts = name.trim().split(" ").filter { it.isNotBlank() }
+    return when {
+        parts.size >= 2 -> "${parts[0].first().uppercase()}${parts[1].first().uppercase()}"
+        parts.isNotEmpty() && parts[0].isNotBlank() -> parts[0].take(2).uppercase()
+        else -> "LD"
+    }
+}
+
+fun getAvatarColor(name: String): Pair<Color, Color> {
+    val hash = name.hashCode().let { if (it < 0) -it else it }
+    val palettes = listOf(
+        Pair(Color(0xFFDBEAFE), Color(0xFF1D4ED8)),
+        Pair(Color(0xFFDCFCE7), Color(0xFF15803D)),
+        Pair(Color(0xFFEDE9FE), Color(0xFF6D28D9)),
+        Pair(Color(0xFFFFEDD5), Color(0xFFC2410C)),
+        Pair(Color(0xFFCCFBF1), Color(0xFF0F766E)),
+        Pair(Color(0xFFFCE7F3), Color(0xFFBE185D))
+    )
+    return palettes[hash % palettes.size]
+}
+
+fun getStageBadgeColors(stage: String): Pair<Color, Color> {
+    return when (stage.lowercase()) {
+        "won" -> Pair(Color(0xFFDCFCE7), Color(0xFF15803D))
+        "new" -> Pair(Color(0xFFEFF6FF), Color(0xFF2563EB))
+        "proposal", "negotiation" -> Pair(Color(0xFFEDE9FE), Color(0xFF7C3AED))
+        "interested" -> Pair(Color(0xFFFFEDD5), Color(0xFFEA580C))
+        "follow-up", "follow up" -> Pair(Color(0xFFFEF3C7), Color(0xFFD97706))
+        "contacted" -> Pair(Color(0xFFE0F2FE), Color(0xFF0284C7))
+        else -> Pair(Color(0xFFF1F5F9), Color(0xFF475569))
     }
 }
 
@@ -426,187 +461,331 @@ fun LeadsScreen(
                 }
             }
 
-            // Leads List Cards with 1-Tap Direct Call & WhatsApp
-            items(filteredLeads, key = { it.id }) { lead ->
-                val sourceMeta = getSourceMeta(lead.source)
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onLeadClick(lead.id) }
-                ) {
-                    Column(
+            // Leads List Cards with Redesigned Card Layout, 8dp Grid Spacing & 1-Tap Quick Actions
+            if (filteredLeads.isEmpty()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                            .padding(vertical = 16.dp)
                     ) {
-                        // Top Header: Avatar, Name, Company, Stage
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = BrandBlue.copy(alpha = 0.1f),
-                                    modifier = Modifier.size(44.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            Icons.Default.Person,
-                                            contentDescription = null,
-                                            tint = BrandBlue,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        lead.name,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        color = Color(0xFF0F172A)
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        "${lead.company} · Score ${lead.leadScore}%",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF475569)
-                                    )
-                                }
-                            }
-
-                            // Stage Pill
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = StatusGreenBg,
-                                border = BorderStroke(1.dp, StatusGreen.copy(alpha = 0.3f))
+                                shape = CircleShape,
+                                color = Color(0xFFEFF6FF),
+                                modifier = Modifier.size(56.dp)
                             ) {
-                                Text(
-                                    lead.stage,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = StatusGreen,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.PersonSearch,
+                                        contentDescription = null,
+                                        tint = ElectricBlue,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
                             }
-                        }
-
-                        // Requirement & Value
-                        if (lead.requirement.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                lead.requirement,
-                                fontSize = 12.sp,
-                                color = Color(0xFF334155),
-                                maxLines = 2
+                                "No Leads Found",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Color(0xFF0F172A)
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                if (selectedSourceFilter == "All") "No leads available yet" else "No leads under $selectedSourceFilter filter",
+                                fontSize = 13.sp,
+                                color = Color(0xFF64748B)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = { showAddLeadBottomSheet = true },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Add New Lead", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
-
-                        Divider(color = Color(0xFFF1F5F9))
-
-                        // Footer: Source Platform Badge, Value, and Direct 1-Tap Call & Chat
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                    }
+                }
+            } else {
+                items(filteredLeads, key = { it.id }) { lead ->
+                    val sourceMeta = getSourceMeta(lead.source)
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onLeadClick(lead.id) }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Source platform badge
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = sourceMeta.bgColor,
-                                border = BorderStroke(1.dp, sourceMeta.color.copy(alpha = 0.3f))
+                            // Top Header: Initials Avatar + Name & Company + Stage Badge
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(
-                                        sourceMeta.icon,
-                                        contentDescription = null,
-                                        tint = sourceMeta.color,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        sourceMeta.name,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = sourceMeta.color
-                                    )
-                                }
-                            }
-
-                            // Value display
-                            Text(
-                                lead.potentialValue,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 14.sp,
-                                color = Color(0xFF0F172A)
-                            )
-
-                            // Action Buttons: 1-Tap Call & WhatsApp
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Direct Call Button (1-Tap Native Phone Dialer)
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color(0xFFDCFCE7),
-                                    border = BorderStroke(1.dp, Color(0xFF16A34A).copy(alpha = 0.4f)),
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    IconButton(
-                                        onClick = {
-                                            val dialIntent = Intent(
-                                                Intent.ACTION_DIAL,
-                                                Uri.parse("tel:${lead.phone.replace(" ", "")}")
-                                            )
-                                            try {
-                                                context.startActivity(dialIntent)
-                                            } catch (_: Exception) {}
-                                            viewModel.addCallLog(lead.name, lead.phone, "Outgoing", "Initiated")
-                                        }
+                                    val (avatarBg, avatarText) = getAvatarColor(lead.name)
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = avatarBg,
+                                        modifier = Modifier.size(46.dp)
                                     ) {
-                                        Icon(
-                                            Icons.Default.Phone,
-                                            contentDescription = "Direct Call ${lead.name}",
-                                            tint = Color(0xFF15803D),
-                                            modifier = Modifier.size(18.dp)
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = getInitials(lead.name),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 16.sp,
+                                                color = avatarText
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = lead.name,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = Color(0xFF0F172A)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = lead.company.ifBlank { "Independent Prospect" },
+                                            fontSize = 13.sp,
+                                            color = Color(0xFF64748B)
                                         )
                                     }
                                 }
 
-                                // Direct WhatsApp Button
+                                val (stageBg, stageText) = getStageBadgeColors(lead.stage)
                                 Surface(
-                                    shape = CircleShape,
-                                    color = Color(0xFFD1FAE5),
-                                    border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.4f)),
-                                    modifier = Modifier.size(36.dp)
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = stageBg,
+                                    border = BorderStroke(1.dp, stageText.copy(alpha = 0.3f))
                                 ) {
-                                    IconButton(
-                                        onClick = {
-                                            val waIntent = Intent(
-                                                Intent.ACTION_VIEW,
-                                                Uri.parse("https://wa.me/${lead.phone.replace(" ", "").replace("+", "")}")
-                                            )
-                                            try {
-                                                context.startActivity(waIntent)
-                                            } catch (_: Exception) {}
-                                        }
+                                    Text(
+                                        text = lead.stage,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = stageText,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            // Middle Row: Deal Value, Source Badge, and Lead Score
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF8FAFC), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // Source Badge
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = sourceMeta.bgColor,
+                                        border = BorderStroke(1.dp, sourceMeta.color.copy(alpha = 0.3f))
                                     ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        ) {
+                                            Icon(
+                                                sourceMeta.icon,
+                                                contentDescription = null,
+                                                tint = sourceMeta.color,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                sourceMeta.name,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = sourceMeta.color
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    // Lead Score Pill
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (lead.leadScore >= 80) Color(0xFFFEF3C7) else Color(0xFFF1F5F9)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        ) {
+                                            Icon(
+                                                if (lead.leadScore >= 80) Icons.Default.LocalFireDepartment else Icons.Default.TrendingUp,
+                                                contentDescription = null,
+                                                tint = if (lead.leadScore >= 80) Color(0xFFEA580C) else Color(0xFF64748B),
+                                                modifier = Modifier.size(11.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                "${lead.leadScore}%",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (lead.leadScore >= 80) Color(0xFFC2410C) else Color(0xFF475569)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Deal Potential Value
+                                Text(
+                                    text = lead.potentialValue,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 15.sp,
+                                    color = Color(0xFF0F172A)
+                                )
+                            }
+
+                            // Requirement Callout Preview (if present)
+                            if (lead.requirement.isNotBlank()) {
+                                Text(
+                                    text = lead.requirement,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF475569),
+                                    lineHeight = 16.sp,
+                                    maxLines = 2
+                                )
+                            }
+
+                            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+                            // Bottom Row: 1-Tap Quick Actions with Tactile 40dp Buttons
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Call button
+                                OutlinedButton(
+                                    onClick = {
+                                        val dialIntent = Intent(
+                                            Intent.ACTION_DIAL,
+                                            Uri.parse("tel:${lead.phone.replace(" ", "")}")
+                                        )
+                                        try {
+                                            context.startActivity(dialIntent)
+                                        } catch (_: Exception) {}
+                                        viewModel.addCallLog(lead.name, lead.phone, "Outgoing", "Initiated")
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF0FDF4)),
+                                    border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                    contentPadding = PaddingValues(horizontal = 6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Phone,
+                                        contentDescription = "Call",
+                                        tint = Color(0xFF15803D),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Call", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                                }
+
+                                // WhatsApp button
+                                OutlinedButton(
+                                    onClick = {
+                                        WhatsAppHelper.sendWhatsAppMessage(
+                                            context = context,
+                                            phoneNumber = lead.phone,
+                                            message = "Hello ${lead.name}, connecting with you from Making Brands regarding your inquiry.",
+                                            showSuccessToast = true
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .height(40.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFD1FAE5)),
+                                    border = BorderStroke(1.dp, Color(0xFF6EE7B7)),
+                                    contentPadding = PaddingValues(horizontal = 6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Chat,
+                                        contentDescription = "WhatsApp",
+                                        tint = Color(0xFF059669),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("WhatsApp", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669))
+                                }
+
+                                // Send Company Profile Brochure button
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.sendCompanyProfileBrochure(
+                                            context = context,
+                                            recipientName = lead.name,
+                                            recipientPhone = lead.phone,
+                                            companyName = lead.company
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .weight(1.1f)
+                                        .height(40.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFEFF6FF)),
+                                    border = BorderStroke(1.dp, Color(0xFF93C5FD)),
+                                    contentPadding = PaddingValues(horizontal = 6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Share,
+                                        contentDescription = "Brochure",
+                                        tint = Color(0xFF2563EB),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Profile", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                                }
+
+                                // Details arrow button
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clickable { onLeadClick(lead.id) }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            Icons.Default.Chat,
-                                            contentDescription = "WhatsApp ${lead.name}",
-                                            tint = Color(0xFF059669),
+                                            Icons.Default.ChevronRight,
+                                            contentDescription = "View Details",
+                                            tint = Color(0xFF475569),
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
@@ -619,14 +798,16 @@ fun LeadsScreen(
         }
     }
 
-    // Modal Bottom Sheet: Add New Lead with Single Currency Switcher & Lead Source Selection
+    // Modal Bottom Sheet: Add New Lead with Structured Card Sections & Clean Spacing
     if (showAddLeadBottomSheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val autoBrochureCfg by viewModel.autoBrochureConfig.collectAsState()
         var name by remember { mutableStateOf("") }
         var company by remember { mutableStateOf("") }
         var phone by remember { mutableStateOf("") }
         var email by remember { mutableStateOf("") }
         var requirement by remember { mutableStateOf("") }
+        var autoSendWhatsAppBrochure by remember { mutableStateOf(autoBrochureCfg?.isAutoSendEnabled ?: true) }
         
         // Single currency symbol toggle: INR ("₹") or USD ("$")
         var selectedCurrency by remember { mutableStateOf("₹") }
@@ -645,7 +826,7 @@ fun LeadsScreen(
         ModalBottomSheet(
             onDismissRequest = { showAddLeadBottomSheet = false },
             sheetState = sheetState,
-            containerColor = Color.White,
+            containerColor = Color(0xFFF8FAFC),
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             dragHandle = {
                 BottomSheetDefaults.DragHandle(
@@ -659,11 +840,11 @@ fun LeadsScreen(
                     .fillMaxWidth()
                     .imePadding()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp)
+                    .padding(horizontal = 20.dp)
                     .padding(bottom = 36.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Header
+                // Sheet Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -673,14 +854,14 @@ fun LeadsScreen(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = ElectricBlueBg,
-                            modifier = Modifier.size(42.dp)
+                            modifier = Modifier.size(44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     Icons.Default.PersonAdd,
                                     contentDescription = null,
                                     tint = ElectricBlue,
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
@@ -688,12 +869,12 @@ fun LeadsScreen(
                         Column {
                             Text(
                                 "Add New Lead",
-                                fontSize = 19.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF0F172A)
                             )
                             Text(
-                                "Integrated with Cloud CRM & Ingestion APIs",
+                                "Integrated with CRM & WhatsApp Ingestion",
                                 fontSize = 12.sp,
                                 color = ElectricBlue,
                                 fontWeight = FontWeight.Medium
@@ -702,7 +883,8 @@ fun LeadsScreen(
                     }
                     Surface(
                         shape = CircleShape,
-                        color = Color(0xFFF1F5F9),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                         modifier = Modifier.size(36.dp)
                     ) {
                         IconButton(onClick = { showAddLeadBottomSheet = false }) {
@@ -716,272 +898,382 @@ fun LeadsScreen(
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFFE2E8F0))
-
-                // Lead Source Platform Selector
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Lead Source Platform",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF334155)
-                    )
-                    Row(
+                // ── Card 1: Contact Information ─────────────────────────
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        sourcesList.forEach { src ->
-                            val isSelected = selectedSource == src
-                            val meta = getSourceMeta(src)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Badge, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Contact Details", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                        }
+
+                        // Lead Name
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = {
+                                name = it
+                                if (it.isNotBlank()) nameError = false
+                            },
+                            label = { Text("Lead / Contact Name *") },
+                            isError = nameError,
+                            supportingText = if (nameError) { { Text("Name is required", color = MaterialTheme.colorScheme.error) } } else null,
+                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = ElectricBlue) },
+                            modifier = Modifier.fillMaxWidth().testTag("lead_name_input"),
+                            shape = RoundedCornerShape(12.dp),
+                            textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 14.sp),
+                            colors = appTextFieldColors(),
+                            singleLine = true
+                        )
+
+                        // Company Name
+                        OutlinedTextField(
+                            value = company,
+                            onValueChange = { company = it },
+                            label = { Text("Company / Organization") },
+                            leadingIcon = { Icon(Icons.Default.Business, contentDescription = null, tint = ElectricBlue) },
+                            modifier = Modifier.fillMaxWidth().testTag("lead_company_input"),
+                            shape = RoundedCornerShape(12.dp),
+                            textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 14.sp),
+                            colors = appTextFieldColors(),
+                            singleLine = true
+                        )
+
+                        // Phone Number
+                        OutlinedTextField(
+                            value = phone,
+                            onValueChange = {
+                                phone = it
+                                if (it.isNotBlank()) phoneError = false
+                            },
+                            label = { Text("Phone / WhatsApp Number *") },
+                            isError = phoneError,
+                            supportingText = if (phoneError) { { Text("Phone number is required", color = MaterialTheme.colorScheme.error) } } else null,
+                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = ElectricBlue) },
+                            modifier = Modifier.fillMaxWidth().testTag("lead_phone_input"),
+                            shape = RoundedCornerShape(12.dp),
+                            textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 14.sp),
+                            colors = appTextFieldColors(),
+                            singleLine = true
+                        )
+
+                        // Email
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = { email = it },
+                            label = { Text("Email Address (Optional)") },
+                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = ElectricBlue) },
+                            modifier = Modifier.fillMaxWidth().testTag("lead_email_input"),
+                            shape = RoundedCornerShape(12.dp),
+                            textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 14.sp),
+                            colors = appTextFieldColors(),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                // ── Card 2: Deal Financials & Pipeline Stage ────────────
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.MonetizationOn, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Deal & Pipeline Stage", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                        }
+
+                        // Deal Value with Currency Switcher
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Currency Toggle (INR vs USD)
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) meta.color else meta.bgColor,
-                                border = BorderStroke(1.dp, meta.color.copy(alpha = 0.5f)),
-                                modifier = Modifier.clickable { selectedSource = src }
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(1.dp, ElectricBlue.copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .height(56.dp)
+                                    .clickable {
+                                        selectedCurrency = if (selectedCurrency == "₹") "$" else "₹"
+                                    }
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = 12.dp)
                                 ) {
-                                    Icon(
-                                        meta.icon,
-                                        contentDescription = null,
-                                        tint = if (isSelected) Color.White else meta.color,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        meta.name,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.White else Color(0xFF0F172A)
+                                        text = selectedCurrency,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 18.sp,
+                                        color = ElectricBlue
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        Icons.Default.SwapVert,
+                                        contentDescription = "Switch Currency",
+                                        tint = ElectricBlue,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            // Amount Input Field
+                            OutlinedTextField(
+                                value = rawAmount,
+                                onValueChange = { rawAmount = it },
+                                label = { Text("Deal Value ($selectedCurrency)") },
+                                modifier = Modifier.weight(1f).testTag("lead_value_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                                colors = appTextFieldColors(),
+                                singleLine = true
+                            )
+                        }
+
+                        // Pipeline Stage Selector
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "Select Stage",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF64748B)
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                stages.forEach { stage ->
+                                    val isSelected = selectedStage == stage
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { selectedStage = stage },
+                                        label = {
+                                            Text(
+                                                stage,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                            )
+                                        },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = ElectricBlue,
+                                            selectedLabelColor = Color.White,
+                                            containerColor = Color(0xFFF1F5F9),
+                                            labelColor = Color(0xFF0F172A)
+                                        ),
+                                        border = BorderStroke(1.dp, if (isSelected) ElectricBlue else Color(0xFFE2E8F0)),
+                                        shape = RoundedCornerShape(8.dp)
                                     )
                                 }
                             }
                         }
+
+                        // Lead Score Slider
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Lead Quality Score", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    val scoreBadgeText = when {
+                                        leadScore >= 80 -> "🔥 Hot"
+                                        leadScore >= 50 -> "⚡ Warm"
+                                        else -> "❄️ Cold"
+                                    }
+                                    val scoreBadgeColor = when {
+                                        leadScore >= 80 -> Color(0xFFEA580C)
+                                        leadScore >= 50 -> Color(0xFFD97706)
+                                        else -> Color(0xFF0284C7)
+                                    }
+                                    Text(scoreBadgeText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = scoreBadgeColor)
+                                }
+                                Text("${leadScore.toInt()}/100", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ElectricBlue)
+                            }
+                            Slider(
+                                value = leadScore,
+                                onValueChange = { leadScore = it },
+                                valueRange = 0f..100f,
+                                steps = 19,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = ElectricBlue,
+                                    activeTrackColor = ElectricBlue,
+                                    inactiveTrackColor = Color(0xFFE2E8F0)
+                                )
+                            )
+                        }
                     }
                 }
 
-                // Lead Name
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = {
-                        name = it
-                        if (it.isNotBlank()) nameError = false
-                    },
-                    label = { Text("Lead / Customer Name *") },
-                    isError = nameError,
-                    supportingText = if (nameError) { { Text("Name is required", color = MaterialTheme.colorScheme.error) } } else null,
-                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = ElectricBlue) },
-                    modifier = Modifier.fillMaxWidth().testTag("lead_name_input"),
-                    shape = RoundedCornerShape(12.dp),
-                    textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
-                    colors = appTextFieldColors(),
-                    singleLine = true
-                )
-
-                // Company Name
-                OutlinedTextField(
-                    value = company,
-                    onValueChange = { company = it },
-                    label = { Text("Company / Organization") },
-                    leadingIcon = { Icon(Icons.Default.Business, contentDescription = null, tint = ElectricBlue) },
-                    modifier = Modifier.fillMaxWidth().testTag("lead_company_input"),
-                    shape = RoundedCornerShape(12.dp),
-                    textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
-                    colors = appTextFieldColors(),
-                    singleLine = true
-                )
-
-                // Phone & Deal Value (With single currency switch INR / USD)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                // ── Card 3: Ingestion Source & Scope ───────────────────
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                 ) {
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = {
-                            phone = it
-                            if (it.isNotBlank()) phoneError = false
-                        },
-                        label = { Text("Phone *") },
-                        isError = phoneError,
-                        supportingText = if (phoneError) { { Text("Required", color = MaterialTheme.colorScheme.error) } } else null,
-                        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = ElectricBlue) },
-                        modifier = Modifier.weight(1.1f).testTag("lead_phone_input"),
-                        shape = RoundedCornerShape(12.dp),
-                        textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
-                        colors = appTextFieldColors(),
-                        singleLine = true
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Language, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Lead Source & Requirements", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                        }
 
-                    // Deal Value with 1-Tap Single Currency Selector (INR vs USD)
-                    Column(modifier = Modifier.weight(1.1f)) {
-                        OutlinedTextField(
-                            value = rawAmount,
-                            onValueChange = { rawAmount = it },
-                            label = { Text("Deal Value") },
-                            leadingIcon = {
-                                // Single currency toggle button on the left of input
+                        // Source Platform Selection Chips
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            sourcesList.forEach { src ->
+                                val isSelected = selectedSource == src
+                                val meta = getSourceMeta(src)
                                 Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFEFF6FF),
-                                    border = BorderStroke(1.dp, ElectricBlue.copy(alpha = 0.5f)),
-                                    modifier = Modifier
-                                        .padding(start = 6.dp)
-                                        .clickable {
-                                            selectedCurrency = if (selectedCurrency == "₹") "$" else "₹"
-                                        }
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) meta.color else meta.bgColor,
+                                    border = BorderStroke(1.dp, meta.color.copy(alpha = 0.5f)),
+                                    modifier = Modifier.clickable { selectedSource = src }
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     ) {
-                                        Text(
-                                            selectedCurrency,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 15.sp,
-                                            color = ElectricBlue
-                                        )
                                         Icon(
-                                            Icons.Default.ArrowDropDown,
-                                            contentDescription = "Switch Currency",
-                                            tint = ElectricBlue,
-                                            modifier = Modifier.size(16.dp)
+                                            meta.icon,
+                                            contentDescription = null,
+                                            tint = if (isSelected) Color.White else meta.color,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            meta.name,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Color.White else Color(0xFF0F172A)
                                         )
                                     }
                                 }
-                            },
-                            modifier = Modifier.fillMaxWidth().testTag("lead_value_input"),
+                            }
+                        }
+
+                        // Requirement Notes Text Field
+                        OutlinedTextField(
+                            value = requirement,
+                            onValueChange = { requirement = it },
+                            label = { Text("Project Scope & Requirements") },
+                            placeholder = { Text("e.g. Website redesign, Brand identity, SEO campaign...") },
+                            leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, tint = ElectricBlue) },
+                            modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                            textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 14.sp),
                             colors = appTextFieldColors(),
-                            singleLine = true
+                            minLines = 2,
+                            maxLines = 4
                         )
-                        // Single currency quick toggle buttons
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.padding(top = 4.dp)
-                        ) {
-                            Text(
-                                "Currency:",
-                                fontSize = 10.sp,
-                                color = Color(0xFF64748B)
-                            )
-                            Text(
-                                "₹ INR",
-                                fontSize = 10.sp,
-                                fontWeight = if (selectedCurrency == "₹") FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedCurrency == "₹") ElectricBlue else Color(0xFF64748B),
-                                modifier = Modifier.clickable { selectedCurrency = "₹" }
-                            )
-                            Text("·", fontSize = 10.sp, color = Color(0xFFCBD5E1))
-                            Text(
-                                "$ USD",
-                                fontSize = 10.sp,
-                                fontWeight = if (selectedCurrency == "$") FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedCurrency == "$") ElectricBlue else Color(0xFF64748B),
-                                modifier = Modifier.clickable { selectedCurrency = "$" }
-                            )
-                        }
                     }
                 }
 
-                // Email
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text("Email Address (Optional)") },
-                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = ElectricBlue) },
-                    modifier = Modifier.fillMaxWidth().testTag("lead_email_input"),
-                    shape = RoundedCornerShape(12.dp),
-                    textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
-                    colors = appTextFieldColors(),
-                    singleLine = true
-                )
-
-                // Pipeline Stage Selector
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Pipeline Stage",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF334155)
-                    )
+                // ── Card 4: WhatsApp Profile Auto-Send ─────────────────
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (autoSendWhatsAppBrochure) Color(0xFFF0FDF4) else Color.White,
+                    border = BorderStroke(1.dp, if (autoSendWhatsAppBrochure) Color(0xFF86EFAC) else Color(0xFFE2E8F0)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { autoSendWhatsAppBrochure = !autoSendWhatsAppBrochure }
+                ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        stages.forEach { stage ->
-                            val isSelected = selectedStage == stage
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { selectedStage = stage },
-                                label = { Text(stage, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = ElectricBlue,
-                                    selectedLabelColor = Color.White,
-                                    containerColor = Color.White,
-                                    labelColor = Color(0xFF0F172A)
-                                ),
-                                border = BorderStroke(1.dp, if (isSelected) ElectricBlue else Color(0xFFE2E8F0)),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Lead Score Slider
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Initial Lead Score", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
-                        Text("${leadScore.toInt()}/100", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ElectricBlue)
-                    }
-                    Slider(
-                        value = leadScore,
-                        onValueChange = { leadScore = it },
-                        valueRange = 0f..100f,
-                        steps = 19,
-                        colors = SliderDefaults.colors(
-                            thumbColor = ElectricBlue,
-                            activeTrackColor = ElectricBlue
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (autoSendWhatsAppBrochure) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Share,
+                                        contentDescription = null,
+                                        tint = if (autoSendWhatsAppBrochure) Color(0xFF16A34A) else Color(0xFF64748B),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    "Auto-Send Company Profile",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (autoSendWhatsAppBrochure) Color(0xFF166534) else Color(0xFF0F172A)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    "Instantly shares PDF brochure & portfolio to lead via WhatsApp",
+                                    fontSize = 11.sp,
+                                    color = if (autoSendWhatsAppBrochure) Color(0xFF15803D) else Color(0xFF64748B)
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = autoSendWhatsAppBrochure,
+                            onCheckedChange = { autoSendWhatsAppBrochure = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF16A34A)
+                            )
                         )
-                    )
+                    }
                 }
 
-                // Requirement notes
-                OutlinedTextField(
-                    value = requirement,
-                    onValueChange = { requirement = it },
-                    label = { Text("Requirement / Notes") },
-                    leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, tint = ElectricBlue) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
-                    colors = appTextFieldColors(),
-                    minLines = 2,
-                    maxLines = 4
-                )
-
-                // Action Buttons
+                // ── Bottom Action Buttons ──────────────────────────────
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     OutlinedButton(
                         onClick = { showAddLeadBottomSheet = false },
-                        modifier = Modifier.weight(1f).height(48.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp),
                         shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(1.dp, Color(0xFFCBD5E1))
                     ) {
-                        Text("Cancel", color = Color(0xFF64748B))
+                        Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
                     }
 
                     Button(
@@ -996,21 +1288,42 @@ fun LeadsScreen(
                             }
                             isSaving = true
                             val formattedValue = "$selectedCurrency ${rawAmount.trim()}"
+                            val cleanName = name.trim()
+                            val cleanCompany = company.ifBlank { "Independent" }.trim()
+                            val cleanPhone = phone.trim()
+                            val cleanEmail = email.trim()
+                            val cleanReq = requirement.trim()
+
                             viewModel.addLead(
-                                name = name.trim(),
-                                company = company.ifBlank { "Independent" }.trim(),
-                                phone = phone.trim(),
-                                email = email.trim(),
-                                requirement = requirement.trim(),
+                                name = cleanName,
+                                company = cleanCompany,
+                                phone = cleanPhone,
+                                email = cleanEmail,
+                                requirement = cleanReq,
                                 value = formattedValue,
                                 stage = selectedStage,
                                 score = leadScore.toInt(),
                                 source = selectedSource
                             )
+
+                            // Launch WhatsApp with Company Profile immediately if toggle is enabled
+                            if (autoSendWhatsAppBrochure) {
+                                WhatsAppHelper.sendCompanyProfileToLead(
+                                    context = context,
+                                    leadName = cleanName,
+                                    leadPhone = cleanPhone,
+                                    companyName = cleanCompany,
+                                    brochureConfig = autoBrochureCfg
+                                )
+                            }
+
                             isSaving = false
                             showAddLeadBottomSheet = false
                         },
-                        modifier = Modifier.weight(1.5f).height(48.dp).testTag("save_lead_button"),
+                        modifier = Modifier
+                            .weight(1.6f)
+                            .height(52.dp)
+                            .testTag("save_lead_button"),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
                     ) {
@@ -1019,7 +1332,7 @@ fun LeadsScreen(
                         } else {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Save Lead", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Save & Create Lead", fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
