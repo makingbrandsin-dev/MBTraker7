@@ -38,6 +38,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         enableEdgeToEdge()
         com.example.util.NotificationHelper.createNotificationChannels(applicationContext)
         setContent {
@@ -84,6 +85,7 @@ sealed class Screen(val route: String) {
     object Timesheets : Screen("timesheets")
     object Vault : Screen("vault")
     object LiveTeamTracking : Screen("live_team_tracking")
+    object Employees : Screen("employees")
 }
 
 private fun getScreenOrder(route: String?): Int {
@@ -109,8 +111,8 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition
     }
     return slideIntoContainer(
         towards = direction,
-        animationSpec = tween(280, easing = FastOutSlowInEasing)
-    ) + fadeIn(animationSpec = tween(220))
+        animationSpec = tween(150, easing = FastOutSlowInEasing)
+    ) + fadeIn(animationSpec = tween(120))
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(): ExitTransition {
@@ -123,36 +125,36 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(
     }
     return slideOutOfContainer(
         towards = direction,
-        animationSpec = tween(260, easing = FastOutSlowInEasing)
-    ) + fadeOut(animationSpec = tween(200))
+        animationSpec = tween(140, easing = FastOutSlowInEasing)
+    ) + fadeOut(animationSpec = tween(120))
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.detailEnterTransition(): EnterTransition {
     return slideIntoContainer(
         AnimatedContentTransitionScope.SlideDirection.Start,
-        animationSpec = tween(340, easing = FastOutSlowInEasing)
-    ) + fadeIn(animationSpec = tween(300))
+        animationSpec = tween(180, easing = FastOutSlowInEasing)
+    ) + fadeIn(animationSpec = tween(150))
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.detailExitTransition(): ExitTransition {
     return slideOutOfContainer(
         AnimatedContentTransitionScope.SlideDirection.Start,
-        animationSpec = tween(280, easing = FastOutSlowInEasing)
-    ) + fadeOut(animationSpec = tween(260))
+        animationSpec = tween(150, easing = FastOutSlowInEasing)
+    ) + fadeOut(animationSpec = tween(140))
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.detailPopEnterTransition(): EnterTransition {
     return slideIntoContainer(
         AnimatedContentTransitionScope.SlideDirection.End,
-        animationSpec = tween(320, easing = FastOutSlowInEasing)
-    ) + fadeIn(animationSpec = tween(300))
+        animationSpec = tween(180, easing = FastOutSlowInEasing)
+    ) + fadeIn(animationSpec = tween(150))
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.detailPopExitTransition(): ExitTransition {
     return slideOutOfContainer(
         AnimatedContentTransitionScope.SlideDirection.End,
-        animationSpec = tween(280, easing = FastOutSlowInEasing)
-    ) + fadeOut(animationSpec = tween(260))
+        animationSpec = tween(150, easing = FastOutSlowInEasing)
+    ) + fadeOut(animationSpec = tween(140))
 }
 
 @Composable
@@ -205,21 +207,16 @@ fun MainAppNavHost(viewModel: MainViewModel) {
         }
     }
 
-    val bottomNavRoutes = listOf(
-        Screen.Home.route,
-        Screen.Crm.route,
-        Screen.Leads.route,
-        Screen.Tasks.route,
-        Screen.Attendance.route,
-        Screen.Profile.route,
-        Screen.Work.route,
-        Screen.Chat.route
+    val nonFooterRoutes = listOf(
+        Screen.Splash.route,
+        Screen.Login.route,
+        Screen.Otp.route
     )
 
-    val showBottomBar = currentRoute in bottomNavRoutes
+    val showBottomBar = currentRoute != null && currentRoute !in nonFooterRoutes
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().systemBarsPadding(),
         containerColor = SurfaceBg,
         bottomBar = {
             if (showBottomBar) {
@@ -227,11 +224,17 @@ fun MainAppNavHost(viewModel: MainViewModel) {
             }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Splash.route,
-            modifier = Modifier.padding(innerPadding)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
         ) {
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Splash.route,
+                modifier = Modifier.fillMaxSize()
+            ) {
             // Splash Screen
             composable(
                 route = Screen.Splash.route,
@@ -328,7 +331,8 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onNavigateToExpenses = { navController.navigate(Screen.ExpenseClaims.route) },
                     onNavigateToTimesheets = { navController.navigate(Screen.Timesheets.route) },
                     onNavigateToVault = { navController.navigate(Screen.Vault.route) },
-                    onNavigateToLiveTracking = { navController.navigate(Screen.LiveTeamTracking.route) }
+                    onNavigateToLiveTracking = { navController.navigate(Screen.LiveTeamTracking.route) },
+                    onNavigateToEmployees = { navController.navigate(Screen.Employees.route) }
                 )
             }
 
@@ -536,6 +540,7 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 popExitTransition = { detailPopExitTransition() }
             ) {
                 HelpSupportScreen(
+                    viewModel = viewModel,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -702,7 +707,19 @@ fun MainAppNavHost(viewModel: MainViewModel) {
             ) {
                 ManagerDashboardScreen(
                     viewModel = viewModel,
-                    onBack = { navController.popBackStack() },
+                    onBack = {
+                        val popped = navController.popBackStack()
+                        if (!popped) {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    },
+                    onLogout = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
                     onNavigateToProjects = { navController.navigate(Screen.Projects.route) },
                     onNavigateToLeads = { navController.navigate(Screen.Crm.route) },
                     onNavigateToChat = { navController.navigate(Screen.Chat.route) },
@@ -777,6 +794,20 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onBack = { navController.popBackStack() }
                 )
             }
+
+            composable(
+                route = Screen.Employees.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                EmployeeListScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
     }
+}
 }

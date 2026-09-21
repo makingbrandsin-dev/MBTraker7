@@ -1,6 +1,7 @@
 package com.example.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.Date
 
@@ -53,7 +54,14 @@ enum class ProjectStatus {
     OVERDUE
 }
 
-@Entity(tableName = "employees")
+@Entity(
+    tableName = "employees",
+    indices = [
+        Index(value = ["email"]),
+        Index(value = ["department"]),
+        Index(value = ["status"])
+    ]
+)
 data class EmployeeEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -69,7 +77,8 @@ data class EmployeeEntity(
     val assignedProjectIds: List<Long> = emptyList(),
     val avatarUrl: String? = null,
     val salary: Double? = null,
-    val emergencyContact: String? = null
+    val emergencyContact: String? = null,
+    val password: String = "password123"
 )
 
 @Entity(tableName = "attendance_records")
@@ -94,7 +103,13 @@ data class AttendanceRecord(
     val selfieUri: String? = null
 )
 
-@Entity(tableName = "projects")
+@Entity(
+    tableName = "projects",
+    indices = [
+        Index(value = ["status"]),
+        Index(value = ["priority"])
+    ]
+)
 data class ProjectEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -115,7 +130,15 @@ data class ProjectEntity(
     val createdAt: Date = Date()
 )
 
-@Entity(tableName = "tasks")
+@Entity(
+    tableName = "tasks",
+    indices = [
+        Index(value = ["projectId"]),
+        Index(value = ["status"]),
+        Index(value = ["priority"]),
+        Index(value = ["isCompleted"])
+    ]
+)
 data class TaskEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val projectId: Long = 1,

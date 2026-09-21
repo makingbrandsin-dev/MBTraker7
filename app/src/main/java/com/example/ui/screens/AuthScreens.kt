@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,10 +22,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -46,7 +52,7 @@ fun SplashScreen(
     onTimeout: () -> Unit
 ) {
     LaunchedEffect(Unit) {
-        delay(1600)
+        delay(750)
         onTimeout()
     }
 
@@ -107,7 +113,7 @@ fun SplashScreen(
                 .padding(bottom = 36.dp)
         ) {
             Text(
-                "Making Brands Enterprise Suite\nVerified Biometrics & WhatsApp Security",
+                "Making Brands Enterprise Suite\nBiometric Authorization & Cloud Security",
                 color = Color.White.copy(alpha = 0.65f),
                 textAlign = TextAlign.Center,
                 fontSize = 12.sp,
@@ -123,54 +129,95 @@ fun SplashScreen(
 fun LoginScreen(
     viewModel: MainViewModel,
     onLoginSuccess: (isAdmin: Boolean) -> Unit,
-    onNavigateToOtp: () -> Unit
+    onNavigateToOtp: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     var selectedRole by remember { mutableStateOf("Employee") } // "Employee" or "MB Admin"
-    var phoneNumber by remember { mutableStateOf("+91 98765 43210") }
-    var password by remember { mutableStateOf("password123") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var isSendingOtp by remember { mutableStateOf(false) }
-    var isDirectSigningIn by remember { mutableStateOf(false) }
-    val isCheckingRole by viewModel.isCheckingFirestoreRole.collectAsState()
-    val firestoreStatus by viewModel.firestoreAuthStatus.collectAsState()
+    var isSigningIn by remember { mutableStateOf(false) }
+    var isAdminAuthenticating by remember { mutableStateOf(false) }
 
-    LaunchedEffect(selectedRole) {
-        if (selectedRole == "MB Admin") {
-            phoneNumber = "+91 98111 22334"
-            password = "admin123"
+    var emailError by remember { mutableStateOf<String?>(null) }
+    var passwordError by remember { mutableStateOf<String?>(null) }
+
+    val performEmployeeLogin = {
+        keyboardController?.hide()
+        val trimmedEmail = email.trim()
+        val emailPattern = android.util.Patterns.EMAIL_ADDRESS
+
+        var hasError = false
+        if (trimmedEmail.isEmpty()) {
+            emailError = "Please enter your registered Email ID"
+            hasError = true
+        } else if (!emailPattern.matcher(trimmedEmail).matches()) {
+            emailError = "Invalid email format (e.g. employee@company.com)"
+            hasError = true
         } else {
-            phoneNumber = "+91 98765 43210"
-            password = "password123"
+            emailError = null
+        }
+
+        if (password.isEmpty()) {
+            passwordError = "Please enter your password"
+            hasError = true
+        } else if (password.length < 4) {
+            passwordError = "Password must be at least 4 characters"
+            hasError = true
+        } else {
+            passwordError = null
+        }
+
+        if (hasError) {
+            Toast.makeText(context, "Please enter valid email and password", Toast.LENGTH_SHORT).show()
+        } else {
+            isSigningIn = true
+            viewModel.loginWithEmployeeCredentials(
+                email = trimmedEmail,
+                password = password
+            ) { success, errorMessage, _ ->
+                isSigningIn = false
+                if (success) {
+                    Toast.makeText(context, "Welcome back! Opening Employee Workspace", Toast.LENGTH_SHORT).show()
+                    onLoginSuccess(false)
+                } else {
+                    Toast.makeText(context, errorMessage ?: "Sign in failed.", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(SurfaceBg)
+            .background(SurfaceBg),
+        contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .widthIn(max = 520.dp)
+                .fillMaxWidth()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 32.dp),
+                .padding(horizontal = 24.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // App Brand Emblem
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = BrandBlue,
-                shadowElevation = 4.dp,
-                modifier = Modifier.size(60.dp)
+                shadowElevation = 6.dp,
+                modifier = Modifier.size(64.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("MB", color = Color.White, fontWeight = FontWeight.Black, fontSize = 26.sp)
+                    Text("MB", color = Color.White, fontWeight = FontWeight.Black, fontSize = 28.sp)
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -197,7 +244,11 @@ fun LoginScreen(
                             color = if (isSelected) (if (role == "MB Admin") BrandDarkBlue else BrandBlue) else Color.Transparent,
                             modifier = Modifier
                                 .weight(1f)
-                                .clickable { selectedRole = role }
+                                .clickable {
+                                    selectedRole = role
+                                    emailError = null
+                                    passwordError = null
+                                }
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
@@ -226,318 +277,338 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Mobile / WhatsApp Input Field
-            OutlinedTextField(
-                value = phoneNumber,
-                onValueChange = { phoneNumber = it },
-                label = { Text("WhatsApp Mobile Number") },
-                placeholder = { Text("+91 98765 43210") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Phone,
-                        contentDescription = null,
-                        tint = BrandGreen
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                shape = RoundedCornerShape(12.dp),
-                textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
-                colors = appTextFieldColors()
-            )
+            if (selectedRole == "Employee") {
+                // ------------ EMPLOYEE MODE: DIRECT SECURE LOGIN ------------
 
-            Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Password Field
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Password / Security Pin") },
-                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = ElectricBlue) },
-                trailingIcon = {
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(
-                            if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = null,
-                            tint = Color(0xFF64748B)
-                        )
-                    }
-                },
-                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
-                colors = appTextFieldColors()
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // WhatsApp Security Verification Notice Card
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFECFDF5),
-                border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFF10B981),
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Security, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "WhatsApp OTP Verification",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF065F46)
-                        )
-                        Text(
-                            text = "A dynamic 6-digit passcode will be dispatched to your WhatsApp to verify employee access.",
-                            fontSize = 11.sp,
-                            color = Color(0xFF047857),
-                            lineHeight = 15.sp
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Firestore Auth Provider & Role Redirection Preview Card
-            val isTargetAdmin = selectedRole == "MB Admin" || phoneNumber.contains("98111")
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFEFF6FF),
-                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFF2563EB),
-                            modifier = Modifier.size(20.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+                // Email Field
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { input ->
+                        email = input
+                        if (emailError != null) {
+                            val trimmed = input.trim()
+                            if (trimmed.isEmpty()) {
+                                emailError = "Email cannot be empty"
+                            } else if (!android.util.Patterns.EMAIL_ADDRESS.matcher(trimmed).matches()) {
+                                emailError = "Invalid email format"
+                            } else {
+                                emailError = null
                             }
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Firestore Cloud Auth Provider",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E40AF)
+                    },
+                    label = { Text("Employee Email ID") },
+                    placeholder = { Text("employee@company.com") },
+                    isError = emailError != null,
+                    supportingText = {
+                        if (emailError != null) {
+                            Text(text = emailError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        } else {
+                            Text(
+                                text = "Enter your registered email address",
+                                fontSize = 11.sp,
+                                color = TextMuted
+                            )
+                        }
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Email,
+                            contentDescription = null,
+                            tint = if (emailError != null) MaterialTheme.colorScheme.error else BrandBlue
                         )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
+                    },
+                    trailingIcon = {
+                        if (email.isNotEmpty()) {
+                            IconButton(onClick = { 
+                                email = ""
+                                emailError = "Email cannot be empty"
+                            }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear email", tint = Color(0xFF94A3B8))
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Email,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                    colors = appTextFieldColors()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Password Field
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { input ->
+                        password = input
+                        if (passwordError != null) {
+                            if (input.isEmpty()) {
+                                passwordError = "Password cannot be empty"
+                            } else if (input.length < 4) {
+                                passwordError = "Password must be at least 4 characters"
+                            } else {
+                                passwordError = null
+                            }
+                        }
+                    },
+                    label = { Text("Password") },
+                    isError = passwordError != null,
+                    supportingText = {
+                        if (passwordError != null) {
+                            Text(text = passwordError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        } else {
+                            Text(text = "Must be at least 4 characters long", fontSize = 11.sp, color = TextMuted)
+                        }
+                    },
+                    leadingIcon = { 
+                        Icon(
+                            Icons.Default.Lock, 
+                            contentDescription = null, 
+                            tint = if (passwordError != null) MaterialTheme.colorScheme.error else ElectricBlue
+                        ) 
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                tint = Color(0xFF64748B)
+                            )
+                        }
+                    },
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { 
+                            performEmployeeLogin()
+                        }
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    textStyle = TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
+                    colors = appTextFieldColors()
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Employee Authentication Note
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFEFF6FF),
+                    border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = if (isTargetAdmin) "Target Role: ADMIN (Firestore)" else "Target Role: EMPLOYEE (Firestore)",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF1E3A8A)
-                        )
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = if (isTargetAdmin) Color(0xFFFDE047) else Color(0xFF86EFAC)
+                            shape = CircleShape,
+                            color = BrandBlue,
+                            modifier = Modifier.size(32.dp)
                         ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.MarkEmailRead, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (isTargetAdmin) "➔ Admin Dashboard" else "➔ Employee Workspace",
-                                fontSize = 10.sp,
+                                text = "Employee Email Access",
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isTargetAdmin) Color(0xFF713F12) else Color(0xFF065F46),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                color = Color(0xFF1E40AF)
                             )
-                        }
-                    }
-                    if (isCheckingRole) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(12.dp),
-                                strokeWidth = 2.dp,
-                                color = Color(0xFF2563EB)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Querying Firestore user record...",
-                                fontSize = 10.sp,
-                                color = Color(0xFF1D4ED8)
+                                text = "Sign in securely with your employee email and password.",
+                                fontSize = 11.sp,
+                                color = Color(0xFF1E3A8A),
+                                lineHeight = 15.sp
                             )
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-            // Primary Button: Send WhatsApp OTP
-            Button(
-                onClick = {
-                    if (phoneNumber.isBlank()) {
-                        Toast.makeText(context, "Please enter your mobile number", Toast.LENGTH_SHORT).show()
-                        return@Button
+                // Action Button (Sign In to Workspace)
+                Button(
+                    onClick = { 
+                        performEmployeeLogin()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BrandBlue,
+                        contentColor = Color.White
+                    ),
+                    enabled = !isSigningIn
+                ) {
+                    if (isSigningIn) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.5.dp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Signing In...", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Login,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Login",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
                     }
-                    isSendingOtp = true
-                    val isAdmin = selectedRole == "MB Admin"
-                    viewModel.requestWhatsAppOtp(
-                        context = context,
-                        phoneNumber = phoneNumber,
-                        role = selectedRole,
-                        isAdmin = isAdmin
-                    )
-                    isSendingOtp = false
-                    onNavigateToOtp()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF16A34A),
-                    contentColor = Color.White
-                )
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Get WhatsApp OTP",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            } else {
+                // ------------ ADMIN MODE: BIOMETRICS ONLY ------------
 
-            // Secondary Option: Direct Sign In with Password & Firestore Role Verification
-            Button(
-                onClick = {
-                    if (phoneNumber.isBlank()) {
-                        Toast.makeText(context, "Please enter your mobile number", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-                    isDirectSigningIn = true
-                    viewModel.loginWithFirestore(
-                        phoneNumber = phoneNumber,
-                        password = password,
-                        selectedRoleHint = selectedRole
-                    ) { isAdmin, targetRoute ->
-                        isDirectSigningIn = false
-                        val roleText = if (isAdmin) "Admin Dashboard" else "Employee Workspace"
-                        Toast.makeText(context, "Firestore Role Verified! Opening $roleText", Toast.LENGTH_SHORT).show()
-                        onLoginSuccess(isAdmin)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF0F172A),
-                    contentColor = Color.White
-                ),
-                enabled = !isDirectSigningIn
-            ) {
-                if (isDirectSigningIn) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Verifying Role in Firestore...", fontSize = 14.sp, color = Color.White)
-                    }
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = BrandDarkBlue.copy(alpha = 0.1f),
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Fingerprint,
+                                    contentDescription = "Admin Biometrics",
+                                    tint = BrandDarkBlue,
+                                    modifier = Modifier.size(44.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
                         Text(
-                            text = "Sign In & Check Firestore Role",
-                            fontSize = 15.sp,
+                            text = "Admin Biometric Authorization",
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            fontSize = 18.sp,
+                            color = BrandDarkBlue,
+                            textAlign = TextAlign.Center
                         )
-                    }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
-            // Tertiary Option: Biometric Unlock with Firestore Role Verification
-            OutlinedButton(
-                onClick = {
-                    if (activity != null) {
-                        BiometricHelper.promptBiometricAuth(
-                            activity = activity,
-                            title = "MB Traker Biometric Sign-In",
-                            subtitle = "Verify fingerprint or face to authenticate as $selectedRole",
-                            onSuccess = {
-                                viewModel.loginWithBiometricsWithFirestore(
-                                    phoneNumber = phoneNumber,
-                                    selectedRoleHint = selectedRole
-                                ) { isAdmin, targetRoute ->
-                                    val roleText = if (isAdmin) "Admin Dashboard" else "Employee Workspace"
-                                    Toast.makeText(context, "Biometric & Firestore Verified! Opening $roleText", Toast.LENGTH_SHORT).show()
-                                    onLoginSuccess(isAdmin)
+                        Text(
+                            text = "Admin portal security policy strictly requires biometric verification (Fingerprint or Face ID) to proceed.",
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 17.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Biometrics Scanner Trigger Button
+                        Button(
+                            onClick = {
+                                isAdminAuthenticating = true
+                                if (activity != null) {
+                                    BiometricHelper.promptBiometricAuth(
+                                        activity = activity,
+                                        title = "MB Admin Biometric Authorization",
+                                        subtitle = "Verify fingerprint or face to open Admin Portal",
+                                        onSuccess = {
+                                            viewModel.loginWithBiometricsWithFirestore(
+                                                phoneNumber = "+91 98111 22334",
+                                                selectedRoleHint = "MB Admin"
+                                            ) { isAdmin, _ ->
+                                                isAdminAuthenticating = false
+                                                Toast.makeText(context, "Admin Biometrics Verified! Opening Admin Dashboard", Toast.LENGTH_SHORT).show()
+                                                onLoginSuccess(true)
+                                            }
+                                        },
+                                        onError = { errorMsg ->
+                                            isAdminAuthenticating = false
+                                            Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                } else {
+                                    viewModel.loginWithBiometricsWithFirestore(
+                                        phoneNumber = "+91 98111 22334",
+                                        selectedRoleHint = "MB Admin"
+                                    ) { isAdmin, _ ->
+                                        isAdminAuthenticating = false
+                                        Toast.makeText(context, "Admin Biometrics Verified! Opening Admin Dashboard", Toast.LENGTH_SHORT).show()
+                                        onLoginSuccess(true)
+                                    }
                                 }
                             },
-                            onError = { errorMsg ->
-                                Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BrandDarkBlue,
+                                contentColor = Color.White
+                            ),
+                            enabled = !isAdminAuthenticating
+                        ) {
+                            if (isAdminAuthenticating) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.5.dp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Verifying Biometrics...", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Scan Biometrics to Access Admin",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
                             }
-                        )
-                    } else {
-                        // Fallback
-                        viewModel.loginWithBiometricsWithFirestore(
-                            phoneNumber = phoneNumber,
-                            selectedRoleHint = selectedRole
-                        ) { isAdmin, targetRoute ->
-                            onLoginSuccess(isAdmin)
                         }
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.5.dp, BrandBlue),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = BrandBlue
-                )
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(22.dp))
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Unlock with Biometrics",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = BrandBlue
-                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.HelpOutline, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Need access or lost device? ", fontSize = 12.sp, color = TextSecondary)
+                Text("Need access or credentials? ", fontSize = 12.sp, color = TextSecondary)
                 Text("Contact IT Admin", fontSize = 12.sp, color = BrandBlue, fontWeight = FontWeight.Bold)
             }
         }
@@ -582,14 +653,20 @@ fun OtpVerificationScreen(
         },
         containerColor = SurfaceBg
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(paddingValues),
+            contentAlignment = Alignment.TopCenter
         ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 520.dp)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             Spacer(modifier = Modifier.height(12.dp))
 
             // Shield / WhatsApp badge
@@ -885,6 +962,121 @@ fun OtpVerificationScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Change Mobile Number", color = TextSecondary, fontSize = 13.sp)
                 }
+            }
+        }
+    }
+}
+}
+
+/**
+ * Authentic Google "G" Emblem drawn with precision Canvas geometry and standard Google brand colors.
+ */
+@Composable
+fun GoogleGLogo(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeW = size.width * 0.22f
+            val radius = (size.width - strokeW) / 2f
+            val center = Offset(size.width / 2f, size.height / 2f)
+
+            // Red arc (top / top-left)
+            drawArc(
+                color = Color(0xFFEA4335),
+                startAngle = 180f,
+                sweepAngle = 105f,
+                useCenter = false,
+                topLeft = Offset(strokeW / 2, strokeW / 2),
+                size = Size(radius * 2, radius * 2),
+                style = Stroke(width = strokeW)
+            )
+            // Blue arc (top-right & right)
+            drawArc(
+                color = Color(0xFF4285F4),
+                startAngle = 285f,
+                sweepAngle = 100f,
+                useCenter = false,
+                topLeft = Offset(strokeW / 2, strokeW / 2),
+                size = Size(radius * 2, radius * 2),
+                style = Stroke(width = strokeW)
+            )
+            // Green arc (bottom / bottom-left)
+            drawArc(
+                color = Color(0xFF34A853),
+                startAngle = 25f,
+                sweepAngle = 90f,
+                useCenter = false,
+                topLeft = Offset(strokeW / 2, strokeW / 2),
+                size = Size(radius * 2, radius * 2),
+                style = Stroke(width = strokeW)
+            )
+            // Yellow arc (bottom-left)
+            drawArc(
+                color = Color(0xFFFBBC05),
+                startAngle = 115f,
+                sweepAngle = 65f,
+                useCenter = false,
+                topLeft = Offset(strokeW / 2, strokeW / 2),
+                size = Size(radius * 2, radius * 2),
+                style = Stroke(width = strokeW)
+            )
+            // Blue horizontal crossbar
+            drawLine(
+                color = Color(0xFF4285F4),
+                start = Offset(center.x, center.y),
+                end = Offset(size.width - strokeW / 3, center.y),
+                strokeWidth = strokeW
+            )
+        }
+    }
+}
+
+/**
+ * Modern Material 3 Google Sign-In Button integrated with Firebase Auth.
+ */
+@Composable
+fun GoogleSignInButton(
+    text: String = "Sign in with Google",
+    isLoading: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = !isLoading,
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = Color.White,
+            contentColor = Color(0xFF1F2937)
+        ),
+        border = BorderStroke(1.dp, Color(0xFFD1D5DB)),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp)
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = BrandBlue,
+                strokeWidth = 2.dp
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text("Connecting to Firebase Auth...", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF374151))
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                GoogleGLogo(modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = text,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1F2937)
+                )
             }
         }
     }

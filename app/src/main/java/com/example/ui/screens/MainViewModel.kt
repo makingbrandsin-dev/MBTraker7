@@ -2,15 +2,23 @@ package com.example.ui.screens
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.MBTrakerApp
 import com.example.data.auth.AppRole
 import com.example.data.auth.AuthCheckResult
 import com.example.data.auth.AuthUser
+import com.example.data.auth.FirebaseAuthHelper
+import com.example.data.auth.FirebaseUserRecord
 import com.example.data.auth.FirestoreAuthProvider
+import com.example.data.auth.GoogleSignInResult
+import com.example.data.auth.awaitTask
 import com.example.data.firebase.FirebaseRealtimeManager
 import com.example.data.local.AppDatabase
 import com.example.data.model.*
+import com.example.data.repository.*
+import com.example.di.AppContainer
 import com.example.util.BiometricHelper
 import com.example.util.NotificationHelper
 import com.example.util.WhatsAppHelper
@@ -38,30 +46,67 @@ data class OtpSessionState(
     val isVerified: Boolean = false
 )
 
+data class ProjectWorkloadItem(
+    val projectName: String,
+    val totalTasks: Int,
+    val pendingTasks: Int,
+    val inProgressTasks: Int,
+    val completedTasks: Int,
+    val highPriorityTasks: Int,
+    val assignees: List<String>,
+    val workloadPercentage: Float,
+    val completionPercentage: Float
+)
+
+data class TeamMemberWorkloadItem(
+    val memberName: String,
+    val totalTasks: Int,
+    val pendingTasks: Int,
+    val completedTasks: Int,
+    val assignedProjects: List<String>,
+    val workloadPercentage: Float
+)
+
+data class WorkloadSummaryStats(
+    val totalTasks: Int,
+    val activeTasks: Int,
+    val completedTasks: Int,
+    val totalProjects: Int,
+    val highPriorityTasks: Int,
+    val busiestProject: String,
+    val topAssignee: String
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val db = AppDatabase.getDatabase(application)
-    private val employeeDao = db.employeeDao()
-    private val attendanceDao = db.attendanceDao()
-    private val projectDao = db.projectDao()
-    private val taskDao = db.taskDao()
-    private val leadDao = db.leadDao()
-    private val followUpDao = db.followUpDao()
-    private val callLogDao = db.callLogDao()
-    private val chatDao = db.chatDao()
-    private val notificationDao = db.notificationDao()
-    private val userProfileDao = db.userProfileDao()
-    private val leaveDao = db.leaveDao()
-    private val leadSourceDao = db.leadSourceDao()
-    private val callRecordingDao = db.callRecordingDao()
-    private val invoiceDao = db.invoiceDao()
-    private val quotationDao = db.quotationDao()
-    private val autoBrochureDao = db.autoBrochureDao()
-    private val socialReviewDao = db.socialReviewDao()
-    private val clientMeetingDao = db.clientMeetingDao()
-    private val expenseClaimDao = db.expenseClaimDao()
-    private val projectMilestoneDao = db.projectMilestoneDao()
-    private val vaultDocumentDao = db.vaultDocumentDao()
-    private val attendanceRegularizationDao = db.attendanceRegularizationDao()
+    private val container = (application as? MBTrakerApp)?.container ?: AppContainer(application)
+    private val db = container.database
+    private val employeeDao = container.employeeDao
+    private val attendanceDao = container.attendanceDao
+    private val projectDao = container.projectDao
+    private val taskDao = container.taskDao
+    private val leadDao = container.leadDao
+    private val followUpDao = container.followUpDao
+    private val callLogDao = container.callLogDao
+    private val chatDao = container.chatDao
+    private val notificationDao = container.notificationDao
+    private val userProfileDao = container.userProfileDao
+    private val leaveDao = container.leaveDao
+    private val leadSourceDao = container.leadSourceDao
+    private val callRecordingDao = container.callRecordingDao
+    private val invoiceDao = container.invoiceDao
+    private val quotationDao = container.quotationDao
+    private val autoBrochureDao = container.autoBrochureDao
+    private val socialReviewDao = container.socialReviewDao
+    private val clientMeetingDao = container.clientMeetingDao
+    private val expenseClaimDao = container.expenseClaimDao
+    private val projectMilestoneDao = container.projectMilestoneDao
+    private val vaultDocumentDao = container.vaultDocumentDao
+    private val attendanceRegularizationDao = container.attendanceRegularizationDao
+
+    // Abstracted Repository Layer for Entities
+    val employeeRepository: IEmployeeRepository = container.employeeRepository
+    val projectRepository: IProjectRepository = container.projectRepository
+    val taskRepository: ITaskRepository = container.taskRepository
 
     // 🚀 WhatsApp Event Stream for Automatic Lead Profile Dispatch
     val whatsAppDispatchEvents = MutableSharedFlow<WhatsAppDispatchEvent>(extraBufferCapacity = 10)
@@ -121,10 +166,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Employees
-    val employees = employeeDao.getAllEmployees()
+    val employees: StateFlow<List<EmployeeEntity>> = employeeRepository.allEmployees
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val employeeCount = employeeDao.getEmployeeCount()
+    val employeeCount: StateFlow<Int> = employeeRepository.employeeCount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 5)
 
     // Realtime attendance timer state
@@ -139,6 +184,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isFirebaseConnected = FirebaseRealtimeManager.isRealtimeConnected
     val firebaseSyncStatus = FirebaseRealtimeManager.syncStatus
     val fcmToken = FirebaseRealtimeManager.fcmToken
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    fun refreshAll(onComplete: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            if (_isRefreshing.value) return@launch
+            _isRefreshing.value = true
+            try {
+                FirebaseRealtimeManager.refreshAllFromFirestore(
+                    taskDao = taskDao,
+                    attendanceDao = attendanceDao,
+                    leadDao = leadDao,
+                    employeeDao = employeeDao
+                )
+                // Smooth visual feedback for pull-to-refresh
+                delay(600)
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error refreshing from Firestore: ${e.message}")
+            } finally {
+                _isRefreshing.value = false
+                onComplete?.invoke()
+            }
+        }
+    }
 
     fun triggerManualSync() {
         FirebaseRealtimeManager.syncNow(viewModelScope)
@@ -320,17 +390,116 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var timerJob: Job? = null
 
     // Projects & Tasks
-    val projects = projectDao.getAllProjects()
+    val projects: StateFlow<List<ProjectEntity>> = projectRepository.allProjects
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val tasks = taskDao.getAllTasks()
+    val tasks: StateFlow<List<TaskEntity>> = taskRepository.allTasks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val pendingTaskCount = taskDao.getPendingCount()
+    val pendingTaskCount: StateFlow<Int> = taskRepository.pendingTaskCount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3)
 
-    val completedTaskCount = taskDao.getCompletedCount()
+    val completedTaskCount: StateFlow<Int> = taskRepository.completedTaskCount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2)
+
+    // 📊 Workload Visualizer Aggregations (Recharts / D3 Architecture)
+    val projectWorkloadDistribution: StateFlow<List<ProjectWorkloadItem>> = combine(
+        taskRepository.allTasks,
+        projectRepository.allProjects
+    ) { allTasks, allProjects ->
+        if (allTasks.isEmpty() && allProjects.isEmpty()) {
+            emptyList()
+        } else {
+            val totalEnterpriseTasks = allTasks.size.coerceAtLeast(1)
+            val projectNames = (allProjects.map { it.name } + allTasks.map { it.projectName })
+                .distinct()
+                .filter { it.isNotBlank() }
+
+            projectNames.map { projName ->
+                val projTasks = allTasks.filter { it.projectName.equals(projName, ignoreCase = true) }
+                val total = projTasks.size
+                val completed = projTasks.count { it.isCompleted || it.status.equals("Completed", ignoreCase = true) }
+                val inProgress = projTasks.count { it.status.equals("In Progress", ignoreCase = true) }
+                val pending = (total - completed).coerceAtLeast(0)
+                val highPriority = projTasks.count {
+                    it.priority.equals("High", ignoreCase = true) || it.priority.equals("Critical", ignoreCase = true)
+                }
+                val assignees = projTasks.map { it.assignee }.filter { it.isNotBlank() }.distinct()
+                val workloadPct = if (allTasks.isNotEmpty()) (total.toFloat() / totalEnterpriseTasks.toFloat()) * 100f else 0f
+                val completionPct = if (total > 0) (completed.toFloat() / total.toFloat()) * 100f else 0f
+
+                ProjectWorkloadItem(
+                    projectName = projName,
+                    totalTasks = total,
+                    pendingTasks = pending,
+                    inProgressTasks = inProgress,
+                    completedTasks = completed,
+                    highPriorityTasks = highPriority,
+                    assignees = assignees,
+                    workloadPercentage = workloadPct,
+                    completionPercentage = completionPct
+                )
+            }.sortedByDescending { it.totalTasks }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val teamMemberWorkloadDistribution: StateFlow<List<TeamMemberWorkloadItem>> = combine(
+        taskRepository.allTasks,
+        employeeRepository.allEmployees
+    ) { allTasks, allEmployees ->
+        val totalEnterpriseTasks = allTasks.size.coerceAtLeast(1)
+        val memberNames = (allEmployees.map { it.name } + allTasks.map { it.assignee })
+            .distinct()
+            .filter { it.isNotBlank() }
+
+        memberNames.map { memberName ->
+            val memberTasks = allTasks.filter { it.assignee.equals(memberName, ignoreCase = true) }
+            val total = memberTasks.size
+            val completed = memberTasks.count { it.isCompleted || it.status.equals("Completed", ignoreCase = true) }
+            val pending = (total - completed).coerceAtLeast(0)
+            val assignedProjs = memberTasks.map { it.projectName }.filter { it.isNotBlank() }.distinct()
+            val workloadPct = if (allTasks.isNotEmpty()) (total.toFloat() / totalEnterpriseTasks.toFloat()) * 100f else 0f
+
+            TeamMemberWorkloadItem(
+                memberName = memberName,
+                totalTasks = total,
+                pendingTasks = pending,
+                completedTasks = completed,
+                assignedProjects = assignedProjs,
+                workloadPercentage = workloadPct
+            )
+        }.sortedByDescending { it.totalTasks }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val workloadSummaryStats: StateFlow<WorkloadSummaryStats> = combine(
+        taskRepository.allTasks,
+        projectRepository.allProjects
+    ) { allTasks, allProjects ->
+        val total = allTasks.size
+        val completed = allTasks.count { it.isCompleted || it.status.equals("Completed", ignoreCase = true) }
+        val active = (total - completed).coerceAtLeast(0)
+        val highPri = allTasks.count {
+            it.priority.equals("High", ignoreCase = true) || it.priority.equals("Critical", ignoreCase = true)
+        }
+        val projectGroup = allTasks.groupBy { it.projectName }
+        val busiest = projectGroup.maxByOrNull { it.value.size }?.key ?: (allProjects.firstOrNull()?.name ?: "Main Project")
+        val assigneeGroup = allTasks.groupBy { it.assignee }
+        val topAssignee = assigneeGroup.maxByOrNull { it.value.size }?.key ?: "Team"
+
+        WorkloadSummaryStats(
+            totalTasks = total,
+            activeTasks = active,
+            completedTasks = completed,
+            totalProjects = allProjects.size.coerceAtLeast(projectGroup.size),
+            highPriorityTasks = highPri,
+            busiestProject = busiest,
+            topAssignee = topAssignee
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        WorkloadSummaryStats(0, 0, 0, 0, 0, "Main Project", "Team")
+    )
 
     // Leads & Followups & Calls
     val leads = leadDao.getAllLeads()
@@ -361,6 +530,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val chatMessages = _currentChannel.flatMapLatest { channelId ->
         chatDao.getMessagesForChannel(channelId)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allChatMessages = chatDao.getAllMessages()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Notifications
     val notifications = notificationDao.getAllNotifications()
@@ -655,6 +827,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             projectMilestoneDao.clearAll()
             vaultDocumentDao.clearAll()
             notificationDao.clearAll()
+            invoiceDao.clearAll()
+            quotationDao.clearAll()
+            callRecordingDao.clearAll()
+
+            // Persistently flag dummy data as cleared so it is not re-seeded
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
 
             notificationDao.insert(
                 NotificationEntity(
@@ -662,6 +840,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     subtitle = "Administrator performed a complete reset of all operational fields and data records.",
                     timeAgo = "Just now",
                     category = "project",
+                    isRead = false
+                )
+            )
+        }
+    }
+
+    /**
+     * 👤 Employee: Clear My Data / Local & Dummy Records
+     */
+    fun clearEmployeeData() {
+        viewModelScope.launch {
+            val name = currentEmployeeName.value.ifBlank { "Employee" }
+            taskDao.clearAll()
+            chatDao.clearAll()
+            attendanceDao.clearAll()
+            leaveDao.clearAll()
+            notificationDao.clearAll()
+            callLogDao.clearAll()
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
+
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "🧹 Employee Data Cleared",
+                    subtitle = "All local data, tasks, chats, and records cleared for $name.",
+                    timeAgo = "Just now",
+                    category = "attendance",
                     isRead = false
                 )
             )
@@ -717,6 +921,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             employeeDao.clearAll()
             notificationDao.insert(NotificationEntity(title = "🗑️ All Employees Cleared", subtitle = "All employee directory records deleted.", timeAgo = "Just now", category = "project", isRead = false))
+        }
+    }
+
+    fun clearAllMeetings() {
+        viewModelScope.launch {
+            clientMeetingDao.clearAll()
+            notificationDao.insert(NotificationEntity(title = "🗑️ All Meetings Cleared", subtitle = "All client meeting logs deleted.", timeAgo = "Just now", category = "project", isRead = false))
+        }
+    }
+
+    fun clearAllDocuments() {
+        viewModelScope.launch {
+            vaultDocumentDao.clearAll()
+            notificationDao.insert(NotificationEntity(title = "🗑️ All Documents Cleared", subtitle = "All vault documents deleted.", timeAgo = "Just now", category = "project", isRead = false))
         }
     }
 
@@ -954,6 +1172,401 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * 🔐 Employee Sign-In: Only allows an employee who has been created/authorized by Admin
+     * (in local Room database or Firestore 'users') with the matching password to sign in.
+     */
+    fun loginWithEmployeeCredentials(
+        email: String,
+        password: String,
+        onResult: (success: Boolean, errorMessage: String?, isAdmin: Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanEmail = email.trim().lowercase()
+
+            // 1. Check local Room database first
+            val localEmp = employeeDao.getEmployeeByEmail(cleanEmail)
+            if (localEmp != null) {
+                if (localEmp.password.isNotBlank() && localEmp.password != password.trim()) {
+                    onResult(false, "Incorrect password. Please verify your password with the Admin.", false)
+                    return@launch
+                }
+                _isLoggedIn.value = true
+                _userRole.value = "Employee"
+                currentEmployeeName.value = localEmp.name
+                currentEmployeeRole.value = localEmp.designation
+                FirebaseRealtimeManager.setCurrentEmployeeName(localEmp.name)
+
+                BiometricHelper.saveUserLoginState(
+                    getApplication(),
+                    loggedIn = true,
+                    role = "Employee",
+                    phone = localEmp.phone
+                )
+                userProfileDao.insertOrUpdateProfile(
+                    UserProfileEntity(
+                        id = 1L,
+                        name = localEmp.name,
+                        role = localEmp.designation,
+                        isOnboarded = true,
+                        email = localEmp.email,
+                        phone = localEmp.phone,
+                        department = localEmp.department.name
+                    )
+                )
+                notificationDao.insert(
+                    NotificationEntity(
+                        title = "✅ Employee Signed In: ${localEmp.name}",
+                        subtitle = "Company account verified (${localEmp.email}).",
+                        timeAgo = "Just now",
+                        category = "attendance",
+                        isRead = false
+                    )
+                )
+                onResult(true, null, false)
+                return@launch
+            }
+
+            // 2. Query Firestore 'users' collection to check if created by Admin from another device
+            try {
+                val fs = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                val snapshot = fs.collection("users")
+                    .whereEqualTo("email", cleanEmail)
+                    .limit(1)
+                    .get()
+                    .awaitTask()
+
+                if (!snapshot.isEmpty) {
+                    val doc = snapshot.documents[0]
+                    val storedPassword = doc.getString("password") ?: "password123"
+                    if (storedPassword.isNotBlank() && storedPassword != password.trim()) {
+                        onResult(false, "Incorrect password. Please verify your password with the Admin.", false)
+                        return@launch
+                    }
+
+                    val name = doc.getString("name") ?: "Employee"
+                    val designation = doc.getString("designation") ?: "Team Member"
+                    val deptName = doc.getString("department") ?: "ENGINEERING"
+                    val phone = doc.getString("phoneNumber") ?: "+91 98765 00000"
+
+                    val newEmp = EmployeeEntity(
+                        name = name,
+                        email = cleanEmail,
+                        password = storedPassword,
+                        phone = phone,
+                        designation = designation,
+                        department = try { Department.valueOf(deptName) } catch (_: Exception) { Department.ENGINEERING },
+                        role = EmployeeRole.DEVELOPER,
+                        status = EmployeeStatus.ACTIVE
+                    )
+                    employeeDao.insert(newEmp)
+
+                    _isLoggedIn.value = true
+                    _userRole.value = "Employee"
+                    currentEmployeeName.value = name
+                    currentEmployeeRole.value = designation
+                    FirebaseRealtimeManager.setCurrentEmployeeName(name)
+
+                    BiometricHelper.saveUserLoginState(
+                        getApplication(),
+                        loggedIn = true,
+                        role = "Employee",
+                        phone = phone
+                    )
+                    userProfileDao.insertOrUpdateProfile(
+                        UserProfileEntity(
+                            id = 1L,
+                            name = name,
+                            role = designation,
+                            isOnboarded = true,
+                            email = cleanEmail,
+                            phone = phone,
+                            department = deptName
+                        )
+                    )
+                    onResult(true, null, false)
+                    return@launch
+                }
+            } catch (e: Exception) {
+                Log.w("MainViewModel", "Firestore employee lookup warning: ${e.message}")
+            }
+
+            // Not found in local DB or Firestore
+            onResult(
+                false,
+                "No account found for '$cleanEmail'. Please sign up with your email to create an account.",
+                false
+            )
+        }
+    }
+
+    /**
+     * 📝 Direct Employee Sign-Up with Email & Password (No Gmail/Firebase required).
+     */
+    fun signupEmployeeWithEmail(
+        name: String,
+        email: String,
+        password: String,
+        phone: String = "+91 98765 00000",
+        designation: String = "Team Member",
+        onResult: (success: Boolean, errorMessage: String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanEmail = email.trim().lowercase()
+            val cleanName = name.trim().ifBlank { "Employee" }
+            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+                onResult(false, "Please provide a valid email address.")
+                return@launch
+            }
+            if (password.trim().length < 4) {
+                onResult(false, "Password must be at least 4 characters.")
+                return@launch
+            }
+
+            val existing = employeeDao.getEmployeeByEmail(cleanEmail)
+            if (existing != null) {
+                onResult(false, "An account with email '$cleanEmail' already exists. Please sign in instead.")
+                return@launch
+            }
+
+            val emp = EmployeeEntity(
+                name = cleanName,
+                email = cleanEmail,
+                password = password.trim(),
+                phone = phone.trim().ifBlank { "+91 98765 00000" },
+                designation = designation.trim().ifBlank { "Team Member" },
+                department = Department.ENGINEERING,
+                role = EmployeeRole.DEVELOPER,
+                status = EmployeeStatus.ACTIVE,
+                presenceStatus = PresenceStatus.ONLINE,
+                joiningDate = Date(),
+                skills = listOf("General", "Communication")
+            )
+            val insertedId = employeeDao.insert(emp)
+
+            _isLoggedIn.value = true
+            _userRole.value = "Employee"
+            currentEmployeeName.value = emp.name
+            currentEmployeeRole.value = emp.designation
+            FirebaseRealtimeManager.setCurrentEmployeeName(emp.name)
+
+            BiometricHelper.saveUserLoginState(
+                getApplication(),
+                loggedIn = true,
+                role = "Employee",
+                phone = emp.phone
+            )
+            userProfileDao.insertOrUpdateProfile(
+                UserProfileEntity(
+                    id = 1L,
+                    name = emp.name,
+                    role = emp.designation,
+                    isOnboarded = true,
+                    email = cleanEmail,
+                    phone = emp.phone,
+                    department = "ENGINEERING"
+                )
+            )
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "🎉 Account Created: ${emp.name}",
+                    subtitle = "Signed up with email ($cleanEmail).",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
+            onResult(true, null)
+        }
+    }
+
+    /**
+     * 👑 Admin: Create Employee with Email, Password, Designation & Department.
+     * Persists to Room DB & synchronizes to Firestore so only this employee can sign in.
+     */
+    fun createEmployeeByAdmin(
+        name: String,
+        email: String,
+        password: String,
+        phone: String,
+        designation: String,
+        department: Department = Department.ENGINEERING,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanEmail = email.trim().lowercase()
+            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+                onError("Please provide a valid employee email address.")
+                return@launch
+            }
+            if (password.trim().length < 4) {
+                onError("Password must be at least 4 characters.")
+                return@launch
+            }
+            val existing = employeeDao.getEmployeeByEmail(cleanEmail)
+            if (existing != null) {
+                onError("Employee with email $cleanEmail already exists.")
+                return@launch
+            }
+
+            val emp = EmployeeEntity(
+                name = name.trim().ifBlank { "New Employee" },
+                email = cleanEmail,
+                password = password.trim(),
+                phone = phone.trim().ifBlank { "+91 98765 00000" },
+                designation = designation.trim().ifBlank { "Team Member" },
+                department = department,
+                role = EmployeeRole.DEVELOPER,
+                status = EmployeeStatus.ACTIVE,
+                presenceStatus = PresenceStatus.ONLINE,
+                joiningDate = Date(),
+                skills = listOf("Android", "Communication")
+            )
+            val insertedId = employeeDao.insert(emp)
+
+            // Sync to Firestore 'users' collection so the employee can sign in from any device
+            try {
+                val fs = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                val docId = cleanEmail.replace("@", "_").replace(".", "_")
+                val data = hashMapOf(
+                    "id" to insertedId,
+                    "name" to emp.name,
+                    "email" to cleanEmail,
+                    "password" to emp.password,
+                    "phoneNumber" to emp.phone,
+                    "designation" to emp.designation,
+                    "department" to emp.department.name,
+                    "role" to "employee",
+                    "status" to "ACTIVE",
+                    "createdAt" to System.currentTimeMillis()
+                )
+                fs.collection("users").document(docId).set(data, com.google.firebase.firestore.SetOptions.merge())
+            } catch (e: Exception) {
+                Log.w("MainViewModel", "Firestore employee create sync: ${e.message}")
+            }
+
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "👤 Employee Registered: ${emp.name}",
+                    subtitle = "Account created for $cleanEmail with assigned password.",
+                    timeAgo = "Just now",
+                    category = "attendance",
+                    isRead = false
+                )
+            )
+            onSuccess()
+        }
+    }
+
+    // Firebase Auth State & User Persistence Flows
+    val firebaseUserRecord: StateFlow<FirebaseUserRecord?> = FirebaseAuthHelper.currentUserRecord
+    val firebaseAuthMessage: StateFlow<String> = FirebaseAuthHelper.authStateMessage
+    val isFirebaseAuthLoading: StateFlow<Boolean> = FirebaseAuthHelper.isAuthenticating
+
+    /**
+     * Signs in with Google using Credential Manager and Firebase Auth.
+     * Persists the user's profile and authentication metadata directly into Firestore.
+     */
+    fun loginWithGoogle(
+        context: Context,
+        selectedRoleHint: String? = null,
+        onComplete: (isAdmin: Boolean, targetRoute: String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = FirebaseAuthHelper.signInWithGoogle(
+                context = context,
+                targetRoleHint = selectedRoleHint
+            )
+            when (result) {
+                is GoogleSignInResult.Success -> {
+                    val isAdmin = result.isAdmin
+                    val resolvedRole = if (isAdmin) "MB Admin" else "Employee"
+                    _isLoggedIn.value = true
+                    _userRole.value = resolvedRole
+
+                    BiometricHelper.saveUserLoginState(
+                        getApplication(),
+                        loggedIn = true,
+                        role = resolvedRole,
+                        phone = result.user.email
+                    )
+
+                    currentEmployeeName.value = result.user.displayName
+                    currentEmployeeRole.value = result.user.designation
+
+                    // Persist to Room local database for offline resilience
+                    userProfileDao.insertOrUpdateProfile(
+                        UserProfileEntity(
+                            id = 1L,
+                            name = result.user.displayName,
+                            role = result.user.designation,
+                            isOnboarded = true,
+                            email = result.user.email,
+                            phone = "+91 98765 43210",
+                            department = result.user.department
+                        )
+                    )
+
+                    notificationDao.insert(
+                        NotificationEntity(
+                            title = "🔐 Google Sign-in: ${result.user.displayName}",
+                            subtitle = "Authenticated with Firebase Auth & tracked in Firestore (${result.user.email}).",
+                            timeAgo = "Just now",
+                            category = "attendance",
+                            isRead = false
+                        )
+                    )
+
+                    val targetRoute = if (isAdmin) "manager" else "home"
+                    onComplete(isAdmin, targetRoute)
+                }
+                is GoogleSignInResult.Error -> {
+                    android.util.Log.w("MainViewModel", "Google Sign-in failed: ${result.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Persists user data updates directly to Firestore to keep track of user details.
+     */
+    fun syncUserProfileToFirestore(
+        name: String,
+        designation: String,
+        department: String,
+        email: String,
+        onComplete: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val updates = mapOf(
+                "name" to name,
+                "displayName" to name,
+                "designation" to designation,
+                "department" to department,
+                "email" to email,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            val success = FirebaseAuthHelper.updateUserDataInFirestore(updates)
+            if (success) {
+                currentEmployeeName.value = name
+                currentEmployeeRole.value = designation
+                userProfileDao.insertOrUpdateProfile(
+                    UserProfileEntity(
+                        id = 1L,
+                        name = name,
+                        role = designation,
+                        isOnboarded = true,
+                        email = email,
+                        phone = "+91 98765 43210",
+                        department = department
+                    )
+                )
+            }
+            onComplete(success)
+        }
+    }
+
     fun loginWithBiometrics(isAdmin: Boolean = false) {
         val role = if (isAdmin) "MB Admin" else "Employee"
         val phone = if (isAdmin) "+91 98111 22334" else "+91 98765 43210"
@@ -1062,6 +1675,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
+        FirebaseAuthHelper.signOut()
         FirestoreAuthProvider.logout(getApplication())
         BiometricHelper.clearLoginSession(getApplication())
         _isLoggedIn.value = false
@@ -1074,6 +1688,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             AppDatabase.ensurePopulated(db)
         }
 
+        // Initialize Firebase Auth & Google Sign-In helper
+        FirebaseAuthHelper.initialize(application.applicationContext)
+
         // Initialize Firebase Realtime Manager for continuous synchronization
         FirebaseRealtimeManager.initialize(
             application.applicationContext,
@@ -1081,6 +1698,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             userProfileDao,
             taskDao,
             leadDao,
+            chatDao,
             viewModelScope
         )
 
@@ -1093,6 +1711,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (profile != null && profile.isOnboarded) {
                     currentEmployeeName.value = profile.name
                     currentEmployeeRole.value = profile.role
+                    FirebaseRealtimeManager.setCurrentEmployeeName(profile.name)
                     showFirstTimeCheckInDialog.value = false
                 } else {
                     // Not onboarded yet -> show onboarding popup
@@ -1156,6 +1775,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val locName = geofenceResult?.locationName ?: com.example.util.LocationHelper.OFFICE_NAME
             val lat = geofenceResult?.latitude ?: com.example.util.LocationHelper.OFFICE_LAT
             val lng = geofenceResult?.longitude ?: com.example.util.LocationHelper.OFFICE_LNG
+            val dist = geofenceResult?.distanceMeters ?: 0f
 
             val newRecord = AttendanceRecord(
                 date = nowDateStr,
@@ -1175,16 +1795,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             val recordId = attendanceDao.insert(newRecord)
             val inserted = newRecord.copy(id = recordId)
+
+            // Sync to Firebase Realtime Manager (Firestore 'attendance_records')
             FirebaseRealtimeManager.syncAttendanceToFirebase(inserted)
+
+            // Explicitly store Clock-In timestamp and location in Firestore
+            val currentUid = firebaseUserRecord.value?.uid
+                ?: "emp_${currentEmployeeName.value.lowercase().replace(" ", "_")}"
+            val currentEmail = userProfile.value?.email ?: firebaseUserRecord.value?.email
+
+            FirebaseAuthHelper.recordClockInToFirestore(
+                userId = currentUid,
+                employeeName = currentEmployeeName.value,
+                employeeEmail = currentEmail,
+                timestamp = currentTimestamp,
+                formattedTime = nowTimeStr,
+                date = nowDateStr,
+                latitude = lat,
+                longitude = lng,
+                locationAddress = locName,
+                isGeofenceVerified = isGeofenced,
+                distanceMeters = dist,
+                selfieUri = selfieUri,
+                attendanceRecordId = recordId
+            )
+
             _liveActiveDurationSeconds.value = 0
 
-            val statusMsg = geofenceResult?.statusMessage ?: "Checked in at $nowTimeStr"
+            val statusMsg = "Clocked In at $nowTimeStr · Location ($locName) saved to Firestore"
             _attendanceSnackbarMessage.value = statusMsg
 
             notificationDao.insert(
                 NotificationEntity(
                     title = if (isGeofenced) "Office Punch In (Verified)" else "Remote Punch In Logged",
-                    subtitle = "$statusMsg at $nowTimeStr",
+                    subtitle = "$locName at $nowTimeStr (Synced to Firestore)",
                     timeAgo = "Just now",
                     category = "attendance",
                     isRead = false
@@ -1193,11 +1837,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun checkOutUser() {
+    fun checkOutUser(context: Context? = null) {
         viewModelScope.launch {
             val current = latestAttendance.value
             val timeFormat = SimpleDateFormat("hh:mm:ss a", Locale.getDefault())
-            val nowTimeStr = timeFormat.format(Date())
+            val now = Date()
+            val nowTimeStr = timeFormat.format(now)
+            val clockOutTimestamp = now.time
+
+            val geofenceResult = if (context != null) {
+                com.example.util.LocationHelper.verifyOfficeGeofence(context)
+            } else {
+                null
+            }
+
+            val outLat = geofenceResult?.latitude ?: (current?.latitude ?: com.example.util.LocationHelper.OFFICE_LAT)
+            val outLng = geofenceResult?.longitude ?: (current?.longitude ?: com.example.util.LocationHelper.OFFICE_LNG)
+            val outLocName = geofenceResult?.locationName ?: (current?.locationAddress ?: com.example.util.LocationHelper.OFFICE_NAME)
+            val outIsGeofenced = geofenceResult?.isInsideGeofence ?: (current?.isGeofenceVerified ?: true)
 
             if (current != null && current.isWorking) {
                 val totalMinutes = _liveActiveDurationSeconds.value / 60
@@ -1206,14 +1863,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     checkOutTime = nowTimeStr,
                     isWorking = false,
                     durationMinutes = totalMinutes,
-                    overtimeMinutes = overtime
+                    overtimeMinutes = overtime,
+                    latitude = outLat,
+                    longitude = outLng,
+                    locationAddress = outLocName,
+                    isGeofenceVerified = outIsGeofenced
                 )
                 attendanceDao.update(updated)
+
+                // Sync to Firebase Realtime Manager (Firestore)
                 FirebaseRealtimeManager.syncAttendanceToFirebase(updated)
+
+                // Explicitly store Clock-Out timestamp and location in Firestore
+                val currentUid = firebaseUserRecord.value?.uid
+                    ?: "emp_${currentEmployeeName.value.lowercase().replace(" ", "_")}"
+                val currentEmail = userProfile.value?.email ?: firebaseUserRecord.value?.email
+
+                FirebaseAuthHelper.recordClockOutToFirestore(
+                    userId = currentUid,
+                    employeeName = currentEmployeeName.value,
+                    employeeEmail = currentEmail,
+                    timestamp = clockOutTimestamp,
+                    formattedTime = nowTimeStr,
+                    date = current.date,
+                    latitude = outLat,
+                    longitude = outLng,
+                    locationAddress = outLocName,
+                    isGeofenceVerified = outIsGeofenced,
+                    durationMinutes = totalMinutes,
+                    overtimeMinutes = overtime,
+                    attendanceRecordId = current.id
+                )
+
+                val statusMsg = "Clocked Out at $nowTimeStr (${totalMinutes / 60}h ${totalMinutes % 60}m) · Location saved to Firestore"
+                _attendanceSnackbarMessage.value = statusMsg
+
                 notificationDao.insert(
                     NotificationEntity(
                         title = "Punch Out Recorded",
-                        subtitle = "Checked out at $nowTimeStr (${totalMinutes / 60}h ${totalMinutes % 60}m logged)",
+                        subtitle = "Checked out at $nowTimeStr at $outLocName (Synced to Firestore)",
                         timeAgo = "Just now",
                         category = "attendance",
                         isRead = false
@@ -1226,7 +1914,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleCheckInCheckOut(context: Context? = null) {
         val current = latestAttendance.value
         if (current != null && current.isWorking) {
-            checkOutUser()
+            checkOutUser(context = context)
         } else {
             checkInUser(context = context)
         }
@@ -1382,18 +2070,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
             val currentSender = currentEmployeeName.value.ifBlank { "Rahul Sharma" }
             val currentSenderRole = currentEmployeeRole.value.ifBlank { "Senior Developer" }
+            val msgId = System.currentTimeMillis()
+            val timestamp = timeFormat.format(Date())
+            val messageText = "🎤 Voice Note (${durationSec}s)"
             val message = ChatMessageEntity(
+                id = msgId,
                 channelId = _currentChannel.value,
                 senderName = currentSender,
                 senderRole = currentSenderRole,
-                messageText = "🎤 Voice Note (${durationSec}s)",
-                timestampText = timeFormat.format(Date()),
+                messageText = messageText,
+                timestampText = timestamp,
                 isMe = true,
                 audioPath = audioPath,
                 audioDurationSeconds = durationSec,
                 isVoiceMessage = true
             )
             chatDao.insert(message)
+
+            FirebaseRealtimeManager.syncChatMessageToFirebase(
+                channelId = _currentChannel.value,
+                senderName = currentSender,
+                senderRole = currentSenderRole,
+                messageText = messageText,
+                timestampText = timestamp,
+                attachmentFileName = "voice_note.m4a",
+                attachmentFileSize = "${durationSec}s",
+                messageId = msgId
+            )
         }
     }
 
@@ -1520,6 +2223,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun deleteChatMessage(message: ChatMessageEntity) {
+        viewModelScope.launch {
+            chatDao.delete(message)
+        }
+    }
+
+    fun deleteAttendanceRecord(record: AttendanceRecord) {
+        viewModelScope.launch {
+            attendanceDao.delete(record)
+        }
+    }
+
     fun updateTask(task: TaskEntity) {
         viewModelScope.launch {
             taskDao.update(task)
@@ -1543,6 +2258,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         dueDate: String,
         category: String = "Work",
         estimatedTimeNeeded: String = "4 Hours",
+        assignee: String = "Rahul Sharma",
         dependsOnTaskId: Long? = null,
         dependsOnTaskTitle: String? = null
     ) {
@@ -1554,6 +2270,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 dueDate = dueDate,
                 status = "Backlog",
                 isCompleted = false,
+                assignee = assignee,
                 category = category,
                 estimatedTimeNeeded = estimatedTimeNeeded,
                 dependsOnTaskId = dependsOnTaskId,
@@ -1563,7 +2280,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             FirebaseRealtimeManager.syncTaskToFirebase(newTask.copy(id = id))
             NotificationHelper.showTaskAlert(
                 context = getApplication(),
-                title = "New Task Assigned",
+                title = "New Task Assigned to $assignee",
                 messageText = "[$category] '$title' created for $projectName (Due: $dueDate)",
                 taskId = id
             )
@@ -1571,7 +2288,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             notificationDao.insert(
                 NotificationEntity(
                     title = "New Task Assigned",
-                    subtitle = "[$category] '$title' created for $projectName (Est: $estimatedTimeNeeded)$depInfo",
+                    subtitle = "[$category] '$title' assigned to $assignee (Est: $estimatedTimeNeeded)$depInfo",
                     timeAgo = "Just now",
                     category = "task",
                     isRead = false
@@ -1772,6 +2489,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectChatChannel(channelId: String) {
         _currentChannel.value = channelId
+        FirebaseRealtimeManager.startRealtimeChatListener(channelId, chatDao, viewModelScope)
     }
 
     fun sendChatMessage(text: String, fileName: String? = null, fileSize: String? = null) {
@@ -1780,63 +2498,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
             val currentSender = currentEmployeeName.value.ifBlank { "Rahul Sharma" }
             val currentSenderRole = currentEmployeeRole.value.ifBlank { "Senior Developer" }
+            val msgId = System.currentTimeMillis()
+            val timestamp = timeFormat.format(Date())
             val message = ChatMessageEntity(
+                id = msgId,
                 channelId = _currentChannel.value,
                 senderName = currentSender,
                 senderRole = currentSenderRole,
                 messageText = text,
-                timestampText = timeFormat.format(Date()),
+                timestampText = timestamp,
                 isMe = true,
                 attachmentFileName = fileName,
                 attachmentFileSize = fileSize
             )
             chatDao.insert(message)
 
-            // Dynamic instant teammate auto-reply with high speed (sub-second)
-            delay(900)
-            val randomReplier = listOf(
-                Pair("Arjun Mehta", "Team Lead"),
-                Pair("Priya Singh", "Project Manager"),
-                Pair("Vikram Rao", "Tech Architect"),
-                Pair("Rohit Verma", "Product Lead")
-            ).random()
-
-            val replyText = when {
-                text.contains("meeting", ignoreCase = true) || text.contains("📍", ignoreCase = true) -> "Got it, connecting on Google Meet now 👍"
-                text.contains("break", ignoreCase = true) || text.contains("☕", ignoreCase = true) -> "Enjoy your break! We'll cover the pending review."
-                text.contains("done", ignoreCase = true) || text.contains("✅", ignoreCase = true) -> "Awesome work! QA build has been deployed."
-                text.contains("working", ignoreCase = true) || text.contains("🚀", ignoreCase = true) -> "Great speed, let us know if you need any API sync."
-                text.contains("ack", ignoreCase = true) || text.contains("👍", ignoreCase = true) -> "Perfect. Thanks for the quick update!"
-                else -> "Received: \"$text\". Updated in today's live feed!"
-            }
-
-            chatDao.insert(
-                ChatMessageEntity(
-                    channelId = _currentChannel.value,
-                    senderName = randomReplier.first,
-                    senderRole = randomReplier.second,
-                    messageText = replyText,
-                    timestampText = timeFormat.format(Date()),
-                    isMe = false
-                )
-            )
-
-            // Post background / system push notification alert
-            com.example.util.NotificationHelper.showChatAlert(
-                context = getApplication(),
-                senderName = randomReplier.first,
-                messageText = replyText,
-                channelTitle = "Team Chat",
-                channelId = _currentChannel.value
-            )
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "💬 ${randomReplier.first}",
-                    subtitle = replyText,
-                    timeAgo = "Just now",
-                    category = "chat",
-                    isRead = false
-                )
+            // Multi-device Firestore synchronization
+            FirebaseRealtimeManager.syncChatMessageToFirebase(
+                channelId = _currentChannel.value,
+                senderName = currentSender,
+                senderRole = currentSenderRole,
+                messageText = text,
+                timestampText = timestamp,
+                attachmentFileName = fileName,
+                attachmentFileSize = fileSize,
+                messageId = msgId
             )
         }
     }

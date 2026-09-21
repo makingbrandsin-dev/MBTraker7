@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.*
 import com.example.ui.components.AppHeader
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.theme.*
 import com.example.util.LocationHelper
 import com.example.util.WhatsAppHelper
@@ -209,8 +210,10 @@ fun ClientMeetingsScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Field Sales Check-Ins",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Field Sales Check-Ins",
+                subMenuSubtitle = "${meetings.size} Visits Logged",
                 onBack = onBack
             )
         },
@@ -419,8 +422,10 @@ fun ExpenseClaimsScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Expense Reimbursements",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Expense Reimbursements",
+                subMenuSubtitle = "${expenses.size} Claims Total",
                 onBack = onBack
             )
         },
@@ -631,8 +636,10 @@ fun VaultScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Document & Asset Vault",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Document & Asset Vault",
+                subMenuSubtitle = "${documents.size} Corporate Documents",
                 onBack = onBack
             )
         },

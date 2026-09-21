@@ -30,7 +30,142 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.firebase.FirebaseRealtimeManager
 import com.example.data.firebase.NetworkSyncStatus
 import com.example.data.firebase.SyncState
+import com.example.ui.screens.MainViewModel
 import com.example.ui.theme.*
+
+@Composable
+fun SubMenuHeader(
+    title: String,
+    subtitle: String? = null,
+    onBack: (() -> Unit)? = null,
+    badgeText: String? = null,
+    badgeColor: Color = ElectricBlueBg,
+    badgeTextColor: Color = BrandBlue,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    Surface(
+        color = Color.White,
+        shadowElevation = 0.5.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    if (onBack != null) {
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .padding(end = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = TextPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = title,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            if (badgeText != null) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = badgeColor
+                                ) {
+                                    Text(
+                                        text = badgeText,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = badgeTextColor,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                        if (subtitle != null) {
+                            Text(
+                                text = subtitle,
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    actions()
+                }
+            }
+            HorizontalDivider(thickness = 0.8.dp, color = BorderLight.copy(alpha = 0.8f))
+        }
+    }
+}
+
+@Composable
+fun StandardScreenHeader(
+    viewModel: MainViewModel,
+    subMenuTitle: String? = null,
+    subMenuSubtitle: String? = null,
+    onBack: (() -> Unit)? = null,
+    badgeText: String? = null,
+    badgeColor: Color = ElectricBlueBg,
+    badgeTextColor: Color = BrandBlue,
+    onNavigateToChat: (() -> Unit)? = null,
+    onNavigateToNotifications: (() -> Unit)? = null,
+    onNavigateToProfile: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    val unreadChat by viewModel.unreadChatCount.collectAsState()
+    val unreadNotifications by viewModel.unreadNotificationCount.collectAsState()
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Unified Primary Header (The same header from Home screen for all screens)
+        AppHeader(
+            title = "MB Traker",
+            showBrandLogo = true,
+            showSyncIndicator = true,
+            onOpenChat = onNavigateToChat,
+            unreadChatCount = unreadChat,
+            onNavigateToNotifications = onNavigateToNotifications,
+            unreadNotificationCount = unreadNotifications,
+            onNavigateToProfile = onNavigateToProfile,
+            showBottomDivider = subMenuTitle == null
+        )
+
+        // Sub Menu Header below main header
+        if (subMenuTitle != null) {
+            SubMenuHeader(
+                title = subMenuTitle,
+                subtitle = subMenuSubtitle,
+                onBack = onBack,
+                badgeText = badgeText,
+                badgeColor = badgeColor,
+                badgeTextColor = badgeTextColor,
+                actions = actions
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +180,7 @@ fun AppHeader(
     unreadChatCount: Int = 0,
     onNavigateToNotifications: (() -> Unit)? = null,
     unreadNotificationCount: Int = 0,
+    onOpenMilo: (() -> Unit)? = null,
     showBottomDivider: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {}
 ) {

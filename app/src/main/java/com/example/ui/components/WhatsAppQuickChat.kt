@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,14 +83,26 @@ fun WhatsAppQuickChatDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
-        Surface(
+        val configuration = LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 16.dp),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            color = WhatsAppChatBg
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding(),
+            contentAlignment = if (isTablet) Alignment.Center else Alignment.BottomCenter
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Surface(
+                modifier = Modifier
+                    .widthIn(max = 680.dp)
+                    .fillMaxWidth(if (isTablet) 0.88f else 1f)
+                    .fillMaxHeight(if (isTablet) 0.92f else 0.97f),
+                shape = if (isTablet) RoundedCornerShape(24.dp) else RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                color = WhatsAppChatBg
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
                 // 🟢 WhatsApp Executive Header
                 Surface(
                     color = WhatsAppTeal,
@@ -266,6 +279,9 @@ fun WhatsAppQuickChatDialog(
                 ) {
                     items(messages) { msg ->
                         val isMe = msg.isMe
+                        val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                        val maxBubbleWidth = (configuration.screenWidthDp * 0.78f).dp
+
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
@@ -279,7 +295,7 @@ fun WhatsAppQuickChatDialog(
                                 ),
                                 color = if (isMe) WhatsAppBubbleSent else WhatsAppBubbleReceived,
                                 shadowElevation = 1.dp,
-                                modifier = Modifier.widthIn(max = 300.dp)
+                                modifier = Modifier.widthIn(max = maxBubbleWidth)
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
                                     if (!isMe) {
@@ -593,6 +609,7 @@ fun WhatsAppQuickChatDialog(
             }
         }
     }
+}
 }
 
 @Composable

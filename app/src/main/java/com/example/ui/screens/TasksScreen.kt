@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,11 +31,15 @@ import com.example.data.model.TaskEntity
 import com.example.ui.components.AppHeader
 import com.example.ui.components.CrmTasksAttendanceSwitcher
 import com.example.ui.components.KanbanBoardView
+import com.example.ui.components.MiloAssistantDialog
+import com.example.ui.components.FloatingAskMiloButton
 import com.example.ui.components.PriorityBadge
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.components.getCategoryConfig
 import com.example.ui.components.standardCategories
 import com.example.ui.theme.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
     viewModel: MainViewModel,
@@ -66,10 +71,28 @@ fun TasksScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Tasks",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Tasks & Workflow",
+                subMenuSubtitle = "${filteredTasks.size} Tasks · ${tasks.count { it.isCompleted }} Done",
                 onBack = onBack,
-                onNavigateToProfile = onNavigateToProfile
+                onNavigateToProfile = onNavigateToProfile,
+                actions = {
+                    IconButton(onClick = { isKanbanMode = !isKanbanMode }) {
+                        Icon(
+                            if (isKanbanMode) Icons.Default.ViewList else Icons.Default.ViewKanban,
+                            contentDescription = "Toggle Kanban",
+                            tint = BrandBlue
+                        )
+                    }
+                    IconButton(onClick = { showAddTaskDialog = true }) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Add Task",
+                            tint = BrandBlue
+                        )
+                    }
+                }
             )
         },
         floatingActionButton = {
@@ -84,13 +107,21 @@ fun TasksScreen(
         },
         containerColor = SurfaceBg
     ) { paddingValues ->
-        LazyColumn(
+        val isRefreshing by viewModel.isRefreshing.collectAsState()
+
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.refreshAll() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
             // CRM - Tasks - Attendance Hub Switcher
             item {
                 CrmTasksAttendanceSwitcher(
@@ -258,6 +289,7 @@ fun TasksScreen(
                     )
                 }
             }
+        }
         }
     }
 

@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.model.*
 import kotlinx.coroutines.CoroutineScope
@@ -37,7 +38,7 @@ import java.util.Date
         VaultDocumentEntity::class,
         AttendanceRegularizationEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -69,6 +70,83 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        /**
+         * Migration from version 11 to 12: Adds support for client meetings and expense claims tables.
+         */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `client_meetings` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `clientName` TEXT NOT NULL,
+                        `company` TEXT NOT NULL,
+                        `meetingTitle` TEXT NOT NULL,
+                        `agenda` TEXT NOT NULL,
+                        `scheduledDateTime` TEXT NOT NULL,
+                        `durationMinutes` INTEGER NOT NULL,
+                        `location` TEXT NOT NULL,
+                        `meetingType` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `outcomeNotes` TEXT,
+                        `actionItems` TEXT NOT NULL,
+                        `attendeeEmails` TEXT NOT NULL,
+                        `assignedEmployee` TEXT NOT NULL,
+                        `leadId` INTEGER,
+                        `latitude` REAL,
+                        `longitude` REAL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        /**
+         * Migration from version 12 to 13: Adds support for project milestones, vault documents, and attendance regularizations.
+         */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `project_milestones` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `projectId` INTEGER NOT NULL,
+                        `milestoneName` TEXT NOT NULL,
+                        `description` TEXT NOT NULL,
+                        `targetDate` TEXT NOT NULL,
+                        `completionDate` TEXT,
+                        `status` TEXT NOT NULL,
+                        `amountAllocated` REAL,
+                        `isPaymentReleased` INTEGER NOT NULL,
+                        `deliverables` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        /**
+         * Migration from version 13 to 14: Configures performance indices across core entities.
+         */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Indices for employees table
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_employees_email` ON `employees` (`email`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_employees_department` ON `employees` (`department`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_employees_status` ON `employees` (`status`)")
+
+                // Indices for projects table
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_projects_status` ON `projects` (`status`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_projects_priority` ON `projects` (`priority`)")
+
+                // Indices for tasks table
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_projectId` ON `tasks` (`projectId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_status` ON `tasks` (`status`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_priority` ON `tasks` (`priority`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_isCompleted` ON `tasks` (`isCompleted`)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -76,6 +154,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mb_traker_database"
                 )
+                    .addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .addCallback(DatabaseCallback())
                     .fallbackToDestructiveMigration()
                     .build()
@@ -94,6 +173,12 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+            override fun onOpen(db: SupportSQLiteDatabase) {
+                super.onOpen(db)
+                // Execute SQLite performance optimizations on database open
+                db.execSQL("PRAGMA foreign_keys = ON")
+            }
+
             override fun onDestructiveMigration(db: SupportSQLiteDatabase) {
                 super.onDestructiveMigration(db)
                 INSTANCE?.let { database ->
@@ -104,12 +189,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        suspend fun ensurePopulated(db: AppDatabase) {
+        suspend fun ensurePopulated(db: AppDatabase, context: Context? = null) {
             try {
+                if (context != null && com.example.util.AppPreferences.isDummyDataCleared(context)) {
+                    return
+                }
+                val employeeCount = db.employeeDao().getEmployeeCountDirect()
                 val taskCount = db.taskDao().getTaskCount()
                 val chatCount = db.chatDao().getMessageCount()
                 val leadCount = db.leadDao().getLeadCount()
-                if (taskCount == 0 || chatCount == 0 || leadCount == 0) {
+                if (employeeCount == 0 || (taskCount == 0 && chatCount == 0 && leadCount == 0)) {
                     populateInitialData(db)
                 }
             } catch (_: Exception) {
@@ -197,156 +286,6 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 )
             )
-
-            // Initial attendance history across current month with month, day, hours, breaks, overtime
-            val attendanceHistory = listOf(
-                AttendanceRecord(
-                    date = "2026-09-01",
-                    checkInTime = "09:00 AM",
-                    checkOutTime = "06:15 PM",
-                    durationMinutes = 555, // 9h 15m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 45,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-02",
-                    checkInTime = "08:55 AM",
-                    checkOutTime = "06:00 PM",
-                    durationMinutes = 545, // 9h 05m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 35,
-                    breakMinutes = 40,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-03",
-                    checkInTime = "09:12 AM",
-                    checkOutTime = "06:30 PM",
-                    durationMinutes = 558, // 9h 18m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 48,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-04",
-                    checkInTime = "09:02 AM",
-                    checkOutTime = "06:05 PM",
-                    durationMinutes = 543, // 9h 03m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 30,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-05",
-                    checkInTime = "09:30 AM",
-                    checkOutTime = "02:00 PM",
-                    durationMinutes = 270, // 4h 30m
-                    isWorking = false,
-                    status = "Half Day",
-                    overtimeMinutes = 0,
-                    breakMinutes = 20,
-                    breakType = "Tea Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-08",
-                    checkInTime = "08:50 AM",
-                    checkOutTime = "06:20 PM",
-                    durationMinutes = 570, // 9h 30m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 60,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-09",
-                    checkInTime = "09:05 AM",
-                    checkOutTime = "06:10 PM",
-                    durationMinutes = 545, // 9h 05m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 35,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-10",
-                    checkInTime = "09:00 AM",
-                    checkOutTime = "06:00 PM",
-                    durationMinutes = 540, // 9h 00m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 30,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-11",
-                    checkInTime = "09:15 AM",
-                    checkOutTime = "06:45 PM",
-                    durationMinutes = 570, // 9h 30m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 60,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-12",
-                    checkInTime = "09:00 AM",
-                    checkOutTime = "05:30 PM",
-                    durationMinutes = 510, // 8h 30m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 0,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-15",
-                    checkInTime = "08:58 AM",
-                    checkOutTime = "06:15 PM",
-                    durationMinutes = 557, // 9h 17m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 45,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-16",
-                    checkInTime = "09:05 AM",
-                    checkOutTime = "06:20 PM",
-                    durationMinutes = 555, // 9h 15m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 45,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                ),
-                AttendanceRecord(
-                    date = "2026-09-17",
-                    checkInTime = "09:00 AM",
-                    checkOutTime = "06:10 PM",
-                    durationMinutes = 550, // 9h 10m
-                    isWorking = false,
-                    status = "Present",
-                    overtimeMinutes = 40,
-                    breakMinutes = 45,
-                    breakType = "Lunch Break"
-                )
-            )
-            for (rec in attendanceHistory) {
-                db.attendanceDao().insert(rec)
-            }
 
             // Projects
             db.projectDao().insertAll(

@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.CallLogEntity
 import com.example.ui.components.AppHeader
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.theme.*
 
 @Composable
@@ -45,12 +46,14 @@ fun CallTrackerScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Call Log",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Call Tracker & Logs",
+                subMenuSubtitle = "${filteredLogs.size} Calls Recorded",
                 onBack = onBack,
                 actions = {
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More", tint = TextPrimary)
+                    IconButton(onClick = { showQuickLogDialog = true }) {
+                        Icon(Icons.Default.AddIcCall, contentDescription = "Log Call", tint = BrandBlue)
                     }
                 }
             )

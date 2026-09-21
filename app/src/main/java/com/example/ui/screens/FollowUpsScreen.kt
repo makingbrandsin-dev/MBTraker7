@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.FollowUpEntity
 import com.example.ui.components.AppHeader
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.theme.*
 
 @Composable
@@ -45,8 +46,10 @@ fun FollowUpsScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Follow-ups",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Client Follow-ups",
+                subMenuSubtitle = "${filteredFollowUps.size} Scheduled Reminders",
                 onBack = onBack,
                 actions = {
                     IconButton(onClick = { showAddDialog = true }) {

@@ -86,7 +86,7 @@ interface AuthProvider {
 /**
  * Task extension helper for Google Play Services Task await without extra dependency.
  */
-private suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitTask(): T =
+internal suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitTask(): T =
     suspendCancellableCoroutine { continuation ->
         addOnSuccessListener { result ->
             if (continuation.isActive) continuation.resume(result)
@@ -196,6 +196,22 @@ object FirestoreAuthProvider : AuthProvider {
                 .set(employeeData, SetOptions.merge())
                 .awaitTask()
 
+            // 2b. Default Employee Portal Account
+            val defaultEmpData = mapOf(
+                "uid" to "emp_default",
+                "name" to "Making Brands Employee",
+                "phoneNumber" to "+91 98765 43210",
+                "email" to "employee@makingbrands.in",
+                "role" to "employee",
+                "designation" to "Operations Associate",
+                "department" to "Operations",
+                "status" to "ACTIVE",
+                "updatedAt" to System.currentTimeMillis()
+            )
+            fs.collection(USERS_COLLECTION).document("emp_default")
+                .set(defaultEmpData, SetOptions.merge())
+                .awaitTask()
+
             // 3. Manager Account (Priya Singh)
             val managerData = mapOf(
                 "uid" to "mgr_priya",
@@ -238,43 +254,70 @@ object FirestoreAuthProvider : AuthProvider {
         var fetchedDesignation: String? = null
         var fetchedDepartment: String? = null
         var fetchedEmail: String? = null
-        var userDocId = cleanPhone.ifBlank { "user_1" }
+        val isEmailIdentifier = identifier.contains("@")
+        var userDocId = if (isEmailIdentifier) {
+            identifier.trim().lowercase().replace("@", "_").replace(".", "_")
+        } else {
+            cleanPhone.ifBlank { "user_1" }
+        }
 
         if (fs != null) {
             try {
-                // 1. Direct document lookup by sanitized phone in 'users'
-                val docSnapshot = fs.collection(USERS_COLLECTION).document(userDocId).get().awaitTask()
-                if (docSnapshot.exists()) {
-                    fetchedRoleString = docSnapshot.getString("role")
-                    fetchedName = docSnapshot.getString("name")
-                    fetchedDesignation = docSnapshot.getString("designation")
-                    fetchedDepartment = docSnapshot.getString("department")
-                    fetchedEmail = docSnapshot.getString("email")
-                    Log.d(TAG, "Found user in Firestore 'users/$userDocId' with role: $fetchedRoleString")
-                } else {
-                    // 2. Query 'users' by phoneNumber field
-                    val querySnapshot = fs.collection(USERS_COLLECTION)
-                        .whereEqualTo("phoneNumber", identifier.trim())
+                if (isEmailIdentifier) {
+                    // Query 'users' by email field
+                    val emailQuery = fs.collection(USERS_COLLECTION)
+                        .whereEqualTo("email", identifier.trim().lowercase())
                         .limit(1)
                         .get()
                         .awaitTask()
 
-                    if (!querySnapshot.isEmpty) {
-                        val firstDoc = querySnapshot.documents[0]
+                    if (!emailQuery.isEmpty) {
+                        val firstDoc = emailQuery.documents[0]
                         userDocId = firstDoc.id
                         fetchedRoleString = firstDoc.getString("role")
                         fetchedName = firstDoc.getString("name")
                         fetchedDesignation = firstDoc.getString("designation")
                         fetchedDepartment = firstDoc.getString("department")
                         fetchedEmail = firstDoc.getString("email")
-                        Log.d(TAG, "Found user via query in Firestore 'users' with role: $fetchedRoleString")
+                        Log.d(TAG, "Found user via email in Firestore 'users' with role: $fetchedRoleString")
+                    }
+                }
+
+                if (fetchedRoleString == null) {
+                    // 1. Direct document lookup by sanitized phone in 'users'
+                    val docSnapshot = fs.collection(USERS_COLLECTION).document(userDocId).get().awaitTask()
+                    if (docSnapshot.exists()) {
+                        fetchedRoleString = docSnapshot.getString("role")
+                        fetchedName = docSnapshot.getString("name")
+                        fetchedDesignation = docSnapshot.getString("designation")
+                        fetchedDepartment = docSnapshot.getString("department")
+                        fetchedEmail = docSnapshot.getString("email")
+                        Log.d(TAG, "Found user in Firestore 'users/$userDocId' with role: $fetchedRoleString")
                     } else {
-                        // 3. Fallback to 'user_profiles' collection
-                        val profileSnapshot = fs.collection(USER_PROFILES_COLLECTION).document("user_1").get().awaitTask()
-                        if (profileSnapshot.exists()) {
-                            fetchedRoleString = profileSnapshot.getString("role")
-                            fetchedName = profileSnapshot.getString("name")
-                            Log.d(TAG, "Found role in Firestore 'user_profiles/user_1': $fetchedRoleString")
+                        // 2. Query 'users' by phoneNumber field
+                        val querySnapshot = fs.collection(USERS_COLLECTION)
+                            .whereEqualTo("phoneNumber", identifier.trim())
+                            .limit(1)
+                            .get()
+                            .awaitTask()
+
+                        if (!querySnapshot.isEmpty) {
+                            val firstDoc = querySnapshot.documents[0]
+                            userDocId = firstDoc.id
+                            fetchedRoleString = firstDoc.getString("role")
+                            fetchedName = firstDoc.getString("name")
+                            fetchedDesignation = firstDoc.getString("designation")
+                            fetchedDepartment = firstDoc.getString("department")
+                            fetchedEmail = firstDoc.getString("email")
+                            Log.d(TAG, "Found user via query in Firestore 'users' with role: $fetchedRoleString")
+                        } else {
+                            // 3. Fallback to 'user_profiles' collection
+                            val profileSnapshot = fs.collection(USER_PROFILES_COLLECTION).document("user_1").get().awaitTask()
+                            if (profileSnapshot.exists()) {
+                                fetchedRoleString = profileSnapshot.getString("role")
+                                fetchedName = profileSnapshot.getString("name")
+                                Log.d(TAG, "Found role in Firestore 'user_profiles/user_1': $fetchedRoleString")
+                            }
                         }
                     }
                 }

@@ -28,7 +28,10 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.AttendanceRecord
 import com.example.ui.components.AppHeader
 import com.example.ui.components.CrmTasksAttendanceSwitcher
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.components.WhatsAppQuickChatDialog
+import com.example.ui.components.MiloAssistantDialog
+import com.example.ui.components.FloatingAskMiloButton
 import com.example.ui.components.formatLiveSeconds
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
@@ -88,37 +91,19 @@ fun AttendanceScreen(
         label = "pulseBorder"
     )
 
-    // Filter attendance records by selected month
-    val filteredRecords = remember(allAttendance, selectedMonth) {
+    val installDate = remember { com.example.util.AppPreferences.getAppInstallDate(context) }
+
+    // Filter attendance records by selected month and starting strictly from the app install date
+    val filteredRecords = remember(allAttendance, selectedMonth, installDate) {
         val monthPrefix = when (selectedMonth) {
             "September 2026" -> "2026-09"
             "August 2026" -> "2026-08"
             "July 2026" -> "2026-07"
             else -> "2026-09"
         }
-        val records = allAttendance.filter { it.date.startsWith(monthPrefix) }
+        allAttendance
+            .filter { it.date.startsWith(monthPrefix) && it.date >= installDate }
             .sortedWith(compareByDescending<AttendanceRecord> { it.date }.thenByDescending { it.id })
-        if (records.isEmpty() && selectedMonth == "September 2026") {
-            // Provide fallback sample month records if not yet populated
-            listOf(
-                AttendanceRecord(date = "2026-09-18", checkInTime = "09:00 AM", checkOutTime = "06:15 PM", durationMinutes = 555, isWorking = false, status = "Present", overtimeMinutes = 45, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-17", checkInTime = "09:00 AM", checkOutTime = "06:10 PM", durationMinutes = 550, isWorking = false, status = "Present", overtimeMinutes = 40, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-16", checkInTime = "09:05 AM", checkOutTime = "06:20 PM", durationMinutes = 555, isWorking = false, status = "Present", overtimeMinutes = 45, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-15", checkInTime = "08:58 AM", checkOutTime = "06:15 PM", durationMinutes = 557, isWorking = false, status = "Present", overtimeMinutes = 45, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-12", checkInTime = "09:00 AM", checkOutTime = "05:30 PM", durationMinutes = 510, isWorking = false, status = "Present", overtimeMinutes = 0, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-11", checkInTime = "09:15 AM", checkOutTime = "06:45 PM", durationMinutes = 570, isWorking = false, status = "Present", overtimeMinutes = 60, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-10", checkInTime = "09:00 AM", checkOutTime = "06:00 PM", durationMinutes = 540, isWorking = false, status = "Present", overtimeMinutes = 30, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-09", checkInTime = "09:05 AM", checkOutTime = "06:10 PM", durationMinutes = 545, isWorking = false, status = "Present", overtimeMinutes = 35, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-08", checkInTime = "08:50 AM", checkOutTime = "06:20 PM", durationMinutes = 570, isWorking = false, status = "Present", overtimeMinutes = 60, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-05", checkInTime = "09:30 AM", checkOutTime = "02:00 PM", durationMinutes = 270, isWorking = false, status = "Half Day", overtimeMinutes = 0, breakMinutes = 20),
-                AttendanceRecord(date = "2026-09-04", checkInTime = "09:02 AM", checkOutTime = "06:05 PM", durationMinutes = 543, isWorking = false, status = "Present", overtimeMinutes = 30, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-03", checkInTime = "09:12 AM", checkOutTime = "06:30 PM", durationMinutes = 558, isWorking = false, status = "Present", overtimeMinutes = 48, breakMinutes = 45),
-                AttendanceRecord(date = "2026-09-02", checkInTime = "08:55 AM", checkOutTime = "06:00 PM", durationMinutes = 545, isWorking = false, status = "Present", overtimeMinutes = 35, breakMinutes = 40),
-                AttendanceRecord(date = "2026-09-01", checkInTime = "09:00 AM", checkOutTime = "06:15 PM", durationMinutes = 555, isWorking = false, status = "Present", overtimeMinutes = 45, breakMinutes = 45)
-            )
-        } else {
-            records
-        }
     }
 
     // Monthly Aggregated Stats
@@ -159,12 +144,13 @@ fun AttendanceScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Attendance & Performance",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Attendance & Performance",
+                subMenuSubtitle = if (isWorking) "Shift In Progress · Live Tracking" else "Off-Clock · Ready to Punch",
                 onBack = onBack,
                 onNavigateToProfile = onNavigateToProfile,
-                onOpenChat = onNavigateToChat,
-                unreadChatCount = unreadChatCount
+                onNavigateToChat = onNavigateToChat
             )
         },
         containerColor = SurfaceBg
@@ -483,7 +469,7 @@ fun AttendanceScreen(
                         Button(
                             onClick = {
                                 if (isWorking) {
-                                    viewModel.checkOutUser()
+                                    viewModel.checkOutUser(context = context)
                                 } else {
                                     showGeofencePunchDialog = true
                                 }

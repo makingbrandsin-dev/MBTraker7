@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AttendanceRecord
 import com.example.ui.components.AppHeader
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.theme.*
 import com.example.util.WhatsAppHelper
 import java.util.Locale
@@ -46,8 +47,10 @@ fun TimesheetsScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Automated Timesheets",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Automated Timesheets",
+                subMenuSubtitle = "${allAttendance.size} Work Shifts Logged",
                 onBack = onBack
             )
         },
@@ -180,8 +183,10 @@ fun LiveTeamTrackingScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Live Team Field Tracking",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Live Team Field Tracking",
+                subMenuSubtitle = "${employees.size} Team Members Active",
                 onBack = onBack
             )
         },

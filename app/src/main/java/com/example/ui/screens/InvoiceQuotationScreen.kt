@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +37,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.InvoiceEntity
 import com.example.data.model.QuotationEntity
 import com.example.ui.components.AppHeader
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -108,10 +110,12 @@ fun InvoiceQuotationScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Invoices & Quotations",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Invoices & Quotations",
+                subMenuSubtitle = "GST Invoicing & Estimates",
                 onBack = onBack,
-                onOpenChat = onNavigateToChat
+                onNavigateToChat = onNavigateToChat
             )
         },
         floatingActionButton = {
@@ -991,15 +995,29 @@ fun RenderedPdfPreviewDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
-        Surface(
+        val configuration = LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600
+        val screenHeight = configuration.screenHeightDp.dp
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 20.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = Color(0xFF0F172A),
-            tonalElevation = 12.dp
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding(),
+            contentAlignment = Alignment.Center
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Surface(
+                modifier = Modifier
+                    .widthIn(max = 720.dp)
+                    .fillMaxWidth(if (isTablet) 0.88f else 0.96f)
+                    .heightIn(max = screenHeight * 0.94f)
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF0F172A),
+                tonalElevation = 12.dp
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
                 // PDF Viewer Top Bar
                 Surface(
                     color = Color(0xFF1E293B),
@@ -1344,6 +1362,7 @@ fun RenderedPdfPreviewDialog(
         }
     }
 }
+}
 
 // -------------------------------------------------------------
 // CREATE INVOICE DIALOG WITH LIVE PREVIEW SUPPORT
@@ -1365,11 +1384,15 @@ fun CreateInvoiceDialog(
     var notes by remember { mutableStateOf("Payment terms: Net 15 days. Subject to Gurugram jurisdiction.") }
 
     Dialog(onDismissRequest = onDismiss) {
+        val configuration = LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = Color.White,
             tonalElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .widthIn(max = 580.dp)
+                .fillMaxWidth(if (isTablet) 0.8f else 1f)
         ) {
             Column(
                 modifier = Modifier
@@ -1591,11 +1614,15 @@ fun CreateQuotationDialog(
     var terms by remember { mutableStateOf("50% Advance on project kickoff, 50% on final milestone UAT sign-off.") }
 
     Dialog(onDismissRequest = onDismiss) {
+        val configuration = LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = Color.White,
             tonalElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .widthIn(max = 580.dp)
+                .fillMaxWidth(if (isTablet) 0.8f else 1f)
         ) {
             Column(
                 modifier = Modifier

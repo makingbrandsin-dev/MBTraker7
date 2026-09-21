@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -42,12 +44,16 @@ import com.example.data.model.CallRecordingEntity
 import com.example.data.model.SocialReviewConfigEntity
 import com.example.ui.components.AppHeader
 import com.example.ui.components.DailyTaskManagementSection
+import com.example.ui.components.TeamWorkloadChartCard
 import com.example.ui.components.StatusTag
 import com.example.ui.components.formatLiveSeconds
 import com.example.ui.components.WhatsAppQuickChatDialog
+import com.example.ui.components.MiloAssistantDialog
+import com.example.ui.components.FloatingAskMiloButton
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmployeeDashboardScreen(
     viewModel: MainViewModel,
@@ -66,7 +72,8 @@ fun EmployeeDashboardScreen(
     onNavigateToExpenses: () -> Unit = {},
     onNavigateToTimesheets: () -> Unit = {},
     onNavigateToVault: () -> Unit = {},
-    onNavigateToLiveTracking: () -> Unit = {}
+    onNavigateToLiveTracking: () -> Unit = {},
+    onNavigateToEmployees: () -> Unit = {}
 ) {
     val attendance by viewModel.latestAttendance.collectAsState()
     val liveSeconds by viewModel.liveActiveDurationSeconds.collectAsState()
@@ -91,8 +98,10 @@ fun EmployeeDashboardScreen(
     var showBrochureDialog by remember { mutableStateOf(false) }
     var showReviewsQrDialog by remember { mutableStateOf(false) }
     var showCallRecorderDialog by remember { mutableStateOf(false) }
+    var showMiloAssistant by remember { mutableStateOf(false) }
 
     val isWorking = attendance?.isWorking ?: false
+    val context = LocalContext.current
     val snackbarMsg by viewModel.attendanceSnackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -170,16 +179,29 @@ fun EmployeeDashboardScreen(
                 onNavigateToProfile = onNavigateToProfile
             )
         },
+        floatingActionButton = {
+            FloatingAskMiloButton(
+                onClick = { showMiloAssistant = true }
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = SurfaceBg
     ) { paddingValues ->
-        LazyColumn(
+        val isRefreshing by viewModel.isRefreshing.collectAsState()
+
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.refreshAll() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
         // Greeting & Live Work Badge
         item {
             Row(
@@ -200,271 +222,7 @@ fun EmployeeDashboardScreen(
             }
         }
 
-        // Inline Team Live Chat Feed & Instant Messenger (Replaced Time Display Below Name)
-        item {
-            InlineLiveTeamChatCard(
-                viewModel = viewModel,
-                onNavigateToChat = onNavigateToChat
-            )
-        }
-
-        // Connected Realtime Attendance Card (Rich Blue Background & Gold Accents)
-        item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A8A)), // Executive Blue Background
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToAttendance() }
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isWorking) Color(0xFF4ADE80) else Color(0xFFF59E0B),
-                                    modifier = Modifier.size(8.dp)
-                                ) {}
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Today's Attendance", color = Color(0xFF93C5FD), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                if (attendance != null && attendance?.checkInTime != null) attendance!!.checkInTime!! else "--:--",
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 22.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                if (isWorking) "Checked In" else "Ready to Check In",
-                                color = if (isWorking) Color(0xFF4ADE80) else Color(0xFFFBBF24),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
-                            )
-                        }
-
-                        // ☕ Break Options in place of Expected Out
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Break Management", color = Color(0xFF93C5FD), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            if (isOnBreak) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFFF59E0B),
-                                    modifier = Modifier.clickable { viewModel.resumeFromBreak() }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Coffee,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Column {
-                                            Text(
-                                                text = "On $currentBreakType",
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp
-                                            )
-                                            Text(
-                                                text = "${liveBreakSeconds / 60}m ${liveBreakSeconds % 60}s · Tap to Resume",
-                                                color = Color.White.copy(alpha = 0.9f),
-                                                fontSize = 10.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            } else {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isWorking) Color(0xFF1E40AF) else Color.White.copy(alpha = 0.15f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF60A5FA).copy(alpha = 0.5f)),
-                                    modifier = Modifier.clickable(enabled = isWorking) {
-                                        showBreakOptionsDialog = true
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Default.FreeBreakfast,
-                                            contentDescription = "Break Options",
-                                            tint = if (isWorking) Color(0xFF93C5FD) else Color(0xFF94A3B8),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Column {
-                                            Text(
-                                                text = if (isWorking) "☕ Take Break" else "No Active Shift",
-                                                color = if (isWorking) Color.White else Color(0xFFCBD5E1),
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp
-                                            )
-                                            Text(
-                                                text = if (isWorking) "Tea / Lunch / Custom" else "Check in first",
-                                                color = Color(0xFF93C5FD),
-                                                fontSize = 10.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = Color(0xFF3B82F6).copy(alpha = 0.4f))
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Apartment,
-                                    contentDescription = null,
-                                    tint = Color(0xFF93C5FD),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Today's Time in Office", color = Color(0xFF93C5FD), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (isWorking) formatLiveSeconds(liveSeconds) else if ((attendance?.durationMinutes ?: 0) > 0) "${(attendance?.durationMinutes ?: 0) / 60}h ${(attendance?.durationMinutes ?: 0) % 60}m" else "00:00:00",
-                                color = Color(0xFFFDE047), // Rich Yellow Gold Accent
-                                fontWeight = FontWeight.Black,
-                                fontSize = 26.sp
-                            )
-                            Text(
-                                text = if (isWorking) "${liveSeconds / 3600}h ${(liveSeconds % 3600) / 60}m logged today" else "Total office hours logged",
-                                color = Color(0xFFCBD5E1),
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        if (isWorking) {
-                            Button(
-                                onClick = { viewModel.checkOutUser() },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFEF4444),
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
-                                modifier = Modifier
-                                    .height(48.dp)
-                                    .testTag("check_out_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Logout,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "Check Out",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = Color.White
-                                )
-                            }
-                        } else {
-                            Button(
-                                onClick = { viewModel.checkInUser() },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFF59E0B), // Vibrant Gold
-                                    contentColor = Color(0xFF0F172A)
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
-                                modifier = Modifier
-                                    .height(48.dp)
-                                    .testTag("check_in_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Login,
-                                    contentDescription = null,
-                                    tint = Color(0xFF0F172A),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "Check In",
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 14.sp,
-                                    color = Color(0xFF0F172A)
-                                )
-                            }
-                        }
-                    }
-
-                    // Live Sync Pill Inside Card
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFF8FAFC),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isFirebaseConnected) Color(0xFF10B981) else Color(0xFFF59E0B))
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        firebaseSyncStatus,
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF0F172A),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-
-                                Text(
-                                    "Live Sync",
-                                    fontSize = 10.sp,
-                                    color = Color(0xFF059669),
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Quick Actions Section (Full 8-Action Suite)
+        // 🚀 Quick Actions & Tools Section (Placed First)
         item {
             Card(
                 shape = RoundedCornerShape(20.dp),
@@ -600,15 +358,61 @@ fun EmployeeDashboardScreen(
                             onClick = onNavigateToVault
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Row 4: Team Directory, Live Tracking, Projects, Chat
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        QuickActionItem(
+                            icon = Icons.Default.People,
+                            label = "Team",
+                            bgColor = Color(0xFFE0F2FE),
+                            tintColor = Color(0xFF0284C7),
+                            onClick = onNavigateToEmployees
+                        )
+                        QuickActionItem(
+                            icon = Icons.Default.GpsFixed,
+                            label = "Live Map",
+                            bgColor = Color(0xFFDCFCE7),
+                            tintColor = Color(0xFF16A34A),
+                            onClick = onNavigateToLiveTracking
+                        )
+                        QuickActionItem(
+                            icon = Icons.Default.Folder,
+                            label = "Projects",
+                            bgColor = Color(0xFFFEF3C7),
+                            tintColor = Color(0xFFD97706),
+                            onClick = onNavigateToProjects
+                        )
+                        QuickActionItem(
+                            icon = Icons.Default.Chat,
+                            label = "Chat",
+                            bgColor = Color(0xFFF3E8FF),
+                            tintColor = Color(0xFF7E22CE),
+                            onClick = onNavigateToChat
+                        )
+                    }
                 }
             }
         }
 
-        // Daily Task Management Component for Homepage
+        // Centralized Assigned Tasks View from Firestore
         item {
             DailyTaskManagementSection(
                 viewModel = viewModel,
                 onNavigateToTasks = onNavigateToTasks
+            )
+        }
+
+        // 📊 Team Workload Visualizer (Recharts/D3 architecture)
+        item {
+            TeamWorkloadChartCard(
+                viewModel = viewModel,
+                onNavigateToTasks = onNavigateToTasks,
+                onNavigateToProjects = onNavigateToProjects
             )
         }
 
@@ -641,8 +445,9 @@ fun EmployeeDashboardScreen(
                 }
             }
         }
+            }
+        }
     }
-}
 
     // 📄 Company Profile PDF Auto-Send & Preview Dialog
     if (showBrochureDialog) {
@@ -665,6 +470,14 @@ fun EmployeeDashboardScreen(
         CallRecorderAudioDialog(
             viewModel = viewModel,
             onDismiss = { showCallRecorderDialog = false }
+        )
+    }
+
+    // 🦁 MILO Live Animated AI Executive Companion Dialog
+    if (showMiloAssistant) {
+        MiloAssistantDialog(
+            viewModel = viewModel,
+            onDismiss = { showMiloAssistant = false }
         )
     }
 }
@@ -711,6 +524,8 @@ fun FirstTimeCheckInDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, role: String) -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.screenWidthDp >= 600
     var name by remember { mutableStateOf(initialName) }
     var role by remember { mutableStateOf(initialRole) }
 
@@ -719,7 +534,9 @@ fun FirstTimeCheckInDialog(
             shape = RoundedCornerShape(24.dp),
             color = Color.White,
             tonalElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .widthIn(max = 500.dp)
+                .fillMaxWidth(if (isTablet) 0.75f else 1f)
         ) {
             Column(
                 modifier = Modifier
@@ -837,6 +654,8 @@ fun BreakOptionsDialog(
     onDismiss: () -> Unit,
     onSelectBreak: (String) -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.screenWidthDp >= 600
     var customBreakName by remember { mutableStateOf("") }
     var isCustomSelected by remember { mutableStateOf(false) }
 
@@ -845,7 +664,9 @@ fun BreakOptionsDialog(
             shape = RoundedCornerShape(24.dp),
             color = Color.White,
             tonalElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .widthIn(max = 500.dp)
+                .fillMaxWidth(if (isTablet) 0.75f else 1f)
         ) {
             Column(
                 modifier = Modifier
@@ -996,12 +817,17 @@ fun CompanyProfileBrochureDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
+        val configuration = LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600
+        val screenHeight = configuration.screenHeightDp.dp
+
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = Color.White,
             modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.88f)
+                .widthIn(max = 640.dp)
+                .fillMaxWidth(if (isTablet) 0.85f else 0.94f)
+                .heightIn(max = screenHeight * 0.88f)
         ) {
             Column(
                 modifier = Modifier
@@ -1311,12 +1137,17 @@ fun SocialReviewsAndQrDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
+        val configuration = LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600
+        val screenHeight = configuration.screenHeightDp.dp
+
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = Color.White,
             modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.88f)
+                .widthIn(max = 640.dp)
+                .fillMaxWidth(if (isTablet) 0.85f else 0.94f)
+                .heightIn(max = screenHeight * 0.88f)
         ) {
             Column(
                 modifier = Modifier
@@ -1597,12 +1428,17 @@ fun CallRecorderAudioDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
+        val configuration = LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600
+        val screenHeight = configuration.screenHeightDp.dp
+
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = Color.White,
             modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.88f)
+                .widthIn(max = 640.dp)
+                .fillMaxWidth(if (isTablet) 0.85f else 0.94f)
+                .heightIn(max = screenHeight * 0.88f)
         ) {
             Column(
                 modifier = Modifier
@@ -2174,6 +2010,7 @@ fun InlineLiveTeamChatCard(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
+                                    val bubbleMaxW = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp * 0.78f).dp
                                     Surface(
                                         shape = RoundedCornerShape(
                                             topStart = 8.dp,
@@ -2182,7 +2019,8 @@ fun InlineLiveTeamChatCard(
                                             bottomEnd = if (msg.isMe) 2.dp else 8.dp
                                         ),
                                         color = if (msg.isMe) Color(0xFFDCF8C6) else Color.White,
-                                        shadowElevation = 1.dp
+                                        shadowElevation = 1.dp,
+                                        modifier = Modifier.widthIn(max = bubbleMaxW)
                                     ) {
                                         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
                                             Text(

@@ -35,6 +35,9 @@ import com.example.data.model.LeadSourceConfigEntity
 import com.example.ui.components.AppHeader
 import com.example.ui.components.CrmTasksAttendanceSwitcher
 import com.example.ui.components.MetricBadge
+import com.example.ui.components.MiloAssistantDialog
+import com.example.ui.components.FloatingAskMiloButton
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.theme.*
 import com.example.util.WhatsAppHelper
 
@@ -141,8 +144,10 @@ fun LeadsScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "CRM & Leads",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "CRM & Leads",
+                subMenuSubtitle = "${filteredLeads.size} Active Leads · Multi-Channel CRM",
                 onBack = onBack,
                 onNavigateToProfile = onNavigateToProfile,
                 actions = {
@@ -153,14 +158,14 @@ fun LeadsScreen(
                         Icon(
                             Icons.Default.Hub,
                             contentDescription = "Platform APIs",
-                            tint = Color(0xFF0F172A)
+                            tint = BrandBlue
                         )
                     }
                     IconButton(onClick = { showAddLeadBottomSheet = true }) {
                         Icon(
                             Icons.Default.Add,
                             contentDescription = "Add Lead",
-                            tint = Color(0xFF0F172A)
+                            tint = BrandBlue
                         )
                     }
                 }

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -29,6 +32,7 @@ import java.util.Calendar
 import java.util.Locale
 import com.example.data.model.NotificationEntity
 import com.example.ui.components.AppHeader
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.components.MetricBadge
 import com.example.ui.theme.*
 
@@ -44,7 +48,10 @@ fun ProfileScreen(
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var showDeleteAllFieldsDialog by remember { mutableStateOf(false) }
     var showResetAccountDialog by remember { mutableStateOf(false) }
+    var showClearEmployeeDataDialog by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val firebaseUser by viewModel.firebaseUserRecord.collectAsState()
     val empName by viewModel.currentEmployeeName.collectAsState()
     val empRole by viewModel.currentEmployeeRole.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
@@ -60,14 +67,19 @@ fun ProfileScreen(
 
     // Edit Profile Dialog with all fields + Clear All Inputs button
     if (showEditProfileDialog) {
+        val configuration = LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600
+        val screenHeight = configuration.screenHeightDp.dp
+
         androidx.compose.ui.window.Dialog(onDismissRequest = { showEditProfileDialog = false }) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color.White,
                 tonalElevation = 8.dp,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.9f)
+                    .widthIn(max = 600.dp)
+                    .fillMaxWidth(if (isTablet) 0.8f else 0.95f)
+                    .heightIn(max = screenHeight * 0.92f)
             ) {
                 var editName by remember { mutableStateOf(empName) }
                 var editRole by remember { mutableStateOf(empRole) }
@@ -313,10 +325,45 @@ fun ProfileScreen(
         )
     }
 
+    // Confirmation Dialog for Clear All Employee Data
+    if (showClearEmployeeDataDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearEmployeeDataDialog = false },
+            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = StatusOrange, modifier = Modifier.size(36.dp)) },
+            title = { Text("Clear All Employee Data?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "This will delete your local dummy tasks, chat logs, call logs, and attendance history, keeping only official records assigned to you.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearEmployeeData()
+                        showClearEmployeeDataDialog = false
+                        Toast.makeText(context, "Employee data and dummy records cleared!", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusOrange)
+                ) {
+                    Text("Clear Data", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearEmployeeDataDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Employee Profile",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Employee Profile",
+                subMenuSubtitle = "$empName • $empRole",
                 onBack = onBack,
                 actions = {
                     IconButton(onClick = { showEditProfileDialog = true }) {
@@ -400,6 +447,130 @@ fun ProfileScreen(
                                 color = Color(0xFF334155),
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
+                        }
+                    }
+                }
+            }
+
+            // Firebase Auth & Firestore Data Persistence Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFFFFF7ED),
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFFEA580C), modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Firebase & Firestore Sync", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+                                    Text("Live Cloud Identity & User Persistence", fontSize = 11.sp, color = Color(0xFF64748B))
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFDCFCE7)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(shape = CircleShape, color = Color(0xFF16A34A), modifier = Modifier.size(6.dp)) {}
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Connected", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF8FAFC),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Identity Provider", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Text(firebaseUser?.providerId ?: "Google Sign-in", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Firebase UID", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Text(
+                                        (firebaseUser?.uid ?: "user_${Math.abs(email.hashCode()).toString().take(8)}"),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = ElectricBlue
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Firestore Path", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Text("users/${firebaseUser?.uid ?: "current"}", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        var isSyncingNow by remember { mutableStateOf(false) }
+
+                        OutlinedButton(
+                            onClick = {
+                                isSyncingNow = true
+                                viewModel.syncUserProfileToFirestore(
+                                    name = empName,
+                                    designation = empRole,
+                                    department = department,
+                                    email = email
+                                ) { success ->
+                                    isSyncingNow = false
+                                    Toast.makeText(
+                                        context,
+                                        if (success) "User profile persisted & synced with Firestore!" else "User data queued for Firestore sync",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, ElectricBlue),
+                            enabled = !isSyncingNow
+                        ) {
+                            if (isSyncingNow) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = ElectricBlue, strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Persisting to Firestore...", fontSize = 12.sp, color = ElectricBlue)
+                            } else {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Sync User Data to Firestore", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElectricBlue)
+                            }
                         }
                     }
                 }
@@ -530,6 +701,14 @@ fun ProfileScreen(
                         Divider(color = BorderLight)
                         ProfileNavRow(Icons.Default.HelpOutline, "Help & Support", onClick = onNavigateToHelp)
                         Divider(color = BorderLight)
+                        ProfileNavRow(
+                            icon = Icons.Default.CleaningServices,
+                            label = "Clear All Employee Data",
+                            textColor = StatusOrange,
+                            iconTint = StatusOrange,
+                            onClick = { showClearEmployeeDataDialog = true }
+                        )
+                        Divider(color = BorderLight)
                         ProfileNavRow(Icons.Default.Logout, "Logout Account", textColor = StatusRed, iconTint = StatusRed, onClick = onLogout)
                     }
                 }
@@ -601,8 +780,10 @@ fun NotificationsScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Notifications",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Notifications",
+                subMenuSubtitle = "${notifications.size} Alerts",
                 onBack = onBack,
                 actions = {
                     if (notifications.isNotEmpty()) {
@@ -795,8 +976,10 @@ fun HolidaysLeaveScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Holidays & Leave",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Holidays & Leave",
+                subMenuSubtitle = "$empName • ${leaves.size} Records",
                 onBack = onBack
             )
         },
@@ -1442,13 +1625,17 @@ fun SettingsScreen(
     var toastMessage by remember { mutableStateOf<String?>(null) }
 
     if (showPasswordDialog) {
+        val configuration = LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600
         var oldPass by remember { mutableStateOf("") }
         var newPass by remember { mutableStateOf("") }
         androidx.compose.ui.window.Dialog(onDismissRequest = { showPasswordDialog = false }) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color.White,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .widthIn(max = 480.dp)
+                    .fillMaxWidth(if (isTablet) 0.75f else 1f)
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
@@ -1500,8 +1687,10 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Settings",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Settings",
+                subMenuSubtitle = "Preferences & Security",
                 onBack = onBack
             )
         },
@@ -1979,6 +2168,7 @@ fun SettingActionRow(icon: ImageVector, title: String, subtitle: String, onClick
 // ---------------- Screen 18: Help & Support Screen ----------------
 @Composable
 fun HelpSupportScreen(
+    viewModel: MainViewModel? = null,
     onBack: () -> Unit
 ) {
     var ticketSubject by remember { mutableStateOf("") }
@@ -1995,10 +2185,19 @@ fun HelpSupportScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Help & Support",
-                onBack = onBack
-            )
+            if (viewModel != null) {
+                StandardScreenHeader(
+                    viewModel = viewModel,
+                    subMenuTitle = "Help & Support",
+                    subMenuSubtitle = "24/7 Corporate Assistance",
+                    onBack = onBack
+                )
+            } else {
+                AppHeader(
+                    title = "Help & Support",
+                    onBack = onBack
+                )
+            }
         },
         containerColor = SurfaceBg
     ) { paddingValues ->

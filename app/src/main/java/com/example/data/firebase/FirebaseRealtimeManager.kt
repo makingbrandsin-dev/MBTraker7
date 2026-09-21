@@ -7,10 +7,16 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
 import com.example.data.local.AttendanceDao
+import com.example.data.local.ChatDao
+import com.example.data.local.EmployeeDao
 import com.example.data.local.LeadDao
 import com.example.data.local.TaskDao
 import com.example.data.local.UserProfileDao
 import com.example.data.model.AttendanceRecord
+import com.example.data.model.ChatMessageEntity
+import com.example.data.model.Department
+import com.example.data.model.EmployeeEntity
+import com.example.data.model.EmployeeStatus
 import com.example.data.model.LeadEntity
 import com.example.data.model.TaskEntity
 import com.example.data.model.UserProfileEntity
@@ -19,6 +25,7 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import com.google.firebase.messaging.FirebaseMessaging
 import com.example.util.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +35,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -76,8 +85,11 @@ object FirebaseRealtimeManager {
     private var attendanceListener: ListenerRegistration? = null
     private var taskListener: ListenerRegistration? = null
     private var profileListener: ListenerRegistration? = null
+    private var chatListener: ListenerRegistration? = null
+    private var currentEmployeeName: String = "Rahul Sharma"
     private var isInitialized = false
     private var appScope: CoroutineScope? = null
+    private var appContext: Context? = null
 
     // Pending Sync Queues for offline mutations
     private val pendingLeadsQueue = ConcurrentLinkedQueue<LeadEntity>()
@@ -115,8 +127,10 @@ object FirebaseRealtimeManager {
         userProfileDao: UserProfileDao,
         taskDao: TaskDao? = null,
         leadDao: LeadDao? = null,
+        chatDao: ChatDao? = null,
         scope: CoroutineScope
     ) {
+        appContext = context.applicationContext
         appScope = scope
         registerNetworkCallback(context)
         NotificationHelper.createNotificationChannels(context)
@@ -153,6 +167,9 @@ object FirebaseRealtimeManager {
             startRealtimeProfileListener(userProfileDao, scope)
             if (taskDao != null) {
                 startRealtimeTaskListener(taskDao, scope)
+            }
+            if (chatDao != null) {
+                startRealtimeChatListener("dev_team", chatDao, scope)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Firebase initialization error: ${e.message}", e)
@@ -482,8 +499,17 @@ object FirebaseRealtimeManager {
                 "isWorking" to record.isWorking,
                 "status" to record.status,
                 "overtimeMinutes" to record.overtimeMinutes,
+                "breakMinutes" to record.breakMinutes,
                 "timestamp" to record.timestamp,
                 "employeeName" to record.employeeName,
+                "latitude" to (record.latitude ?: com.example.util.LocationHelper.OFFICE_LAT),
+                "longitude" to (record.longitude ?: com.example.util.LocationHelper.OFFICE_LNG),
+                "locationAddress" to (record.locationAddress ?: com.example.util.LocationHelper.OFFICE_NAME),
+                "isGeofenceVerified" to record.isGeofenceVerified,
+                "selfieUri" to record.selfieUri,
+                "action" to if (record.isWorking) "CLOCK_IN" else "CLOCK_OUT",
+                "clockInTimestamp" to record.timestamp,
+                "clockOutTimestamp" to if (!record.isWorking) System.currentTimeMillis() else null,
                 "updatedAt" to System.currentTimeMillis()
             )
             firestore?.collection("attendance_records")?.document(docId)
@@ -777,5 +803,275 @@ object FirebaseRealtimeManager {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start profile listener: ${e.message}")
         }
+    }
+
+    fun setCurrentEmployeeName(name: String) {
+        if (name.isNotBlank()) {
+            currentEmployeeName = name
+        }
+    }
+
+    fun startRealtimeChatListener(channelId: String, chatDao: ChatDao, scope: CoroutineScope) {
+        if (!isEffectiveOnline()) return
+        try {
+            chatListener?.remove()
+            chatListener = firestore?.collection("chat_messages")
+                ?.whereEqualTo("channelId", channelId)
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.w(TAG, "Realtime chat listen error: ${error.message}")
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null) {
+                        scope.launch(Dispatchers.IO) {
+                            for (doc in snapshot.documents) {
+                                val msgId = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
+                                val cId = doc.getString("channelId") ?: channelId
+                                val senderName = doc.getString("senderName") ?: "Team"
+                                val senderRole = doc.getString("senderRole") ?: "Member"
+                                val messageText = doc.getString("messageText") ?: ""
+                                val timestampText = doc.getString("timestampText") ?: ""
+                                val isSenderMe = senderName.equals(currentEmployeeName, ignoreCase = true)
+                                val isMe = isSenderMe
+                                val attachmentFileName = doc.getString("attachmentFileName")
+                                val attachmentFileSize = doc.getString("attachmentFileSize")
+
+                                chatDao.insert(
+                                    ChatMessageEntity(
+                                        id = msgId,
+                                        channelId = cId,
+                                        senderName = senderName,
+                                        senderRole = senderRole,
+                                        messageText = messageText,
+                                        timestampText = timestampText,
+                                        isMe = isMe,
+                                        attachmentFileName = attachmentFileName,
+                                        attachmentFileSize = attachmentFileSize
+                                    )
+                                )
+
+                                // When another employee or admin sends a message, notify this recipient only (not the sender)
+                                if (!isSenderMe) {
+                                    val createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
+                                    if (System.currentTimeMillis() - createdAt < 120000L) {
+                                        appContext?.let { ctx ->
+                                            NotificationHelper.showChatAlert(
+                                                context = ctx,
+                                                senderName = senderName,
+                                                messageText = messageText,
+                                                channelTitle = "Team Chat (#$cId)",
+                                                channelId = cId
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start chat listener: ${e.message}")
+        }
+    }
+
+    fun syncChatMessageToFirebase(
+        channelId: String,
+        senderName: String,
+        senderRole: String,
+        messageText: String,
+        timestampText: String,
+        attachmentFileName: String? = null,
+        attachmentFileSize: String? = null,
+        messageId: Long? = null
+    ) {
+        if (!isEffectiveOnline()) return
+        try {
+            val finalId = messageId ?: System.currentTimeMillis()
+            val docId = "msg_${finalId}_${(0..999).random()}"
+            val data = hashMapOf(
+                "id" to finalId,
+                "channelId" to channelId,
+                "senderName" to senderName,
+                "senderRole" to senderRole,
+                "messageText" to messageText,
+                "timestampText" to timestampText,
+                "isMe" to false, // Evaluated on receiver
+                "attachmentFileName" to attachmentFileName,
+                "attachmentFileSize" to attachmentFileSize,
+                "createdAt" to System.currentTimeMillis()
+            )
+            firestore?.collection("chat_messages")?.document(docId)?.set(data, SetOptions.merge())
+                ?.addOnSuccessListener {
+                    Log.d(TAG, "Successfully synced chat message $docId to Firestore")
+                }
+                ?.addOnFailureListener { e ->
+                    Log.w(TAG, "Failed syncing chat message to Firestore: ${e.message}")
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed syncing chat message: ${e.message}")
+        }
+    }
+
+    private suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitTask(): T? =
+        suspendCancellableCoroutine { continuation ->
+            addOnSuccessListener { result ->
+                if (continuation.isActive) continuation.resume(result, null)
+            }
+            addOnFailureListener { exception ->
+                Log.w(TAG, "Task failed: ${exception.message}")
+                if (continuation.isActive) continuation.resume(null, null)
+            }
+        }
+
+    suspend fun refreshAllFromFirestore(
+        taskDao: TaskDao,
+        attendanceDao: AttendanceDao,
+        leadDao: LeadDao,
+        employeeDao: EmployeeDao
+    ) = withContext(Dispatchers.IO) {
+        if (!isEffectiveOnline()) {
+            updateSyncState(
+                status = NetworkSyncStatus.OFFLINE,
+                isOnline = false,
+                isSyncing = false,
+                statusMessage = "Cannot refresh while Offline"
+            )
+            return@withContext
+        }
+
+        updateSyncState(
+            status = NetworkSyncStatus.SYNCING,
+            isOnline = true,
+            isSyncing = true,
+            statusMessage = "Refreshing latest updates from Firestore..."
+        )
+
+        // 1. Flush any pending outgoing sync queue first
+        try {
+            processPendingSyncQueue()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error flushing queue during refresh: ${e.message}")
+        }
+
+        // 2. Fetch latest tasks from Firestore collection
+        try {
+            val tasksSnapshot = firestore?.collection("tasks")?.get(Source.DEFAULT)?.awaitTask()
+            if (tasksSnapshot != null && !tasksSnapshot.isEmpty) {
+                for (doc in tasksSnapshot.documents) {
+                    val id = doc.getLong("id") ?: doc.id.replace("task_", "").toLongOrNull() ?: 0L
+                    val title = doc.getString("title") ?: ""
+                    val projectName = doc.getString("projectName") ?: ""
+                    val priority = doc.getString("priority") ?: "Medium"
+                    val dueDate = doc.getString("dueDate") ?: ""
+                    val status = doc.getString("status") ?: "In Progress"
+                    val isCompleted = doc.getBoolean("isCompleted") ?: false
+                    val category = doc.getString("category") ?: "Work"
+                    val estimatedTimeNeeded = doc.getString("estimatedTimeNeeded") ?: "4 Hours"
+                    val assignee = doc.getString("assignee") ?: "Rahul Sharma"
+
+                    if (id > 0L && title.isNotBlank()) {
+                        val task = TaskEntity(
+                            id = id,
+                            title = title,
+                            projectName = projectName,
+                            priority = priority,
+                            dueDate = dueDate,
+                            status = status,
+                            isCompleted = isCompleted,
+                            category = category,
+                            estimatedTimeNeeded = estimatedTimeNeeded,
+                            assignee = assignee
+                        )
+                        taskDao.insert(task)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Refresh tasks failed: ${e.message}")
+        }
+
+        // 3. Fetch latest attendance records from Firestore
+        try {
+            val attSnapshot = firestore?.collection("attendance_records")?.get(Source.DEFAULT)?.awaitTask()
+            if (attSnapshot != null && !attSnapshot.isEmpty) {
+                for (doc in attSnapshot.documents) {
+                    val id = doc.getLong("id") ?: doc.id.replace("att_", "").toLongOrNull() ?: 0L
+                    val date = doc.getString("date") ?: ""
+                    val checkInTime = doc.getString("checkInTime") ?: ""
+                    val checkOutTime = doc.getString("checkOutTime")
+                    val durationMinutes = doc.getLong("durationMinutes") ?: 0L
+                    val isWorking = doc.getBoolean("isWorking") ?: false
+                    val status = doc.getString("status") ?: "Present"
+                    val overtimeMinutes = doc.getLong("overtimeMinutes") ?: 0L
+                    val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+                    val employeeName = doc.getString("employeeName") ?: "Rahul Sharma"
+
+                    if (id > 0L) {
+                        val record = AttendanceRecord(
+                            id = id,
+                            date = date,
+                            checkInTime = checkInTime,
+                            checkOutTime = checkOutTime,
+                            durationMinutes = durationMinutes,
+                            isWorking = isWorking,
+                            status = status,
+                            overtimeMinutes = overtimeMinutes,
+                            timestamp = timestamp,
+                            employeeName = employeeName
+                        )
+                        attendanceDao.insert(record)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Refresh attendance failed: ${e.message}")
+        }
+
+        // 4. Fetch latest leads from Firestore
+        try {
+            val leadsSnapshot = firestore?.collection("leads")?.get(Source.DEFAULT)?.awaitTask()
+            if (leadsSnapshot != null && !leadsSnapshot.isEmpty) {
+                for (doc in leadsSnapshot.documents) {
+                    val id = doc.getLong("id") ?: doc.id.replace("lead_", "").toLongOrNull() ?: 0L
+                    val name = doc.getString("customerName") ?: ""
+                    val company = doc.getString("company") ?: ""
+                    val phone = doc.getString("phone") ?: ""
+                    val email = doc.getString("email") ?: ""
+                    val leadScore = doc.getLong("leadScore")?.toInt() ?: 70
+                    val requirement = doc.getString("requirement") ?: ""
+                    val value = doc.getDouble("value") ?: 0.0
+                    val status = doc.getString("status") ?: "New"
+                    val assignedTo = doc.getString("assignedTo") ?: "Rahul Sharma"
+                    val nextFollowUp = doc.getString("nextFollowUp") ?: ""
+
+                    if (id > 0L && name.isNotBlank()) {
+                        val lead = LeadEntity(
+                            id = id,
+                            name = name,
+                            company = company,
+                            phone = phone,
+                            email = email,
+                            leadScore = leadScore,
+                            requirement = requirement,
+                            potentialValue = "₹" + String.format(java.util.Locale.US, "%,.0f", value),
+                            stage = status,
+                            assignedTo = assignedTo,
+                            nextFollowUp = nextFollowUp
+                        )
+                        leadDao.insert(lead)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Refresh leads failed: ${e.message}")
+        }
+
+        updateSyncState(
+            status = NetworkSyncStatus.SYNCED,
+            isOnline = true,
+            isSyncing = false,
+            statusMessage = "Firestore: Live & Synced Just Now",
+            newTimestamp = System.currentTimeMillis()
+        )
     }
 }

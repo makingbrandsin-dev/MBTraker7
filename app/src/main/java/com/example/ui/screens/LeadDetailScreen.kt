@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.LeadEntity
 import com.example.ui.components.AppHeader
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.theme.*
 import com.example.util.WhatsAppHelper
 
@@ -45,8 +46,10 @@ fun LeadDetailScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Lead Details",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = lead?.name ?: "Lead Details",
+                subMenuSubtitle = "${lead?.company ?: "Client"} · ${lead?.stage ?: "New"}",
                 onBack = onBack,
                 actions = {
                     Surface(

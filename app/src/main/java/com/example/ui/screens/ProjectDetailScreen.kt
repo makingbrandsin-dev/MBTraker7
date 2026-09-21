@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.AppHeader
 import com.example.ui.components.PriorityBadge
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.theme.*
 
 @Composable
@@ -40,14 +41,11 @@ fun ProjectDetailScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Project Details",
-                onBack = onBack,
-                actions = {
-                    IconButton(onClick = { }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More", tint = TextPrimary)
-                    }
-                }
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = project?.name ?: "Project Details",
+                subMenuSubtitle = "${project?.clientName ?: "Client"} · ${project?.progressPercent ?: 0}% Complete",
+                onBack = onBack
             )
         },
         bottomBar = {

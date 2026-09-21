@@ -26,6 +26,7 @@ import com.example.data.model.ChatMessageEntity
 import com.example.data.model.EmployeeEntity
 import com.example.data.model.PresenceStatus
 import com.example.ui.components.AppHeader
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.components.StatusIndicatorBadge
 import com.example.ui.theme.*
 import com.example.util.AudioRecorderHelper
@@ -53,8 +54,10 @@ fun TeamChatListScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Team Chat",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Team Chat",
+                subMenuSubtitle = "Secure Real-time Messaging",
                 onBack = onBack,
                 onNavigateToProfile = onNavigateToProfile
             )
@@ -287,17 +290,11 @@ fun ChatRoomScreen(
     Scaffold(
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
-            AppHeader(
-                title = channelTitle,
-                onBack = onBack,
-                actions = {
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.Search, contentDescription = "Search", tint = BrandBlue)
-                    }
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = BrandBlue)
-                    }
-                }
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = channelTitle,
+                subMenuSubtitle = "Active Chat Channel",
+                onBack = onBack
             )
         },
         bottomBar = {
@@ -447,6 +444,8 @@ fun ChatRoomScreen(
 @Composable
 fun ChatBubble(message: ChatMessageEntity) {
     val isMe = message.isMe
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val maxBubbleWidth = (configuration.screenWidthDp * 0.78f).dp
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
@@ -466,9 +465,22 @@ fun ChatBubble(message: ChatMessageEntity) {
                     status = senderStatus,
                     dotSize = 7.dp
                 )
-                Spacer(modifier = Modifier.width(5.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                val rolePart = if (message.senderRole.isNotBlank()) " (${message.senderRole})" else ""
                 Text(
-                    "${message.senderName} · ${message.timestampText}",
+                    "${message.senderName}$rolePart · ${message.timestampText}",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(end = 4.dp, bottom = 4.dp)
+            ) {
+                Text(
+                    "You (${message.senderName}) · ${message.timestampText}",
                     fontSize = 11.sp,
                     color = TextSecondary
                 )
@@ -483,7 +495,8 @@ fun ChatBubble(message: ChatMessageEntity) {
                 bottomEnd = if (isMe) 4.dp else 16.dp
             ),
             color = if (isMe) BrandBlue else Color.White,
-            shadowElevation = 1.dp
+            shadowElevation = 1.dp,
+            modifier = Modifier.widthIn(max = maxBubbleWidth)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 if (!message.messageText.isNullOrBlank()) {

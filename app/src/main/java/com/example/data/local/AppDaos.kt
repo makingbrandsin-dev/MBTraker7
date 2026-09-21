@@ -18,6 +18,9 @@ interface AttendanceDao {
     @Update
     suspend fun update(record: AttendanceRecord)
 
+    @Delete
+    suspend fun delete(record: AttendanceRecord)
+
     @Query("DELETE FROM attendance_records")
     suspend fun clearAll()
 }
@@ -41,6 +44,15 @@ interface EmployeeDao {
 
     @Query("SELECT * FROM employees WHERE id IN (:ids)")
     fun getEmployeesByIds(ids: List<Long>): Flow<List<EmployeeEntity>>
+
+    @Query("SELECT * FROM employees WHERE LOWER(email) = LOWER(:email) LIMIT 1")
+    suspend fun getEmployeeByEmail(email: String): EmployeeEntity?
+
+    @Query("SELECT * FROM employees WHERE LOWER(email) = LOWER(:email) LIMIT 1")
+    fun getEmployeeByEmailFlow(email: String): Flow<EmployeeEntity?>
+
+    @Query("SELECT COUNT(*) FROM employees")
+    suspend fun getEmployeeCountDirect(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(employee: EmployeeEntity): Long
@@ -228,6 +240,9 @@ interface ChatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(messages: List<ChatMessageEntity>)
 
+    @Delete
+    suspend fun delete(message: ChatMessageEntity)
+
     @Query("DELETE FROM chat_messages")
     suspend fun clearAll()
 }
@@ -326,6 +341,9 @@ interface CallRecordingDao {
 
     @Query("DELETE FROM call_recordings WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM call_recordings")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -353,6 +371,9 @@ interface InvoiceDao {
 
     @Query("DELETE FROM invoices WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM invoices")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -380,6 +401,9 @@ interface QuotationDao {
 
     @Query("DELETE FROM quotations WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM quotations")
+    suspend fun clearAll()
 }
 
 @Dao

@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.ProjectEntity
 import com.example.ui.components.AppHeader
+import com.example.ui.components.StandardScreenHeader
 import com.example.ui.components.StatusTag
 import com.example.ui.theme.*
 
@@ -51,12 +52,14 @@ fun ProjectsScreen(
 
     Scaffold(
         topBar = {
-            AppHeader(
-                title = "Projects",
+            StandardScreenHeader(
+                viewModel = viewModel,
+                subMenuTitle = "Projects & Operations",
+                subMenuSubtitle = "${filteredProjects.size} Projects · ${projects.count { it.status == "Active" }} In Progress",
                 onBack = onBack,
                 actions = {
-                    IconButton(onClick = { /* Calendar view */ }) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar", tint = TextPrimary)
+                    IconButton(onClick = { showAddDialog = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "New Project", tint = BrandBlue)
                     }
                 }
             )
