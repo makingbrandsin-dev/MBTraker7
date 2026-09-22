@@ -53,4 +53,12 @@ class AppContainer(private val context: Context) {
     val taskRepository: ITaskRepository by lazy {
         RepositoryModule.provideTaskRepository(taskDao)
     }
+
+    val leadRepository: com.example.domain.repository.LeadRepository by lazy {
+        RepositoryModule.provideLeadRepository(leadDao)
+    }
+
+    val domainTaskRepository: com.example.domain.repository.TaskRepository by lazy {
+        RepositoryModule.provideDomainTaskRepository(taskDao)
+    }
 }

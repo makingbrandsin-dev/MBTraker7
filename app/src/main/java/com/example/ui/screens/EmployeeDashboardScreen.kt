@@ -50,6 +50,8 @@ import com.example.ui.components.formatLiveSeconds
 import com.example.ui.components.WhatsAppQuickChatDialog
 import com.example.ui.components.MiloAssistantDialog
 import com.example.ui.components.FloatingAskMiloButton
+import com.example.domain.milo.*
+import com.example.milo.*
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -220,6 +222,21 @@ fun EmployeeDashboardScreen(
                     isGreen = isWorking
                 )
             }
+        }
+
+        // 🦁 MILO LIVE ASSISTANT COMPONENT
+        item {
+            MiloDashboardWidget(
+                miloViewModel = viewModel.miloViewModel,
+                newLeadsCount = 12,
+                followUpsCount = 8,
+                onNavigateToLeads = onNavigateToLeads,
+                onNavigateToFollowUps = {
+                    viewModel.miloViewModel.handleEvent(MiloEvent.FollowUpDue(8))
+                    onNavigateToLeads()
+                },
+                onOpenAiAssistant = { showMiloAssistant = true }
+            )
         }
 
         // 🚀 Quick Actions & Tools Section (Placed First)
@@ -473,11 +490,13 @@ fun EmployeeDashboardScreen(
         )
     }
 
-    // 🦁 MILO Live Animated AI Executive Companion Dialog
+    // 🦁 MILO Live Animated AI Executive Companion Dialog & Bottom Sheet
     if (showMiloAssistant) {
-        MiloAssistantDialog(
-            viewModel = viewModel,
-            onDismiss = { showMiloAssistant = false }
+        MiloAiAssistantSheet(
+            miloViewModel = viewModel.miloViewModel,
+            onDismiss = { showMiloAssistant = false },
+            onNavigateToLeads = onNavigateToLeads,
+            onNavigateToTasks = onNavigateToTasks
         )
     }
 }

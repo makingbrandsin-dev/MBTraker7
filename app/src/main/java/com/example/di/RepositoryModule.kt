@@ -52,4 +52,16 @@ object RepositoryModule {
     fun provideITaskRepository(taskRepository: TaskRepository): ITaskRepository {
         return taskRepository
     }
+
+    @Provides
+    @Singleton
+    fun provideLeadRepository(leadDao: com.example.data.local.LeadDao): com.example.domain.repository.LeadRepository {
+        return LeadRepositoryImpl(leadDao)
+    }
+
+    @Provides
+    @Singleton
+    fun provideDomainTaskRepository(taskDao: TaskDao): com.example.domain.repository.TaskRepository {
+        return TaskRepositoryImpl(taskDao)
+    }
 }

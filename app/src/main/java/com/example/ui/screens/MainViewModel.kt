@@ -29,6 +29,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import com.example.domain.milo.MiloEvent
+import com.example.domain.milo.MiloState
+import com.example.milo.MiloViewModel
 
 data class WhatsAppDispatchEvent(
     val leadName: String,
@@ -107,6 +110,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val employeeRepository: IEmployeeRepository = container.employeeRepository
     val projectRepository: IProjectRepository = container.projectRepository
     val taskRepository: ITaskRepository = container.taskRepository
+
+    // 🦁 Official Animated Assistant Milo
+    val miloViewModel = MiloViewModel()
 
     // 🚀 WhatsApp Event Stream for Automatic Lead Profile Dispatch
     val whatsAppDispatchEvents = MutableSharedFlow<WhatsAppDispatchEvent>(extraBufferCapacity = 10)
@@ -1821,6 +1827,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             _liveActiveDurationSeconds.value = 0
+            miloViewModel.handleEvent(MiloEvent.EmployeeLoggedIn)
 
             val statusMsg = "Clocked In at $nowTimeStr · Location ($locName) saved to Firestore"
             _attendanceSnackbarMessage.value = statusMsg
@@ -1897,6 +1904,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 val statusMsg = "Clocked Out at $nowTimeStr (${totalMinutes / 60}h ${totalMinutes % 60}m) · Location saved to Firestore"
                 _attendanceSnackbarMessage.value = statusMsg
+                miloViewModel.handleEvent(MiloEvent.EmployeeLoggedOut)
 
                 notificationDao.insert(
                     NotificationEntity(
@@ -2171,6 +2179,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = task.copy(isCompleted = !task.isCompleted, status = if (!task.isCompleted) "Completed" else "In Progress")
             taskDao.update(updated)
             FirebaseRealtimeManager.syncTaskToFirebase(updated)
+            if (updated.isCompleted) {
+                miloViewModel.handleEvent(MiloEvent.TaskCompleted(task.title))
+            }
             notificationDao.insert(
                 NotificationEntity(
                     title = if (updated.isCompleted) "Task Completed" else "Task Updated",
@@ -2324,6 +2335,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             val id = leadDao.insert(newLead)
             FirebaseRealtimeManager.syncLeadToFirebase(newLead.copy(id = id))
+            miloViewModel.handleEvent(MiloEvent.LeadCreated(name))
             NotificationHelper.showLeadAlert(
                 context = getApplication(),
                 leadName = name,
@@ -2468,6 +2480,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = lead.copy(stage = newStage)
             leadDao.update(updated)
             FirebaseRealtimeManager.syncLeadToFirebase(updated)
+            if (newStage.equals("Won", ignoreCase = true) || newStage.equals("Converted", ignoreCase = true)) {
+                miloViewModel.handleEvent(MiloEvent.LeadConverted(lead.name))
+            }
         }
     }
 

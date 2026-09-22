@@ -86,6 +86,7 @@ sealed class Screen(val route: String) {
     object Vault : Screen("vault")
     object LiveTeamTracking : Screen("live_team_tracking")
     object Employees : Screen("employees")
+    object MiloDebug : Screen("milo_debug")
 }
 
 private fun getScreenOrder(route: String?): Int {
@@ -528,7 +529,21 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                         navController.navigate(Screen.Login.route) {
                             popUpTo(0) { inclusive = true }
                         }
-                    }
+                    },
+                    onNavigateToMiloDebug = { navController.navigate(Screen.MiloDebug.route) }
+                )
+            }
+
+            composable(
+                route = Screen.MiloDebug.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                MiloDebugScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
                 )
             }
 

@@ -33,6 +33,8 @@ import com.example.ui.components.AppHeader
 import com.example.ui.components.MetricBadge
 import com.example.ui.components.StatusIndicatorBadge
 import com.example.ui.components.TeamWorkloadChartCard
+import com.example.domain.milo.*
+import com.example.milo.*
 import com.example.ui.theme.*
 
 @Composable
@@ -42,6 +44,7 @@ fun ManagerDashboardScreen(
     onLogout: () -> Unit = {},
     onNavigateToProjects: () -> Unit = {},
     onNavigateToLeads: () -> Unit = {},
+    onNavigateToTasks: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
     onNavigateToTracking: () -> Unit = {},
     onNavigateToTimesheets: () -> Unit = {},
@@ -85,6 +88,7 @@ fun ManagerDashboardScreen(
 
     // Admin Delete / Clear Dialog States
     var showClearAllEnterpriseDialog by remember { mutableStateOf(false) }
+    var showMiloAssistant by remember { mutableStateOf(false) }
     var showLogoutConfirmationDialog by remember { mutableStateOf(false) }
     var employeeToClearFields by remember { mutableStateOf<EmployeeEntity?>(null) }
     var employeeToDelete by remember { mutableStateOf<EmployeeEntity?>(null) }
@@ -1108,7 +1112,20 @@ fun ManagerDashboardScreen(
                 }
             }
 
-            // Admin Primary Work Actions: Create Employee & Assign Tasks
+            // 🦁 MILO LIVE ASSISTANT COMPONENT FOR ADMIN
+            item {
+                MiloDashboardWidget(
+                    miloViewModel = viewModel.miloViewModel,
+                    newLeadsCount = 12,
+                    followUpsCount = 8,
+                    onNavigateToLeads = onNavigateToLeads,
+                    onNavigateToFollowUps = {
+                        viewModel.miloViewModel.handleEvent(MiloEvent.FollowUpDue(8))
+                        onNavigateToLeads()
+                    },
+                    onOpenAiAssistant = { showMiloAssistant = true }
+                )
+            }
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
@@ -1582,6 +1599,15 @@ fun ManagerDashboardScreen(
                 }
             }
         }
+    }
+
+    if (showMiloAssistant) {
+        MiloAiAssistantSheet(
+            miloViewModel = viewModel.miloViewModel,
+            onDismiss = { showMiloAssistant = false },
+            onNavigateToLeads = onNavigateToLeads,
+            onNavigateToTasks = onNavigateToTasks
+        )
     }
 }
 

@@ -132,6 +132,12 @@ interface TaskDao {
     @Update
     suspend fun update(task: TaskEntity)
 
+    @Query("SELECT * FROM tasks WHERE id = :id")
+    fun getTaskById(id: Long): Flow<TaskEntity?>
+
+    @Query("DELETE FROM tasks WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Delete
     suspend fun delete(task: TaskEntity)
 
@@ -164,6 +170,9 @@ interface LeadDao {
 
     @Delete
     suspend fun delete(lead: LeadEntity)
+
+    @Query("DELETE FROM leads WHERE id = :id")
+    suspend fun deleteById(id: Long)
 
     @Query("DELETE FROM leads")
     suspend fun clearAll()

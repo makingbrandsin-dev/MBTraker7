@@ -27,6 +27,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.util.AppLanguage
+import com.example.util.LanguageManager
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -1611,7 +1613,8 @@ fun HolidayRow(title: String, date: String, day: String) {
 fun SettingsScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit,
-    onLogout: () -> Unit = {}
+    onLogout: () -> Unit = {},
+    onNavigateToMiloDebug: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val activity = context as? androidx.fragment.app.FragmentActivity
@@ -1792,6 +1795,69 @@ fun SettingsScreen(
                                 ) {
                                     Text("$ USD", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = if (isUsd) ElectricBlue else TextPrimary)
                                     Text("US Dollar", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 🌐 Multi-Language Architecture (English / Telugu / Tamil)
+            item {
+                val currentLanguage by LanguageManager.currentLanguage.collectAsState()
+
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        ) {
+                            Icon(Icons.Default.Translate, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Language Preference / భాష / மொழி", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                Text("Select display language for Milo & app notifications", fontSize = 12.sp, color = TextSecondary)
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            AppLanguage.values().forEach { lang ->
+                                val isSelected = currentLanguage == lang
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) ElectricBlueBg else Color(0xFFF1F5F9),
+                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isSelected) BrandBlue else Color.Transparent),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            LanguageManager.setLanguage(lang)
+                                            toastMessage = "Language switched to ${lang.displayName} (${lang.nativeName})"
+                                        }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            lang.nativeName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = if (isSelected) BrandBlue else TextPrimary,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            lang.displayName,
+                                            fontSize = 10.sp,
+                                            color = TextSecondary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2006,6 +2072,74 @@ fun SettingsScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Test Task Alert", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                             }
+                        }
+                    }
+                }
+            }
+
+            // 🦁 Milo AI & Character Debug Lab Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFDBEAFE)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = ElectricBlueBg,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text("🦁", fontSize = 18.sp)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Milo AI Debug Lab", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                    Text("FirebaseAI & Gemini Model Inspector", fontSize = 12.sp, color = TextSecondary)
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFDBEAFE)
+                            ) {
+                                Text(
+                                    "Gemini AI",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElectricBlue,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            "Test prompts, validate structured JSON schemas, and inspect the 13 dynamic character states live.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF64748B),
+                            lineHeight = 16.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = onNavigateToMiloDebug,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                        ) {
+                            Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open Milo AI Debug Screen", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
