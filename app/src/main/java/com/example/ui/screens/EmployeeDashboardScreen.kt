@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
@@ -42,16 +43,22 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.AutoBrochureConfigEntity
 import com.example.data.model.CallRecordingEntity
 import com.example.data.model.SocialReviewConfigEntity
+import com.example.util.MiloHaptics
 import com.example.ui.components.AppHeader
+import com.example.ui.components.BiometricSecurityGate
+import com.example.util.BiometricHelper
 import com.example.ui.components.DailyTaskManagementSection
+import com.example.ui.components.DynamicActivityFeedSection
 import com.example.ui.components.TeamWorkloadChartCard
+import com.example.ui.components.RechartsTrendDashboardWidget
 import com.example.ui.components.StatusTag
 import com.example.ui.components.formatLiveSeconds
 import com.example.ui.components.WhatsAppQuickChatDialog
 import com.example.ui.components.MiloAssistantDialog
-import com.example.ui.components.FloatingAskMiloButton
+import com.example.ui.components.liftOnPress
 import com.example.domain.milo.*
 import com.example.milo.*
+import com.example.presentation.components.banner.OfferBannerSlider
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -94,6 +101,7 @@ fun EmployeeDashboardScreen(
     val liveBreakSeconds by viewModel.liveBreakDurationSeconds.collectAsState()
     val isQuickChatOpen by viewModel.isQuickChatOpen.collectAsState()
     val unreadChatCount by viewModel.unreadChatCount.collectAsState()
+    val isMiloAiThinking by viewModel.miloViewModel.isAiThinking.collectAsState()
     var showBreakOptionsDialog by remember { mutableStateOf(false) }
 
     // Quick Action Dialog States
@@ -104,8 +112,25 @@ fun EmployeeDashboardScreen(
 
     val isWorking = attendance?.isWorking ?: false
     val context = LocalContext.current
+    val hapticFeedback = LocalHapticFeedback.current
     val snackbarMsg by viewModel.attendanceSnackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val isDashboardUnlocked by viewModel.isDashboardBiometricUnlocked.collectAsState()
+    val isBiometricDashboardEnabled = remember { BiometricHelper.isBiometricForDashboardEnabled(context) }
+    val effectivelyUnlocked = !isBiometricDashboardEnabled || isDashboardUnlocked
+
+    BiometricSecurityGate(
+        isUnlocked = effectivelyUnlocked,
+        featureTitle = "Employee Dashboard",
+        featureSubtitle = "Attendance Trends, Analytics & Operations",
+        securityDescription = "Confidential daily attendance trends, 30-day productivity rates, live shift hours, and sensitive operational records are encrypted under biometric security.",
+        icon = Icons.Default.Fingerprint,
+        onUnlockSuccess = {
+            viewModel.unlockDashboardBiometric()
+        },
+        onBack = null
+    ) {
 
     var currentDeviceTime by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -178,12 +203,8 @@ fun EmployeeDashboardScreen(
                 unreadChatCount = unreadChatCount,
                 onNavigateToNotifications = onNavigateToNotifications,
                 unreadNotificationCount = unreadNotifications,
-                onNavigateToProfile = onNavigateToProfile
-            )
-        },
-        floatingActionButton = {
-            FloatingAskMiloButton(
-                onClick = { showMiloAssistant = true }
+                onNavigateToProfile = onNavigateToProfile,
+                isAiProcessing = isMiloAiThinking
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -217,11 +238,43 @@ fun EmployeeDashboardScreen(
                     Text(employeeRole, fontSize = 12.sp, color = TextMuted)
                 }
 
-                StatusTag(
-                    text = if (isWorking) "Working" else "Off-Clock",
-                    isGreen = isWorking
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusTag(
+                        text = if (isWorking) "Working" else "Off-Clock",
+                        isGreen = isWorking
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFFF1F5F9),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clickable {
+                                MiloHaptics.performReactionTick(context, hapticFeedback)
+                                viewModel.lockDashboardBiometric()
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = "Lock Dashboard with Biometrics",
+                                tint = BrandDarkBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
             }
+        }
+
+        // 🦁 MILO PROACTIVE TIME-OF-DAY GREETING & SMART ASSISTANT CARD
+        item {
+            MiloGreetingCard(
+                viewModel = viewModel,
+                onOpenAskMilo = { showMiloAssistant = true },
+                onNavigateToTasks = onNavigateToTasks,
+                onNavigateToLeads = onNavigateToLeads
+            )
         }
 
         // 🦁 MILO LIVE ASSISTANT COMPONENT
@@ -239,7 +292,7 @@ fun EmployeeDashboardScreen(
             )
         }
 
-        // 🚀 Quick Actions & Tools Section (Placed First)
+        // 🚀 Quick Actions & Tools Section (Placed right after Milo Section)
         item {
             Card(
                 shape = RoundedCornerShape(20.dp),
@@ -264,7 +317,7 @@ fun EmployeeDashboardScreen(
                             color = Color(0xFFEFF6FF)
                         ) {
                             Text(
-                                "8 Tools",
+                                "12 Tools",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = BrandBlue,
@@ -275,23 +328,11 @@ fun EmployeeDashboardScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Row 1: Core Operations
+                    // Row 1: Calls, Leave, Invoices, Brochure
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        QuickActionItem(
-                            drawableRes = com.example.R.drawable.ic_quick_lead,
-                            label = "Leads",
-                            bgColor = Color(0xFFF0F9FF),
-                            onClick = onNavigateToLeads
-                        )
-                        QuickActionItem(
-                            drawableRes = com.example.R.drawable.ic_quick_task,
-                            label = "Tasks",
-                            bgColor = Color(0xFFFEF3C7),
-                            onClick = onNavigateToTasks
-                        )
                         QuickActionItem(
                             drawableRes = com.example.R.drawable.ic_quick_call,
                             label = "Calls",
@@ -304,15 +345,6 @@ fun EmployeeDashboardScreen(
                             bgColor = Color(0xFFFEF2F2),
                             onClick = onNavigateToHolidays
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Row 2: Invoices, Brochure, Reviews QR & Voice Recorder
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
                         QuickActionItem(
                             drawableRes = com.example.R.drawable.ic_quick_invoice,
                             label = "Invoices",
@@ -325,6 +357,15 @@ fun EmployeeDashboardScreen(
                             bgColor = Color(0xFFF0FDF4),
                             onClick = { showBrochureDialog = true }
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Row 2: Review QR, Recorder, Meetings, Expenses
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         QuickActionItem(
                             drawableRes = com.example.R.drawable.ic_quick_qrcode,
                             label = "Review QR",
@@ -337,15 +378,6 @@ fun EmployeeDashboardScreen(
                             bgColor = Color(0xFFFDF2F8),
                             onClick = { showCallRecorderDialog = true }
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Row 3: Meetings, Expenses, Timesheets, Doc Vault
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
                         QuickActionItem(
                             icon = Icons.Default.Place,
                             label = "Meetings",
@@ -360,6 +392,15 @@ fun EmployeeDashboardScreen(
                             tintColor = Color(0xFFD97706),
                             onClick = onNavigateToExpenses
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Row 3: Timesheets, Vault, Team Directory, Projects
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         QuickActionItem(
                             icon = Icons.Default.PunchClock,
                             label = "Timesheet",
@@ -374,15 +415,6 @@ fun EmployeeDashboardScreen(
                             tintColor = Color(0xFF9333EA),
                             onClick = onNavigateToVault
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Row 4: Team Directory, Live Tracking, Projects, Chat
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
                         QuickActionItem(
                             icon = Icons.Default.People,
                             label = "Team",
@@ -391,35 +423,58 @@ fun EmployeeDashboardScreen(
                             onClick = onNavigateToEmployees
                         )
                         QuickActionItem(
-                            icon = Icons.Default.GpsFixed,
-                            label = "Live Map",
-                            bgColor = Color(0xFFDCFCE7),
-                            tintColor = Color(0xFF16A34A),
-                            onClick = onNavigateToLiveTracking
-                        )
-                        QuickActionItem(
                             icon = Icons.Default.Folder,
                             label = "Projects",
                             bgColor = Color(0xFFFEF3C7),
                             tintColor = Color(0xFFD97706),
                             onClick = onNavigateToProjects
                         )
-                        QuickActionItem(
-                            icon = Icons.Default.Chat,
-                            label = "Chat",
-                            bgColor = Color(0xFFF3E8FF),
-                            tintColor = Color(0xFF7E22CE),
-                            onClick = onNavigateToChat
-                        )
                     }
                 }
             }
+        }
+
+        // 🎁 EXCLUSIVE APP OFFERS & PROMOTIONS SLIDER
+        item {
+            val liveBanners by viewModel.activeBanners.collectAsState()
+            OfferBannerSlider(
+                banners = liveBanners,
+                onBannerClick = { banner ->
+                    when (banner.routeAction) {
+                        "leads" -> onNavigateToLeads()
+                        "tasks" -> onNavigateToTasks()
+                        "invoices" -> onNavigateToInvoices()
+                        "attendance" -> onNavigateToAttendance()
+                        "projects" -> onNavigateToProjects()
+                        "chat" -> onNavigateToChat()
+                        "milo_ai" -> {
+                            showMiloAssistant = true
+                            viewModel.miloViewModel.handleEvent(MiloEvent.Thinking("Special Offers & CRM Deals"))
+                        }
+                        else -> onNavigateToLeads()
+                    }
+                }
+            )
+        }
+
+        // 📰 DYNAMIC ACTIVITY & LIVE COLLABORATIVE FEED (User-Generated Content & WebSocket Updates)
+        item {
+            DynamicActivityFeedSection(viewModel = viewModel)
         }
 
         // Centralized Assigned Tasks View from Firestore
         item {
             DailyTaskManagementSection(
                 viewModel = viewModel,
+                onNavigateToTasks = onNavigateToTasks
+            )
+        }
+
+        // 📈 Recharts 30-Day Trends & Analytics Widget (Attendance vs. Task Completion Rates)
+        item {
+            RechartsTrendDashboardWidget(
+                viewModel = viewModel,
+                onNavigateToAttendance = onNavigateToAttendance,
                 onNavigateToTasks = onNavigateToTasks
             )
         }
@@ -492,12 +547,14 @@ fun EmployeeDashboardScreen(
 
     // 🦁 MILO Live Animated AI Executive Companion Dialog & Bottom Sheet
     if (showMiloAssistant) {
-        MiloAiAssistantSheet(
-            miloViewModel = viewModel.miloViewModel,
+        MiloSmartAssistantSheet(
+            viewModel = viewModel,
             onDismiss = { showMiloAssistant = false },
             onNavigateToLeads = onNavigateToLeads,
-            onNavigateToTasks = onNavigateToTasks
+            onNavigateToTasks = onNavigateToTasks,
+            onNavigateToCalls = onNavigateToCalls
         )
+    }
     }
 }
 
@@ -510,9 +567,16 @@ fun QuickActionItem(
     tintColor: Color = Color.Unspecified,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val hapticFeedback = LocalHapticFeedback.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }
+        modifier = Modifier
+            .liftOnPress(elevationLift = 6.dp, translateY = (-4).dp)
+            .clickable {
+                MiloHaptics.performButtonTap(context, hapticFeedback)
+                onClick()
+            }
     ) {
         Surface(
             shape = RoundedCornerShape(14.dp),
@@ -1688,14 +1752,17 @@ fun InlineLiveTeamChatCard(
     val currentChannel by viewModel.currentChannel.collectAsState()
     val unreadCount by viewModel.unreadChatCount.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val hapticFeedback = LocalHapticFeedback.current
 
     var inputMessage by remember { mutableStateOf("") }
 
     val channelList = listOf(
-        "dev-team" to "Dev Team",
-        "sales-hq" to "Sales & CRM",
-        "general-crm" to "HQ General",
-        "announcements" to "Notices"
+        "dev_team" to "Dev Team",
+        "sales_team" to "Sales Team",
+        "company_chat" to "Company Chat",
+        "marketing" to "Marketing",
+        "project_alpha" to "Project Alpha"
     )
 
     // Filter messages for currently selected channel
@@ -1819,7 +1886,10 @@ fun InlineLiveTeamChatCard(
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = if (isSelected) BrandDarkBlue else Color(0xFFF1F5F9),
-                        modifier = Modifier.clickable { viewModel.selectChatChannel(chId) }
+                        modifier = Modifier.clickable {
+                            MiloHaptics.performReactionTick(context, hapticFeedback)
+                            viewModel.selectChatChannel(chId)
+                        }
                     ) {
                         Text(
                             text = "# $label",
@@ -2010,7 +2080,7 @@ fun InlineLiveTeamChatCard(
                                 Column(horizontalAlignment = if (msg.isMe) Alignment.End else Alignment.Start) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            text = if (msg.isMe) "You" else msg.senderName,
+                                            text = msg.senderName,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp,
                                             color = if (msg.isMe) BrandBlue else TextPrimary
@@ -2023,9 +2093,10 @@ fun InlineLiveTeamChatCard(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = msg.timestampText,
-                                            fontSize = 9.sp,
-                                            color = TextMuted
+                                            text = formatLegibleTime(msg.timestampText),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color(0xFF64748B)
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
@@ -2085,6 +2156,7 @@ fun InlineLiveTeamChatCard(
                         shape = RoundedCornerShape(6.dp),
                         color = Color(0xFFF1F5F9),
                         modifier = Modifier.clickable {
+                            MiloHaptics.performMessageSent(context, hapticFeedback)
                             viewModel.sendChatMessage(reply)
                         }
                     ) {
@@ -2128,6 +2200,7 @@ fun InlineLiveTeamChatCard(
                     modifier = Modifier
                         .size(38.dp)
                         .clickable(enabled = inputMessage.isNotBlank()) {
+                            MiloHaptics.performMessageSent(context, hapticFeedback)
                             viewModel.sendChatMessage(inputMessage.trim())
                             inputMessage = ""
                         }

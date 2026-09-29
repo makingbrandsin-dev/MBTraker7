@@ -34,7 +34,14 @@ import androidx.compose.ui.unit.sp
 import com.example.domain.milo.MiloEvent
 import com.example.domain.milo.MiloState
 import com.example.domain.milo.MiloViewModel
+import com.example.presentation.components.banner.OfferBannerSlider
 import com.example.presentation.components.milo.MiloCharacter
+import com.example.ui.components.RechartsTrendDashboardWidget
+import com.example.milo.MiloXpWidgetCard
+import com.example.milo.MiloWardrobeSheet
+import com.example.milo.MiloLevelUpCelebrationDialog
+import com.example.milo.MiloDailyInsightCard
+import com.example.milo.MiloXpManager
 import com.example.ui.screens.MainViewModel
 import com.example.ui.theme.*
 
@@ -76,6 +83,9 @@ fun DashboardScreen(
 
     var selectedLeadTab by remember { mutableStateOf("All") }
     var showMiloAiDialog by remember { mutableStateOf(false) }
+    var showMiloWardrobeSheet by remember { mutableStateOf(false) }
+
+    val xpState by MiloXpManager.xpState.collectAsState()
 
     val activeLeadsCount = leads.size
     val pendingTasksCount = tasks.count { !it.isCompleted }
@@ -128,6 +138,37 @@ fun DashboardScreen(
                 )
             }
 
+            // 🌟 Milo XP Level & Wardrobe Rewards Widget
+            item {
+                MiloXpWidgetCard(
+                    onOpenWardrobe = { showMiloWardrobeSheet = true }
+                )
+            }
+
+            // 💡 Milo Daily Insight Card
+            item {
+                MiloDailyInsightCard()
+            }
+
+            // 🎁 Exclusive App Offers & Promotional Banner Slider
+            item {
+                OfferBannerSlider(
+                    onBannerClick = { banner ->
+                        when (banner.routeAction) {
+                            "leads" -> onNavigateToLeads()
+                            "tasks" -> onNavigateToTasks()
+                            "invoices" -> {
+                                Toast.makeText(context, "Opening Instant Quotations & Invoices", Toast.LENGTH_SHORT).show()
+                            }
+                            "milo_ai" -> {
+                                showMiloAiDialog = true
+                                miloViewModel.handleEvent(MiloEvent.Thinking("Special Offers & Deals"))
+                            }
+                        }
+                    }
+                )
+            }
+
             // 2. Overview Stats Section
             item {
                 OverviewStatsSection(
@@ -168,6 +209,15 @@ fun DashboardScreen(
                         showMiloAiDialog = true
                         miloViewModel.handleEvent(MiloEvent.Thinking("sales assistant"))
                     }
+                )
+            }
+
+            // 📈 Recharts 30-Day Trends & Analytics Widget (Attendance vs. Task Completion Rates)
+            item {
+                RechartsTrendDashboardWidget(
+                    viewModel = viewModel,
+                    onNavigateToAttendance = onNavigateToAttendance,
+                    onNavigateToTasks = onNavigateToTasks
                 )
             }
 
@@ -241,6 +291,25 @@ fun DashboardScreen(
                     "attendance" -> onNavigateToAttendance()
                     "projects" -> onNavigateToProjects()
                 }
+            }
+        )
+    }
+
+    // Milo XP Wardrobe & Rewards Sheet
+    if (showMiloWardrobeSheet) {
+        MiloWardrobeSheet(
+            onDismiss = { showMiloWardrobeSheet = false }
+        )
+    }
+
+    // Milo Level Up Celebratory Dialog
+    xpState.recentLevelUp?.let { newLevel ->
+        MiloLevelUpCelebrationDialog(
+            newLevel = newLevel,
+            onDismiss = { MiloXpManager.dismissLevelUpNotice() },
+            onOpenWardrobe = {
+                MiloXpManager.dismissLevelUpNotice()
+                showMiloWardrobeSheet = true
             }
         )
     }

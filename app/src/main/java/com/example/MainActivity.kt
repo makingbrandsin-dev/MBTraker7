@@ -28,6 +28,7 @@ import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import android.os.Build
 import android.Manifest
+import com.example.milo.MiloSmartAssistantSheet
 import com.example.ui.components.AppBottomNavigationBar
 import com.example.ui.screens.*
 import com.example.ui.theme.*
@@ -87,6 +88,9 @@ sealed class Screen(val route: String) {
     object LiveTeamTracking : Screen("live_team_tracking")
     object Employees : Screen("employees")
     object MiloDebug : Screen("milo_debug")
+    object MiloOnboarding : Screen("milo_onboarding")
+    object AdminBanners : Screen("admin_banners")
+    object AdminBroadcast : Screen("admin_broadcast")
 }
 
 private fun getScreenOrder(route: String?): Int {
@@ -167,15 +171,35 @@ fun MainAppNavHost(viewModel: MainViewModel) {
 
     val activity = context as? androidx.fragment.app.FragmentActivity
 
-    // Request notification permission safely for Android 13+ (Tiramisu / API 33+)
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val permission = Manifest.permission.POST_NOTIFICATIONS
-            if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
-                activity?.let {
-                    androidx.core.app.ActivityCompat.requestPermissions(it, arrayOf(permission), 101)
-                }
+    // All runtime permissions required for Calling, Call Recording, Location Geofencing, Camera & Notifications
+    val requiredPermissions = remember {
+        buildList {
+            add(Manifest.permission.RECORD_AUDIO)
+            add(Manifest.permission.CALL_PHONE)
+            add(Manifest.permission.READ_PHONE_STATE)
+            add(Manifest.permission.READ_CALL_LOG)
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            add(Manifest.permission.CAMERA)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
             }
+        }.toTypedArray()
+    }
+
+    val permissionsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        // Permissions acknowledged
+    }
+
+    // Automatically prompt for all required app permissions upon initial install/launch
+    LaunchedEffect(Unit) {
+        val ungranted = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (ungranted.isNotEmpty()) {
+            permissionsLauncher.launch(ungranted.toTypedArray())
         }
     }
 
@@ -190,6 +214,10 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 navController.navigate(Screen.ChatRoom.createRoute(channelId, channelTitle))
             } else if (destination == "tasks") {
                 navController.navigate(Screen.Tasks.route)
+            } else if (destination == "call_tracker") {
+                navController.navigate(Screen.CallTracker.route)
+            } else if (destination == "notifications") {
+                navController.navigate(Screen.Notifications.route)
             }
         }
     }
@@ -211,25 +239,32 @@ fun MainAppNavHost(viewModel: MainViewModel) {
     val nonFooterRoutes = listOf(
         Screen.Splash.route,
         Screen.Login.route,
-        Screen.Otp.route
+        Screen.Otp.route,
+        Screen.MiloOnboarding.route
     )
 
     val showBottomBar = currentRoute != null && currentRoute !in nonFooterRoutes
+    var showGlobalMiloAssistant by remember { mutableStateOf(false) }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize().systemBarsPadding(),
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = SurfaceBg,
         bottomBar = {
             if (showBottomBar) {
-                AppBottomNavigationBar(navController = navController)
+                AppBottomNavigationBar(
+                    navController = navController,
+                    onAskMiloClick = {
+                        showGlobalMiloAssistant = true
+                    }
+                )
             }
         }
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
+                .padding(bottom = innerPadding.calculateBottomPadding())
         ) {
             NavHost(
                 navController = navController,
@@ -245,8 +280,11 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 SplashScreen(
                     onTimeout = {
                         val isLogged = viewModel.isUserLoggedIn()
+                        val hasCompletedOnboarding = com.example.util.AppPreferences.isOnboardingCompleted(context)
                         val destination = if (isLogged) {
                             if (viewModel.userRole.value == "MB Admin") Screen.Manager.route else Screen.Home.route
+                        } else if (!hasCompletedOnboarding) {
+                            Screen.MiloOnboarding.route
                         } else {
                             Screen.Login.route
                         }
@@ -530,7 +568,31 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
-                    onNavigateToMiloDebug = { navController.navigate(Screen.MiloDebug.route) }
+                    onNavigateToMiloDebug = { navController.navigate(Screen.MiloDebug.route) },
+                    onNavigateToMiloOnboarding = { navController.navigate(Screen.MiloOnboarding.route) }
+                )
+            }
+
+            composable(
+                route = Screen.MiloOnboarding.route,
+                enterTransition = { fadeIn(tween(400)) },
+                exitTransition = { fadeOut(tween(350)) },
+                popEnterTransition = { fadeIn(tween(350)) },
+                popExitTransition = { fadeOut(tween(350)) }
+            ) {
+                MiloOnboardingScreen(
+                    onFinishOnboarding = {
+                        com.example.util.AppPreferences.setOnboardingCompleted(context, true)
+                        val isLogged = viewModel.isUserLoggedIn()
+                        val destination = if (isLogged) {
+                            if (viewModel.userRole.value == "MB Admin") Screen.Manager.route else Screen.Home.route
+                        } else {
+                            Screen.Login.route
+                        }
+                        navController.navigate(destination) {
+                            popUpTo(Screen.MiloOnboarding.route) { inclusive = true }
+                        }
+                    }
                 )
             }
 
@@ -741,7 +803,36 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onNavigateToTracking = { navController.navigate(Screen.LiveTeamTracking.route) },
                     onNavigateToTimesheets = { navController.navigate(Screen.Timesheets.route) },
                     onNavigateToMeetings = { navController.navigate(Screen.ClientMeetings.route) },
-                    onNavigateToVault = { navController.navigate(Screen.Vault.route) }
+                    onNavigateToVault = { navController.navigate(Screen.Vault.route) },
+                    onNavigateToCalls = { navController.navigate(Screen.CallTracker.route) },
+                    onNavigateToBannersAdmin = { navController.navigate(Screen.AdminBanners.route) },
+                    onNavigateToBroadcastAdmin = { navController.navigate(Screen.AdminBroadcast.route) }
+                )
+            }
+
+            composable(
+                route = Screen.AdminBanners.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                AdminBannersScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.AdminBroadcast.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                AdminBroadcastScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -823,6 +914,26 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 )
             }
         }
+    }
+
+    // 🦁 Global Milo AI Smart Assistant Sheet (Triggers from bottom bar or any screen)
+    if (showGlobalMiloAssistant) {
+        MiloSmartAssistantSheet(
+            viewModel = viewModel,
+            onDismiss = { showGlobalMiloAssistant = false },
+            onNavigateToLeads = {
+                showGlobalMiloAssistant = false
+                navController.navigate(Screen.Crm.route)
+            },
+            onNavigateToTasks = {
+                showGlobalMiloAssistant = false
+                navController.navigate(Screen.Tasks.route)
+            },
+            onNavigateToCalls = {
+                showGlobalMiloAssistant = false
+                navController.navigate(Screen.CallTracker.route)
+            }
+        )
     }
 }
 }

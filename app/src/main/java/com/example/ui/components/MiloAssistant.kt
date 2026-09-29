@@ -261,7 +261,7 @@ fun MiloAssistantDialog(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.92f),
+                    .fillMaxHeight(0.70f),
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 color = SurfaceBg,
                 shadowElevation = 16.dp
@@ -313,11 +313,11 @@ fun MiloAssistantDialog(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Text(
-                                                "ASK MILO",
+                                                "Milo Smart Assistant",
                                                 fontWeight = FontWeight.Black,
-                                                fontSize = 17.sp,
+                                                fontSize = 16.sp,
                                                 color = Color.White,
-                                                letterSpacing = 0.5.sp
+                                                letterSpacing = 0.3.sp
                                             )
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),

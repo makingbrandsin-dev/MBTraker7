@@ -1,6 +1,7 @@
 package com.example.util
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Build
@@ -13,8 +14,11 @@ object AudioRecorderHelper {
     private var mediaPlayer: MediaPlayer? = null
     private var currentOutputFile: File? = null
     private var isRecording = false
+    private var currentPlayingPath: String? = null
 
     fun isCurrentlyRecording(): Boolean = isRecording
+
+    fun getCurrentlyPlayingPath(): String? = currentPlayingPath
 
     /**
      * Starts recording audio into app cache directory.
@@ -86,24 +90,44 @@ object AudioRecorderHelper {
     }
 
     /**
-     * Plays a voice note from a local file path.
+     * Plays a voice note from a local file path or remote Firebase Storage URL.
      */
-    fun playAudio(filePath: String, onCompletion: () -> Unit = {}) {
+    fun playAudio(filePathOrUrl: String, onPrepared: () -> Unit = {}, onCompletion: () -> Unit = {}) {
         stopPlaying()
         try {
+            currentPlayingPath = filePathOrUrl
             val player = MediaPlayer().apply {
-                setDataSource(filePath)
-                prepare()
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+                )
+                setDataSource(filePathOrUrl)
+                setOnPreparedListener { mp ->
+                    mp.start()
+                    onPrepared()
+                }
                 setOnCompletionListener {
                     it.release()
                     mediaPlayer = null
+                    currentPlayingPath = null
                     onCompletion()
                 }
-                start()
+                setOnErrorListener { mp, what, extra ->
+                    Log.w(TAG, "MediaPlayer error: what=$what, extra=$extra for $filePathOrUrl")
+                    mp.release()
+                    mediaPlayer = null
+                    currentPlayingPath = null
+                    onCompletion()
+                    true
+                }
+                prepareAsync()
             }
             mediaPlayer = player
         } catch (e: Exception) {
             Log.e(TAG, "Failed to play audio: ${e.message}")
+            currentPlayingPath = null
             onCompletion()
         }
     }
@@ -119,6 +143,7 @@ object AudioRecorderHelper {
             }
         } catch (_: Exception) {}
         mediaPlayer = null
+        currentPlayingPath = null
     }
 
     fun isPlaying(): Boolean {
@@ -127,5 +152,10 @@ object AudioRecorderHelper {
         } catch (_: Exception) {
             false
         }
+    }
+
+    fun isAudioPlaying(pathOrUrl: String?): Boolean {
+        if (pathOrUrl.isNullOrBlank()) return false
+        return isPlaying() && currentPlayingPath == pathOrUrl
     }
 }

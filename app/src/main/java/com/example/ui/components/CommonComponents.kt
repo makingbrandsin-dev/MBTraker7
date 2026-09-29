@@ -182,11 +182,12 @@ fun AppHeader(
     unreadNotificationCount: Int = 0,
     onOpenMilo: (() -> Unit)? = null,
     showBottomDivider: Boolean = true,
+    isAiProcessing: Boolean = false,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     Surface(
-        color = SurfaceBg,
-        shadowElevation = if (showBottomDivider) 0.5.dp else 0.dp,
+        color = Color.White,
+        shadowElevation = if (showBottomDivider) 2.dp else 0.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -337,10 +338,19 @@ fun AppHeader(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = SurfaceBg
+                    containerColor = Color.White
                 )
             )
-            if (showBottomDivider) {
+            // Visual Linear Progress Bar when AI Assistant is processing a query
+            if (isAiProcessing) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp),
+                    color = BrandAccent,
+                    trackColor = BrandBlue.copy(alpha = 0.15f)
+                )
+            } else if (showBottomDivider) {
                 HorizontalDivider(
                     thickness = 0.8.dp,
                     color = BorderLight.copy(alpha = 0.6f)

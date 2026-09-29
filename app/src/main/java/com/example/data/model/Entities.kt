@@ -100,7 +100,8 @@ data class AttendanceRecord(
     val longitude: Double? = null,
     val locationAddress: String? = "Office HQ, Connaught Place, New Delhi",
     val isGeofenceVerified: Boolean = true,
-    val selfieUri: String? = null
+    val selfieUri: String? = null,
+    val isSynced: Boolean = true
 )
 
 @Entity(
@@ -309,7 +310,35 @@ data class ChatMessageEntity(
     val attachmentFileSize: String? = null,
     val audioPath: String? = null,
     val audioDurationSeconds: Int = 0,
-    val isVoiceMessage: Boolean = false
+    val isVoiceMessage: Boolean = false,
+    val isRead: Boolean = false,
+    val readBy: String = "",
+    val readAt: Long? = null,
+    val reactionsJson: String = "", // JSON map: emoji -> list of user names
+    val isSynced: Boolean = true
+)
+
+@Entity(
+    tableName = "activity_feed_items",
+    indices = [
+        Index(value = ["category"]),
+        Index(value = ["createdAt"])
+    ]
+)
+data class ActivityFeedItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val authorName: String,
+    val authorRole: String = "Team Member",
+    val title: String,
+    val content: String,
+    val category: String = "Update", // Announcement, Achievement, Update, Milestone, Shoutout
+    val likesCount: Int = 0,
+    val likedByUsers: String = "", // Comma-separated names
+    val reactionsJson: String = "", // JSON map: emoji -> list of user names
+    val commentsCount: Int = 0,
+    val isPinned: Boolean = false,
+    val timestampText: String = "Just now",
+    val createdAt: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "notifications")

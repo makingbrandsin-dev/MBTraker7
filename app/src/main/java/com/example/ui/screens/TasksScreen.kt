@@ -32,7 +32,6 @@ import com.example.ui.components.AppHeader
 import com.example.ui.components.CrmTasksAttendanceSwitcher
 import com.example.ui.components.KanbanBoardView
 import com.example.ui.components.MiloAssistantDialog
-import com.example.ui.components.FloatingAskMiloButton
 import com.example.ui.components.PriorityBadge
 import com.example.ui.components.StandardScreenHeader
 import com.example.ui.components.getCategoryConfig

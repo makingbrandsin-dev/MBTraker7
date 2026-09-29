@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -157,102 +159,195 @@ fun ProjectsScreen(
         var newTeamSize by remember { mutableIntStateOf(4) }
         var newTotalTasks by remember { mutableIntStateOf(10) }
 
-        AlertDialog(
+        androidx.compose.ui.window.Dialog(
             onDismissRequest = { showAddDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding(),
+                color = Color(0xFFF8FAFC)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Top Header
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFEFF6FF),
-                        modifier = Modifier.size(36.dp)
+                        color = Color.White,
+                        shadowElevation = 2.dp,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.AddBusiness, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(20.dp))
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text("Create New Project", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = { newName = it },
-                        label = { Text("Project Name *") },
-                        placeholder = { Text("e.g. Enterprise Mobile App") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = newClient,
-                        onValueChange = { newClient = it },
-                        label = { Text("Client Name *") },
-                        placeholder = { Text("e.g. Making Brands Tech") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = newDeadline,
-                        onValueChange = { newDeadline = it },
-                        label = { Text("Deadline Date") },
-                        leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null, tint = TextMuted) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFEFF6FF),
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.AddBusiness,
+                                            contentDescription = null,
+                                            tint = BrandBlue,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        "Create New Project",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 17.sp,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        "Set up scope, client & deliverables",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = newPriority,
-                            onValueChange = { newPriority = it },
-                            label = { Text("Priority") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = newTeamSize.toString(),
-                            onValueChange = { newTeamSize = it.toIntOrNull() ?: 1 },
-                            label = { Text("Team Size") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (newName.isNotBlank() && newClient.isNotBlank()) {
-                            viewModel.addProject(
-                                name = newName.trim(),
-                                clientName = newClient.trim(),
-                                deadline = newDeadline,
-                                priority = newPriority,
-                                teamSize = newTeamSize,
-                                totalTasks = newTotalTasks
-                            )
-                            showAddDialog = false
+                            IconButton(onClick = { showAddDialog = false }) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF64748B))
+                            }
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
-                ) {
-                    Text("Create Project", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    }
+
+                    // Middle Scrollable Form
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = newName,
+                                    onValueChange = { newName = it },
+                                    label = { Text("Project Name *") },
+                                    placeholder = { Text("e.g. Enterprise Mobile App") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = newClient,
+                                    onValueChange = { newClient = it },
+                                    label = { Text("Client Name *") },
+                                    placeholder = { Text("e.g. Making Brands Tech") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = newDeadline,
+                                    onValueChange = { newDeadline = it },
+                                    label = { Text("Deadline Date") },
+                                    leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null, tint = TextMuted) },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = newPriority,
+                                        onValueChange = { newPriority = it },
+                                        label = { Text("Priority") },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = newTeamSize.toString(),
+                                        onValueChange = { newTeamSize = it.toIntOrNull() ?: 1 },
+                                        label = { Text("Team Size") },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Pinned Bottom Footer Actions
+                    Surface(
+                        color = Color.White,
+                        shadowElevation = 8.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { showAddDialog = false },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                            ) {
+                                Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (newName.isNotBlank() && newClient.isNotBlank()) {
+                                        viewModel.addProject(
+                                            name = newName.trim(),
+                                            clientName = newClient.trim(),
+                                            deadline = newDeadline,
+                                            priority = newPriority,
+                                            teamSize = newTeamSize,
+                                            totalTasks = newTotalTasks
+                                        )
+                                        showAddDialog = false
+                                    }
+                                },
+                                enabled = newName.isNotBlank() && newClient.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1.5f)
+                                    .height(48.dp)
+                            ) {
+                                Text("Create Project", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
-        )
+        }
     }
 }
 

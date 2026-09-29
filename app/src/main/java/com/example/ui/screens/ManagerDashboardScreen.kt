@@ -1,38 +1,52 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import com.example.data.model.Department
 import com.example.data.model.EmployeeEntity
 import com.example.data.model.EmployeeStatus
 import com.example.data.model.PresenceStatus
+import com.example.presentation.components.banner.AppOfferBanner
+import com.example.presentation.components.banner.OfferBannerCard
 import com.example.ui.components.AppHeader
 import com.example.ui.components.MetricBadge
 import com.example.ui.components.StatusIndicatorBadge
 import com.example.ui.components.TeamWorkloadChartCard
+import com.example.ui.components.liftOnPress
 import com.example.domain.milo.*
 import com.example.milo.*
 import com.example.ui.theme.*
@@ -49,7 +63,10 @@ fun ManagerDashboardScreen(
     onNavigateToTracking: () -> Unit = {},
     onNavigateToTimesheets: () -> Unit = {},
     onNavigateToMeetings: () -> Unit = {},
-    onNavigateToVault: () -> Unit = {}
+    onNavigateToVault: () -> Unit = {},
+    onNavigateToCalls: () -> Unit = {},
+    onNavigateToBannersAdmin: () -> Unit = {},
+    onNavigateToBroadcastAdmin: () -> Unit = {}
 ) {
     BackHandler {
         onBack()
@@ -93,6 +110,18 @@ fun ManagerDashboardScreen(
     var employeeToClearFields by remember { mutableStateOf<EmployeeEntity?>(null) }
     var employeeToDelete by remember { mutableStateOf<EmployeeEntity?>(null) }
     var sectionToClear by remember { mutableStateOf<String?>(null) }
+
+    // Admin Banners, Push Notifications & Milo MP4 States
+    val coroutineScope = rememberCoroutineScope()
+    var showAddBannerDialog by remember { mutableStateOf(false) }
+    var showManageBannersDialog by remember { mutableStateOf(false) }
+    var showPushNotificationDialog by remember { mutableStateOf(false) }
+    var showMiloVideoConfigDialog by remember { mutableStateOf(false) }
+
+    val allBanners by viewModel.banners.collectAsState()
+    val activeBanners by viewModel.activeBanners.collectAsState()
+    val isFirestoreBannersConnected by viewModel.isFirestoreBannersConnected.collectAsState()
+    val adminBroadcasts by viewModel.adminBroadcasts.collectAsState()
 
     val filteredEmployees = employees.filter { emp ->
         emp.name.contains(searchQuery, ignoreCase = true) ||
@@ -404,6 +433,793 @@ fun ManagerDashboardScreen(
             dismissButton = {
                 TextButton(onClick = { showAssignTaskDialog = false }) {
                     Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    // 0C. Dialog: Upload & Add App Home Banner (Admin - Firebase Storage & Firestore)
+    if (showAddBannerDialog) {
+        var headline by remember { mutableStateOf("") }
+        var subtext by remember { mutableStateOf("") }
+        var ctaText by remember { mutableStateOf("Explore Now") }
+        var badge by remember { mutableStateOf("SPECIAL OFFER") }
+        var selectedRoute by remember { mutableStateOf("leads") }
+        var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+        var savedImagePath by remember { mutableStateOf<String?>(null) }
+        var isUploadingToFirebaseStorage by remember { mutableStateOf(false) }
+        var storageUploadProgress by remember { mutableFloatStateOf(0f) }
+        var isBannerActive by remember { mutableStateOf(true) }
+
+        // Color theme palettes
+        val colorPalettes = listOf(
+            Triple("Teal Emerald", listOf(Color(0xFF0D9488), Color(0xFF10B981)), Color(0xFF047857)),
+            Triple("Electric Blue", listOf(Color(0xFF1D4ED8), Color(0xFF3B82F6)), Color(0xFF1E40AF)),
+            Triple("Sunset Orange", listOf(Color(0xFFEA580C), Color(0xFFF97316)), Color(0xFFC2410C)),
+            Triple("Royal Purple", listOf(Color(0xFF7C3AED), Color(0xFF8B5CF6)), Color(0xFF6D28D9)),
+            Triple("Dark Obsidian", listOf(Color(0xFF0F172A), Color(0xFF1E293B)), Color(0xFF2563EB))
+        )
+        var selectedPaletteIndex by remember { mutableStateOf(0) }
+
+        val photoPickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.PickVisualMedia()
+        ) { uri ->
+            if (uri != null) {
+                selectedImageUri = uri
+                isUploadingToFirebaseStorage = true
+                storageUploadProgress = 0.1f
+                coroutineScope.launch {
+                    val result = viewModel.uploadBannerImageToStorage(uri) { progress ->
+                        storageUploadProgress = progress.coerceIn(0.1f, 1f)
+                    }
+                    if (result.isSuccess) {
+                        savedImagePath = result.getOrNull()
+                        isUploadingToFirebaseStorage = false
+                        Toast.makeText(context, "Image uploaded to Firebase Storage!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        savedImagePath = viewModel.saveBannerImage(uri)
+                        isUploadingToFirebaseStorage = false
+                        Toast.makeText(context, "Saved banner image locally (offline mode)", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showAddBannerDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding(),
+                color = SurfaceBg
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Header
+                    Surface(color = Color.White, shadowElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFFEFF6FF), modifier = Modifier.size(38.dp)) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text("Add App Home Banner", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                    Text("Upload promotional banner for employee dashboard", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+                            IconButton(onClick = { showAddBannerDialog = false }) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                            }
+                        }
+                    }
+
+                    // Body
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Image Upload Section
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BorderLight)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Banner Graphic / Image", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+                                Text("Upload a high-resolution banner image from gallery or use styled card presets.", fontSize = 12.sp, color = TextSecondary)
+
+                                if (isUploadingToFirebaseStorage) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFFF0FDF4))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFF059669))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                "Uploading banner to Firebase Storage: ${(storageUploadProgress * 100).toInt()}%",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF065F46)
+                                            )
+                                        }
+                                        LinearProgressIndicator(
+                                            progress = { storageUploadProgress },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(6.dp)
+                                                .clip(RoundedCornerShape(3.dp)),
+                                            color = Color(0xFF059669),
+                                            trackColor = Color(0xFFD1FAE5)
+                                        )
+                                    }
+                                }
+
+                                if (savedImagePath != null) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (savedImagePath?.startsWith("http") == true) Color(0xFFEFF6FF) else Color(0xFFF1F5F9)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                if (savedImagePath?.startsWith("http") == true) Icons.Default.CloudDone else Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = if (savedImagePath?.startsWith("http") == true) BrandBlue else Color(0xFF059669),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                if (savedImagePath?.startsWith("http") == true) "Uploaded to Firebase Storage (Cloud)" else "Saved to Local App Storage",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (savedImagePath?.startsWith("http") == true) BrandBlue else Color(0xFF059669)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (selectedImageUri != null || savedImagePath != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(130.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                    ) {
+                                        AsyncImage(
+                                            model = savedImagePath ?: selectedImageUri,
+                                            contentDescription = "Selected Banner Image",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color.Black.copy(alpha = 0.65f),
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(8.dp)
+                                                .clickable {
+                                                    selectedImageUri = null
+                                                    savedImagePath = null
+                                                }
+                                        ) {
+                                            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Remove", color = Color.White, fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Button(
+                                    onClick = {
+                                        photoPickerLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = if (selectedImageUri != null) Color(0xFF0F172A) else BrandBlue),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                                ) {
+                                    Icon(Icons.Default.Upload, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (selectedImageUri != null) "Change Banner Image" else "Upload Image to Firebase Storage", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+                            }
+                        }
+
+                        // Banner Text & Action Section
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BorderLight)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Banner Details & Actions", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+
+                                OutlinedTextField(
+                                    value = headline,
+                                    onValueChange = { headline = it },
+                                    label = { Text("Headline / Title *") },
+                                    placeholder = { Text("e.g. Instant Lead Sync & Auto Follow-up") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+
+                                OutlinedTextField(
+                                    value = subtext,
+                                    onValueChange = { subtext = it },
+                                    label = { Text("Subtext / Description") },
+                                    placeholder = { Text("e.g. Get real-time Meta & Google leads in 15 seconds") },
+                                    maxLines = 2,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = badge,
+                                        onValueChange = { badge = it },
+                                        label = { Text("Badge Label") },
+                                        placeholder = { Text("OFFER") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    OutlinedTextField(
+                                        value = ctaText,
+                                        onValueChange = { ctaText = it },
+                                        label = { Text("Button Text") },
+                                        placeholder = { Text("Explore Now") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                }
+
+                                Text("CTA Destination Screen:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    val routes = listOf(
+                                        "leads" to "Leads / CRM",
+                                        "tasks" to "Tasks",
+                                        "invoices" to "Invoices",
+                                        "chat" to "Team Chat",
+                                        "milo_ai" to "Ask Milo AI",
+                                        "attendance" to "Attendance"
+                                    )
+                                    items(routes) { (routeKey, routeLabel) ->
+                                        FilterChip(
+                                            selected = selectedRoute == routeKey,
+                                            onClick = { selectedRoute = routeKey },
+                                            label = { Text(routeLabel, fontSize = 12.sp) }
+                                        )
+                                    }
+                                }
+
+                                Text("Color Theme Palette:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(colorPalettes.indices.toList()) { index ->
+                                        val palette = colorPalettes[index]
+                                        FilterChip(
+                                            selected = selectedPaletteIndex == index,
+                                            onClick = { selectedPaletteIndex = index },
+                                            label = { Text(palette.first, fontSize = 11.sp) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Visibility on Home Screen Toggle Card
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BorderLight)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Show on Home Screen (Pager)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+                                    Text(
+                                        if (isBannerActive) "Active: Will appear in home screen Pager slider" else "Paused: Hidden from home screen Pager",
+                                        fontSize = 11.sp,
+                                        color = if (isBannerActive) StatusGreen else StatusOrange
+                                    )
+                                }
+                                Switch(
+                                    checked = isBannerActive,
+                                    onCheckedChange = { isBannerActive = it }
+                                )
+                            }
+                        }
+
+                        // Live Preview Card
+                        Text("Live Preview on Home Screen:", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+                        val currentPalette = colorPalettes[selectedPaletteIndex]
+                        val previewBanner = AppOfferBanner(
+                            id = "preview",
+                            headline = headline.ifBlank { "Instant Lead Sync & Auto Follow-up" },
+                            subtext = subtext.ifBlank { "Get real-time Meta & Google leads in 15 seconds" },
+                            ctaText = ctaText.ifBlank { "Explore Now" },
+                            badge = badge.ifBlank { "SPECIAL OFFER" },
+                            bgGradientColors = currentPalette.second,
+                            ctaButtonColor = currentPalette.third,
+                            ctaTextColor = Color.White,
+                            routeAction = selectedRoute,
+                            imageUri = savedImagePath ?: selectedImageUri?.toString(),
+                            isActive = isBannerActive
+                        )
+                        OfferBannerCard(
+                            banner = previewBanner,
+                            onClick = {}
+                        )
+                    }
+
+                    // Footer
+                    Surface(color = Color.White, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(
+                                onClick = { showAddBannerDialog = false },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Cancel", color = TextSecondary, fontWeight = FontWeight.Bold)
+                            }
+                            Button(
+                                onClick = {
+                                    if (headline.isNotBlank()) {
+                                        val palette = colorPalettes[selectedPaletteIndex]
+                                        viewModel.addBanner(
+                                            headline = headline,
+                                            subtext = subtext,
+                                            ctaText = ctaText,
+                                            badge = badge,
+                                            routeAction = selectedRoute,
+                                            imageUri = savedImagePath ?: selectedImageUri?.toString(),
+                                            bgGradientColors = palette.second,
+                                            ctaButtonColor = palette.third,
+                                            isActive = isBannerActive
+                                        )
+                                        showAddBannerDialog = false
+                                        Toast.makeText(context, "Banner saved to Firestore 'Banners' & synced to Home Screen!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                enabled = headline.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                modifier = Modifier.weight(1.3f).height(48.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Publish to Firestore", fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 0D. Dialog: Manage Existing App Banners (Admin)
+    if (showManageBannersDialog) {
+        AlertDialog(
+            onDismissRequest = { showManageBannersDialog = false },
+            icon = { Icon(Icons.Default.ViewCarousel, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(36.dp)) },
+            title = { Text("Manage App Home Banners", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("${allBanners.size} Total Banners (${activeBanners.size} Active)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandBlue)
+                        Button(
+                            onClick = {
+                                showManageBannersDialog = false
+                                showAddBannerDialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("+ Add New", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    allBanners.forEach { banner ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                    if (!banner.imageUri.isNullOrBlank()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(46.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                        ) {
+                                            AsyncImage(
+                                                model = banner.imageUri,
+                                                contentDescription = banner.headline,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = banner.ctaButtonColor.copy(alpha = 0.15f),
+                                            modifier = Modifier.size(46.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.Image, contentDescription = null, tint = banner.ctaButtonColor, modifier = Modifier.size(22.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(banner.headline, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextPrimary, maxLines = 1)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Surface(shape = RoundedCornerShape(4.dp), color = banner.ctaButtonColor.copy(alpha = 0.12f)) {
+                                                Text(banner.badge ?: "OFFER", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = banner.ctaButtonColor, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+                                            }
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                if (banner.imageUri?.startsWith("http") == true) "Firebase Storage" else "Local / Preset",
+                                                fontSize = 9.sp,
+                                                color = if (banner.imageUri?.startsWith("http") == true) BrandBlue else TextSecondary
+                                            )
+                                        }
+                                        Text(
+                                            if (banner.isActive) "Active in Home Pager" else "Hidden / Paused",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (banner.isActive) StatusGreen else StatusOrange
+                                        )
+                                    }
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Switch(
+                                        checked = banner.isActive,
+                                        onCheckedChange = { isChecked ->
+                                            viewModel.toggleBannerStatus(banner.id, isChecked)
+                                            val statusMsg = if (isChecked) "Banner active in Home Screen Pager" else "Banner hidden from Home Screen Pager"
+                                            Toast.makeText(context, statusMsg, Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.scale(0.8f)
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.deleteBanner(banner.id)
+                                            Toast.makeText(context, "Banner removed from Firestore 'Banners'", Toast.LENGTH_SHORT).show()
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete Banner", tint = StatusRed, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showManageBannersDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)) {
+                    Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // 0E. Dialog: Broadcast Push Notification (Admin)
+    if (showPushNotificationDialog) {
+        var notifTitle by remember { mutableStateOf("") }
+        var notifMessage by remember { mutableStateOf("") }
+        var selectedAudience by remember { mutableStateOf("All Employees") }
+        var selectedPriority by remember { mutableStateOf("High") }
+        var selectedCategory by remember { mutableStateOf("announcement") }
+
+        AlertDialog(
+            onDismissRequest = { showPushNotificationDialog = false },
+            icon = { Icon(Icons.Default.Campaign, contentDescription = null, tint = StatusOrange, modifier = Modifier.size(36.dp)) },
+            title = { Text("Broadcast Push Notification", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Broadcast an instant push alert to all registered employees. This triggers a real device system notification and adds to all in-app notification centers.",
+                        fontSize = 12.sp,
+                        color = Color(0xFF475569)
+                    )
+
+                    // Quick Templates
+                    Text("Quick Templates:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val templates = listOf(
+                            "📢 All-Hands Meeting" to "Urgent: Team All-Hands meeting starting in 15 minutes on Google Meet.",
+                            "🎯 Target Announcement" to "Great job team! Q3 sales targets have been refreshed with bonus rewards.",
+                            "⚡ Urgent CRM Review" to "Attention Sales: 18 incoming leads require immediate WhatsApp follow-up.",
+                            "🎉 Company Notice" to "Company holiday scheduled for upcoming festival. Check holiday calendar."
+                        )
+                        items(templates) { (tTitle, tMsg) ->
+                            FilterChip(
+                                selected = notifTitle == tTitle,
+                                onClick = {
+                                    notifTitle = tTitle
+                                    notifMessage = tMsg
+                                },
+                                label = { Text(tTitle, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = notifTitle,
+                        onValueChange = { notifTitle = it },
+                        label = { Text("Notification Title *") },
+                        placeholder = { Text("e.g. Urgent All-Hands Call") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = notifMessage,
+                        onValueChange = { notifMessage = it },
+                        label = { Text("Notification Body / Message *") },
+                        placeholder = { Text("Enter detailed broadcast announcement...") },
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    Text("Target Audience:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val audiences = listOf("All Employees", "Sales & CRM", "Engineering", "Design", "Management")
+                        items(audiences) { aud ->
+                            FilterChip(
+                                selected = selectedAudience == aud,
+                                onClick = { selectedAudience = aud },
+                                label = { Text(aud, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+
+                    Text("Priority Level:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("High", "Urgent", "Normal").forEach { pr ->
+                            FilterChip(
+                                selected = selectedPriority == pr,
+                                onClick = { selectedPriority = pr },
+                                label = { Text(pr, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+
+                    // Live Preview Card
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    notifTitle.ifBlank { "📢 Notification Title" },
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = BrandBlue
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                Surface(shape = RoundedCornerShape(4.dp), color = BrandBlue) {
+                                    Text(selectedAudience, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                notifMessage.ifBlank { "Live preview of the broadcast message that all employees will receive." },
+                                fontSize = 11.sp,
+                                color = Color(0xFF1E293B)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (notifTitle.isNotBlank() && notifMessage.isNotBlank()) {
+                            val targetTopic = when (selectedAudience) {
+                                "Sales & CRM" -> "sales_team"
+                                "Engineering" -> "dev_team"
+                                "Design" -> "design_team"
+                                "Management" -> "management"
+                                else -> "all_users"
+                            }
+                            viewModel.sendAdminBroadcastPushNotification(
+                                title = notifTitle,
+                                message = notifMessage,
+                                audience = selectedAudience,
+                                priority = selectedPriority,
+                                category = selectedCategory,
+                                topic = targetTopic,
+                                actionRoute = "notifications",
+                                context = context
+                            )
+                            showPushNotificationDialog = false
+                            Toast.makeText(context, "FCM Push Broadcast dispatched to $selectedAudience!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusOrange),
+                    enabled = notifTitle.isNotBlank() && notifMessage.isNotBlank()
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Broadcast Now", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPushNotificationDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    // 0F. Dialog: Milo MP4 Video Status Configuration
+    if (showMiloVideoConfigDialog) {
+        val videoPickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetContent()
+        ) { uri ->
+            if (uri != null) {
+                val saved = MiloVideoHelper.saveMiloVideo(context, uri, "milo_status.mp4")
+                if (saved) {
+                    Toast.makeText(context, "Milo MP4 Video uploaded & active!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Failed to save video file", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { showMiloVideoConfigDialog = false },
+            icon = { Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(36.dp)) },
+            title = { Text("Real Milo Status & MP4 Video Setup", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MiloRealStatusView(
+                            state = MiloState.WORKING,
+                            size = 60.dp,
+                            showStateBadge = true
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Real Milo Mascot Active", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+                            Text("ExoPlayer CacheDataSource Active • Smooth MP4 Streaming", fontSize = 11.sp, color = StatusGreen)
+                        }
+                    }
+
+                    Text(
+                        "ExoPlayer streams MP4 files efficiently using a local cache data source (100MB LRU disk cache). MP4 animations are cached locally after first stream for instant zero-latency playback.",
+                        fontSize = 12.sp,
+                        color = Color(0xFF475569)
+                    )
+
+                    var customVideoUrlInput by remember { mutableStateOf(MiloVideoHelper.getMiloVideoUrl(context) ?: "") }
+
+                    OutlinedTextField(
+                        value = customVideoUrlInput,
+                        onValueChange = { customVideoUrlInput = it },
+                        label = { Text("Remote MP4 Stream URL", fontSize = 11.sp) },
+                        placeholder = { Text("https://example.com/milo_anim.mp4", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                if (customVideoUrlInput.isNotBlank()) {
+                                    MiloVideoHelper.saveMiloVideoUrl(context, customVideoUrlInput.trim())
+                                    Toast.makeText(context, "Streaming URL saved! ExoPlayer caching enabled.", Toast.LENGTH_SHORT).show()
+                                }
+                            }) {
+                                Icon(Icons.Default.Check, contentDescription = "Save URL", tint = BrandBlue)
+                            }
+                        }
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF1F5F9),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Supported Video Sources (res/raw/ or Remote URL):", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF0F172A))
+                            Text("• milo_idle.mp4 (Default looping state)", fontSize = 11.sp, color = TextSecondary)
+                            Text("• milo_thinking.mp4 (When AI query is processing)", fontSize = 11.sp, color = TextSecondary)
+                            Text("• milo_working.mp4 (Active working status)", fontSize = 11.sp, color = TextSecondary)
+                            Text("• milo_welcome.mp4 (Morning greetings)", fontSize = 11.sp, color = TextSecondary)
+                            Text("• milo_splash.mp4 (App launch splash intro)", fontSize = 11.sp, color = TextSecondary)
+                        }
+                    }
+
+                    Button(
+                        onClick = { videoPickerLauncher.launch("video/mp4") },
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().height(42.dp)
+                    ) {
+                        Icon(Icons.Default.UploadFile, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Upload MP4 Video File from Device", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showMiloVideoConfigDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A))) {
+                    Text("Close", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         )
@@ -1112,6 +1928,16 @@ fun ManagerDashboardScreen(
                 }
             }
 
+            // 🦁 MILO PROACTIVE TIME-OF-DAY GREETING & SMART ASSISTANT CARD
+            item {
+                MiloGreetingCard(
+                    viewModel = viewModel,
+                    onOpenAskMilo = { showMiloAssistant = true },
+                    onNavigateToTasks = onNavigateToTasks,
+                    onNavigateToLeads = onNavigateToLeads
+                )
+            }
+
             // 🦁 MILO LIVE ASSISTANT COMPONENT FOR ADMIN
             item {
                 MiloDashboardWidget(
@@ -1184,6 +2010,424 @@ fun ManagerDashboardScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Assign Task", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = BrandBlue)
                             }
+                        }
+                    }
+                }
+            }
+
+            // 📢 1. App Home Screen Banners Management Card (Admin Panel - Firebase Firestore & Storage)
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = CircleShape, color = Color(0xFFEFF6FF), modifier = Modifier.size(38.dp)) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.ViewCarousel, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(22.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Home Screen Banners", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                                    Text("Firestore 'Banners' Collection & Storage", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isFirestoreBannersConnected) Color(0xFFECFDF5) else Color(0xFFFFFBEB)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isFirestoreBannersConnected) StatusGreen else StatusOrange)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            if (isFirestoreBannersConnected) "Firestore Live" else "Cached Mode",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isFirestoreBannersConnected) Color(0xFF065F46) else Color(0xFF92400E)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFEFF6FF)) {
+                                    Text(
+                                        "${activeBanners.size} Active in Pager",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandBlue,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Inline quick toggle list of banners with display order & visibility
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Banners Order & Home Visibility:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                            TextButton(
+                                onClick = onNavigateToBannersAdmin,
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                modifier = Modifier.height(26.dp)
+                            ) {
+                                Text("Open Full Panel", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BrandBlue)
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(12.dp), tint = BrandBlue)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            allBanners.take(5).forEachIndexed { index, banner ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                            // Order badge & reorder buttons
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = if (banner.isActive) BrandBlue else Color(0xFF64748B),
+                                                modifier = Modifier.padding(end = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "#${banner.displayOrder + 1}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                )
+                                            }
+
+                                            // Reorder buttons
+                                            Column {
+                                                IconButton(
+                                                    onClick = { viewModel.moveBannerUp(banner.id) },
+                                                    enabled = index > 0,
+                                                    modifier = Modifier.size(18.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.ArrowDropUp,
+                                                        contentDescription = "Move Up",
+                                                        tint = if (index > 0) BrandBlue else Color(0xFFCBD5E1),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { viewModel.moveBannerDown(banner.id) },
+                                                    enabled = index < allBanners.size - 1,
+                                                    modifier = Modifier.size(18.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.ArrowDropDown,
+                                                        contentDescription = "Move Down",
+                                                        tint = if (index < allBanners.size - 1) BrandBlue else Color(0xFFCBD5E1),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.width(6.dp))
+
+                                            if (!banner.imageUri.isNullOrBlank()) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(36.dp)
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                ) {
+                                                    AsyncImage(
+                                                        model = banner.imageUri,
+                                                        contentDescription = banner.headline,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                            } else {
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = banner.ctaButtonColor.copy(alpha = 0.15f),
+                                                    modifier = Modifier.size(36.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(Icons.Default.Image, contentDescription = null, tint = banner.ctaButtonColor, modifier = Modifier.size(18.dp))
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                            }
+
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(banner.headline, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = TextPrimary, maxLines = 1)
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(banner.badge ?: "OFFER", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = banner.ctaButtonColor)
+                                                    Text(" • ", fontSize = 8.sp, color = TextSecondary)
+                                                    Text(
+                                                        if (banner.imageUri?.startsWith("http") == true) "Firebase Storage" else "Preset",
+                                                        fontSize = 8.sp,
+                                                        color = if (banner.imageUri?.startsWith("http") == true) BrandBlue else TextSecondary
+                                                    )
+                                                    Text(" • ", fontSize = 8.sp, color = TextSecondary)
+                                                    Text(
+                                                        if (banner.isActive) "Visible" else "Hidden",
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (banner.isActive) StatusGreen else StatusOrange
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Switch(
+                                            checked = banner.isActive,
+                                            onCheckedChange = { isChecked ->
+                                                viewModel.toggleBannerStatus(banner.id, isChecked)
+                                                val msg = if (isChecked) "Banner activated in Home Screen Pager" else "Banner hidden from Home Screen Pager"
+                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.scale(0.75f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { showAddBannerDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f).height(42.dp)
+                            ) {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Upload", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.White)
+                            }
+
+                            FilledTonalButton(
+                                onClick = onNavigateToBannersAdmin,
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFEFF6FF), contentColor = BrandBlue),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1.3f).height(42.dp)
+                            ) {
+                                Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Admin Panel (${allBanners.size})", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = BrandBlue)
+                            }
+
+                            OutlinedButton(
+                                onClick = { showManageBannersDialog = true },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(0.9f).height(42.dp)
+                            ) {
+                                Text("Quick List", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = TextPrimary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 📢 2. Enterprise Push Notifications Broadcast Card (Admin Panel - FCM & Cloud Alerts)
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFED7AA)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = CircleShape, color = Color(0xFFFFF7ED), modifier = Modifier.size(36.dp)) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Campaign, contentDescription = null, tint = StatusOrange, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Broadcast Push Notification", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                                    Text("FCM Cloud Messaging to all devices & topics", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+
+                            Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFDCFCE7)) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(StatusGreen)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "FCM LIVE",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF166534)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            "Dispatches high-priority system alerts via Firebase Cloud Messaging (FCM) to all registered employees with custom audience filtering.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF475569)
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = { showPushNotificationDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = StatusOrange),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f).height(44.dp)
+                            ) {
+                                Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Quick Send", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                            }
+
+                            FilledTonalButton(
+                                onClick = onNavigateToBroadcastAdmin,
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = Color(0xFFFFF7ED),
+                                    contentColor = StatusOrange
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1.2f).height(44.dp)
+                            ) {
+                                Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = StatusOrange, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Full FCM Panel", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = StatusOrange)
+                            }
+                        }
+
+                        if (adminBroadcasts.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Recent Broadcasts (${adminBroadcasts.size}):", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            adminBroadcasts.take(2).forEach { b ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                ) {
+                                    Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("📢", fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(b.title, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = TextPrimary)
+                                            Text("${b.audience} • ${b.priority} priority", fontSize = 10.sp, color = TextSecondary)
+                                        }
+                                        Text("FCM Sent", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = StatusGreen)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 🦁 3. Real Milo Mascot & MP4 Video Status Manager Card (Admin Panel)
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                MiloRealStatusView(
+                                    state = MiloState.WELCOME,
+                                    size = 46.dp,
+                                    showStateBadge = true
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Real Milo Mascot & Video", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                                    Text("Vector graphics removed • MP4 loops ready", fontSize = 11.sp, color = StatusGreen)
+                                }
+                            }
+
+                            Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFDCFCE7)) {
+                                Text(
+                                    "MP4 READY",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF15803D),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            "Milo status renders clean high-fidelity photography and automatically plays looping MP4 video files when placed into res/raw/ or uploaded via device.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF475569)
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = { showMiloVideoConfigDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(42.dp)
+                        ) {
+                            Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Configure / Upload Milo MP4 Video", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
                         }
                     }
                 }
@@ -1326,6 +2570,17 @@ fun ManagerDashboardScreen(
                             Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Document Vault", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    item {
+                        Button(
+                            onClick = onNavigateToCalls,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.PhoneCallback, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Call Logs", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1602,11 +2857,12 @@ fun ManagerDashboardScreen(
     }
 
     if (showMiloAssistant) {
-        MiloAiAssistantSheet(
-            miloViewModel = viewModel.miloViewModel,
+        MiloSmartAssistantSheet(
+            viewModel = viewModel,
             onDismiss = { showMiloAssistant = false },
             onNavigateToLeads = onNavigateToLeads,
-            onNavigateToTasks = onNavigateToTasks
+            onNavigateToTasks = onNavigateToTasks,
+            onNavigateToCalls = onNavigateToCalls
         )
     }
 }

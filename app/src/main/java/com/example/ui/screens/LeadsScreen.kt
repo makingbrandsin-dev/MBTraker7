@@ -36,7 +36,6 @@ import com.example.ui.components.AppHeader
 import com.example.ui.components.CrmTasksAttendanceSwitcher
 import com.example.ui.components.MetricBadge
 import com.example.ui.components.MiloAssistantDialog
-import com.example.ui.components.FloatingAskMiloButton
 import com.example.ui.components.StandardScreenHeader
 import com.example.ui.theme.*
 import com.example.util.WhatsAppHelper
@@ -828,80 +827,86 @@ fun LeadsScreen(
         val sourcesList = listOf("Website", "Justdial", "Facebook", "Google Ads", "WhatsApp", "OLX", "LinkedIn", "Direct")
         val stages = listOf("New", "Contacted", "Interested", "Follow-up", "Proposal", "Negotiation", "Won")
 
-        ModalBottomSheet(
+        androidx.compose.ui.window.Dialog(
             onDismissRequest = { showAddLeadBottomSheet = false },
-            sheetState = sheetState,
-            containerColor = Color(0xFFF8FAFC),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            dragHandle = {
-                BottomSheetDefaults.DragHandle(
-                    color = Color(0xFFCBD5E1),
-                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                )
-            }
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
         ) {
-            Column(
+            Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .imePadding()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 36.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding(),
+                color = Color(0xFFF8FAFC)
             ) {
-                // Sheet Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = ElectricBlueBg,
-                            modifier = Modifier.size(44.dp)
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Top Header
+                    Surface(
+                        color = Color.White,
+                        shadowElevation = 2.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = ElectricBlueBg,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.PersonAdd,
+                                            contentDescription = null,
+                                            tint = ElectricBlue,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        "Add New Lead",
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        "Integrated with CRM & WhatsApp Ingestion",
+                                        fontSize = 11.sp,
+                                        color = ElectricBlue,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { showAddLeadBottomSheet = false }) {
                                 Icon(
-                                    Icons.Default.PersonAdd,
-                                    contentDescription = null,
-                                    tint = ElectricBlue,
-                                    modifier = Modifier.size(24.dp)
+                                    Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color(0xFF64748B),
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                "Add New Lead",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F172A)
-                            )
-                            Text(
-                                "Integrated with CRM & WhatsApp Ingestion",
-                                fontSize = 12.sp,
-                                color = ElectricBlue,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
                     }
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White,
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.size(36.dp)
+
+                    // Middle Scrollable Form
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        IconButton(onClick = { showAddLeadBottomSheet = false }) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Close",
-                                tint = Color(0xFF64748B),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
 
                 // ── Card 1: Contact Information ─────────────────────────
                 Card(
@@ -1263,81 +1268,90 @@ fun LeadsScreen(
                     }
                 }
 
-                // ── Bottom Action Buttons ──────────────────────────────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { showAddLeadBottomSheet = false },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFCBD5E1))
-                    ) {
-                        Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
                     }
 
-                    Button(
-                        onClick = {
-                            if (name.isBlank()) {
-                                nameError = true
-                                return@Button
-                            }
-                            if (phone.isBlank()) {
-                                phoneError = true
-                                return@Button
-                            }
-                            isSaving = true
-                            val formattedValue = "$selectedCurrency ${rawAmount.trim()}"
-                            val cleanName = name.trim()
-                            val cleanCompany = company.ifBlank { "Independent" }.trim()
-                            val cleanPhone = phone.trim()
-                            val cleanEmail = email.trim()
-                            val cleanReq = requirement.trim()
-
-                            viewModel.addLead(
-                                name = cleanName,
-                                company = cleanCompany,
-                                phone = cleanPhone,
-                                email = cleanEmail,
-                                requirement = cleanReq,
-                                value = formattedValue,
-                                stage = selectedStage,
-                                score = leadScore.toInt(),
-                                source = selectedSource
-                            )
-
-                            // Launch WhatsApp with Company Profile immediately if toggle is enabled
-                            if (autoSendWhatsAppBrochure) {
-                                WhatsAppHelper.sendCompanyProfileToLead(
-                                    context = context,
-                                    leadName = cleanName,
-                                    leadPhone = cleanPhone,
-                                    companyName = cleanCompany,
-                                    brochureConfig = autoBrochureCfg
-                                )
-                            }
-
-                            isSaving = false
-                            showAddLeadBottomSheet = false
-                        },
-                        modifier = Modifier
-                            .weight(1.6f)
-                            .height(52.dp)
-                            .testTag("save_lead_button"),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                    // Pinned Bottom Footer Actions
+                    Surface(
+                        color = Color.White,
+                        shadowElevation = 8.dp,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        if (isSaving) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Save & Create Lead", fontWeight = FontWeight.Bold, color = Color.White)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { showAddLeadBottomSheet = false },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                            ) {
+                                Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (name.isBlank()) {
+                                        nameError = true
+                                        return@Button
+                                    }
+                                    if (phone.isBlank()) {
+                                        phoneError = true
+                                        return@Button
+                                    }
+                                    isSaving = true
+                                    val formattedValue = "$selectedCurrency ${rawAmount.trim()}"
+                                    val cleanName = name.trim()
+                                    val cleanCompany = company.ifBlank { "Independent" }.trim()
+                                    val cleanPhone = phone.trim()
+                                    val cleanEmail = email.trim()
+                                    val cleanReq = requirement.trim()
+
+                                    viewModel.addLead(
+                                        name = cleanName,
+                                        company = cleanCompany,
+                                        phone = cleanPhone,
+                                        email = cleanEmail,
+                                        requirement = cleanReq,
+                                        value = formattedValue,
+                                        stage = selectedStage,
+                                        score = leadScore.toInt(),
+                                        source = selectedSource
+                                    )
+
+                                    // Launch WhatsApp with Company Profile immediately if toggle is enabled
+                                    if (autoSendWhatsAppBrochure) {
+                                        WhatsAppHelper.sendCompanyProfileToLead(
+                                            context = context,
+                                            leadName = cleanName,
+                                            leadPhone = cleanPhone,
+                                            companyName = cleanCompany,
+                                            brochureConfig = autoBrochureCfg
+                                        )
+                                    }
+
+                                    isSaving = false
+                                    showAddLeadBottomSheet = false
+                                },
+                                modifier = Modifier
+                                    .weight(1.6f)
+                                    .height(48.dp)
+                                    .testTag("save_lead_button"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                            ) {
+                                if (isSaving) {
+                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Save & Create Lead", fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
                         }
                     }
                 }

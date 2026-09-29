@@ -22,6 +22,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.TaskEntity
 import com.example.ui.screens.MainViewModel
 import com.example.ui.theme.*
+import com.example.util.MiloHaptics
 
 /**
  * Visual styling and metadata configuration for Task Categories
@@ -104,6 +107,8 @@ fun DailyTaskManagementSection(
     onNavigateToTasks: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val hapticFeedback = LocalHapticFeedback.current
     val tasks by viewModel.tasks.collectAsState()
     var selectedCategoryFilter by remember { mutableStateOf("All") } // "All", "Work", "Personal", "Urgent", "Meeting", "Review"
     var selectedStatusFilter by remember { mutableStateOf("All") } // "All", "Pending", "Completed"
@@ -265,7 +270,10 @@ fun DailyTaskManagementSection(
                     color = if (isAllCatSelected) Color(0xFF0F172A) else Color(0xFFF1F5F9),
                     border = if (isAllCatSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
                     modifier = Modifier
-                        .clickable { selectedCategoryFilter = "All" }
+                        .clickable {
+                            MiloHaptics.performReactionTick(context, hapticFeedback)
+                            selectedCategoryFilter = "All"
+                        }
                         .testTag("category_filter_All")
                 ) {
                     Row(
@@ -292,7 +300,10 @@ fun DailyTaskManagementSection(
                         color = if (isSelected) config.leftAccentColor else config.tagBgColor,
                         border = BorderStroke(1.dp, if (isSelected) config.leftAccentColor else config.cardBorderColor),
                         modifier = Modifier
-                            .clickable { selectedCategoryFilter = catName }
+                            .clickable {
+                                MiloHaptics.performReactionTick(context, hapticFeedback)
+                                selectedCategoryFilter = catName
+                            }
                             .testTag("category_filter_$catName")
                     ) {
                         Row(
@@ -410,10 +421,19 @@ fun DailyTaskManagementSection(
                     filteredTasks.forEach { task ->
                         DailyTaskItemRow(
                             task = task,
-                            onToggle = { viewModel.toggleTaskCompletion(task) },
+                            onToggle = {
+                                MiloHaptics.performClockInFeedback(context, hapticFeedback)
+                                viewModel.toggleTaskCompletion(task)
+                            },
                             onEdit = { taskToEdit = task },
-                            onStatusChange = { newStatus -> viewModel.updateTaskStatus(task, newStatus) },
-                            onDelete = { viewModel.deleteTask(task) }
+                            onStatusChange = { newStatus ->
+                                MiloHaptics.performReactionTick(context, hapticFeedback)
+                                viewModel.updateTaskStatus(task, newStatus)
+                            },
+                            onDelete = {
+                                MiloHaptics.performActionWarning(context, hapticFeedback)
+                                viewModel.deleteTask(task)
+                            }
                         )
                     }
                 }
@@ -841,261 +861,344 @@ fun AddDailyTaskDialog(
     val projectOptions = listOf("Website Revamp", "MB Traker App", "Client Acquisition", "Operations", "General")
     val timeOptions = listOf("1 Hour", "2 Hours", "4 Hours", "1 Day", "2 Days", "1 Week")
 
-    AlertDialog(
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding(),
+            color = Color(0xFFF8FAFC)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top Header
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFDBEAFE),
-                    modifier = Modifier.size(36.dp)
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.AddCircle,
-                            contentDescription = null,
-                            tint = ElectricBlue,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    "Add Daily Task",
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 18.sp,
-                    color = Color(0xFF0F172A)
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Task Title
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Task Title *") },
-                    placeholder = { Text("e.g. Prepare client deck") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("add_task_title_input")
-                )
-
-                // 🎨 Category Selection (Color-coded chips)
-                Column {
-                    Text(
-                        "Category (Color-Coded):",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF475569)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        standardCategories.forEach { catName ->
-                            val config = getCategoryConfig(catName)
-                            val isSel = selectedCategory.equals(catName, ignoreCase = true)
-
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (isSel) config.leftAccentColor else config.tagBgColor,
-                                border = BorderStroke(1.dp, if (isSel) config.leftAccentColor else config.cardBorderColor),
-                                modifier = Modifier
-                                    .clickable { selectedCategory = catName }
-                                    .testTag("add_task_category_$catName")
+                                color = Color(0xFFDBEAFE),
+                                modifier = Modifier.size(38.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = config.icon,
+                                        Icons.Default.AddCircle,
                                         contentDescription = null,
-                                        tint = if (isSel) Color.White else config.tagTextColor,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = catName,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSel) Color.White else config.tagTextColor
+                                        tint = ElectricBlue,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    "Add Daily Task",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    "Plan your daily priority & estimated time",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                        }
+
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF64748B))
                         }
                     }
                 }
 
-                // ⏱️ Time Needed for Project Completion
-                Column {
-                    Text(
-                        "Time Needed for Project / Task Completion:",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF475569)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                // Scrollable Form Body
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                     ) {
-                        timeOptions.forEach { tOpt ->
-                            val isSel = estimatedTimeNeeded.equals(tOpt, ignoreCase = true)
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSel) ElectricBlue else Color(0xFFF1F5F9),
-                                border = BorderStroke(1.dp, if (isSel) ElectricBlue else Color(0xFFE2E8F0)),
-                                modifier = Modifier.clickable { estimatedTimeNeeded = tOpt }
-                            ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Task Title
+                            OutlinedTextField(
+                                value = title,
+                                onValueChange = { title = it },
+                                label = { Text("Task Title *") },
+                                placeholder = { Text("e.g. Prepare client deck") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("add_task_title_input")
+                            )
+
+                            // 🎨 Category Selection (Color-coded chips)
+                            Column {
                                 Text(
-                                    text = tOpt,
-                                    fontSize = 11.sp,
+                                    "Category (Color-Coded):",
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isSel) Color.White else Color(0xFF334155),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                    color = Color(0xFF475569)
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    standardCategories.forEach { catName ->
+                                        val config = getCategoryConfig(catName)
+                                        val isSel = selectedCategory.equals(catName, ignoreCase = true)
+
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSel) config.leftAccentColor else config.tagBgColor,
+                                            border = BorderStroke(1.dp, if (isSel) config.leftAccentColor else config.cardBorderColor),
+                                            modifier = Modifier
+                                                .clickable { selectedCategory = catName }
+                                                .testTag("add_task_category_$catName")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = config.icon,
+                                                    contentDescription = null,
+                                                    tint = if (isSel) Color.White else config.tagTextColor,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = catName,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSel) Color.White else config.tagTextColor
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ⏱️ Time Needed for Project Completion
+                            Column {
+                                Text(
+                                    "Time Needed for Completion:",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF475569)
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    timeOptions.forEach { tOpt ->
+                                        val isSel = estimatedTimeNeeded.equals(tOpt, ignoreCase = true)
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isSel) ElectricBlue else Color(0xFFF1F5F9),
+                                            border = BorderStroke(1.dp, if (isSel) ElectricBlue else Color(0xFFE2E8F0)),
+                                            modifier = Modifier.clickable { estimatedTimeNeeded = tOpt }
+                                        ) {
+                                            Text(
+                                                text = tOpt,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSel) Color.White else Color(0xFF334155),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = estimatedTimeNeeded,
+                                    onValueChange = { estimatedTimeNeeded = it },
+                                    label = { Text("Estimated Duration (e.g. 4 Hours)") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = estimatedTimeNeeded,
-                        onValueChange = { estimatedTimeNeeded = it },
-                        label = { Text("Estimated Duration (e.g. 4 Hours, 2 Days)") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
 
-                // Project Field
-                OutlinedTextField(
-                    value = project,
-                    onValueChange = { project = it },
-                    label = { Text("Project / Context") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("add_task_project_input")
-                )
-
-                // Quick Project Suggestions
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    projectOptions.take(3).forEach { option ->
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (project == option) Color(0xFFDBEAFE) else Color(0xFFF1F5F9),
-                            modifier = Modifier.clickable { project = option }
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(
-                                text = option,
-                                fontSize = 10.sp,
-                                fontWeight = if (project == option) FontWeight.Bold else FontWeight.Medium,
-                                color = if (project == option) ElectricBlue else Color(0xFF475569),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                            // Project Field
+                            OutlinedTextField(
+                                value = project,
+                                onValueChange = { project = it },
+                                label = { Text("Project / Context") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("add_task_project_input")
+                            )
+
+                            // Quick Project Suggestions
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                projectOptions.take(3).forEach { option ->
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (project == option) Color(0xFFDBEAFE) else Color(0xFFF1F5F9),
+                                        modifier = Modifier.clickable { project = option }
+                                    ) {
+                                        Text(
+                                            text = option,
+                                            fontSize = 10.sp,
+                                            fontWeight = if (project == option) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (project == option) ElectricBlue else Color(0xFF475569),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Priority Selection
+                            Column {
+                                Text("Priority:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    priorities.forEach { p ->
+                                        val isSel = priority == p
+                                        val pColor = when (p) {
+                                            "High" -> StatusRed
+                                            "Medium" -> StatusOrange
+                                            else -> StatusGreen
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSel) pColor else Color(0xFFF1F5F9),
+                                            border = if (isSel) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { priority = p }
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(vertical = 8.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = p,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSel) Color.White else Color(0xFF334155)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Due Date Field
+                            OutlinedTextField(
+                                value = dueDate,
+                                onValueChange = { dueDate = it },
+                                label = { Text("Due Date") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
                     }
                 }
 
-                // Priority Selection
-                Column {
-                    Text("Priority:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
-                    Spacer(modifier = Modifier.height(4.dp))
+                // Pinned Bottom Footer Actions
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        priorities.forEach { p ->
-                            val isSel = priority == p
-                            val pColor = when (p) {
-                                "High" -> StatusRed
-                                "Medium" -> StatusOrange
-                                else -> StatusGreen
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSel) pColor else Color(0xFFF1F5F9),
-                                border = if (isSel) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { priority = p }
-                            ) {
-                                Box(
-                                    modifier = Modifier.padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = p,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSel) Color.White else Color(0xFF334155)
-                                    )
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                        ) {
+                            Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (title.isNotBlank()) {
+                                    onAddTask(title.trim(), project.trim(), priority, dueDate.trim(), selectedCategory, estimatedTimeNeeded.trim())
                                 }
-                            }
+                            },
+                            enabled = title.isNotBlank(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ElectricBlue,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("add_task_confirm_button")
+                        ) {
+                            Text("Add Task", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
-
-                // Due Date Field
-                OutlinedTextField(
-                    value = dueDate,
-                    onValueChange = { dueDate = it },
-                    label = { Text("Due Date") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        onAddTask(title.trim(), project.trim(), priority, dueDate.trim(), selectedCategory, estimatedTimeNeeded.trim())
-                    }
-                },
-                enabled = title.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = ElectricBlue,
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.testTag("add_task_confirm_button")
-            ) {
-                Text("Add Task", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
             }
         }
-    )
+    }
 }
 
 /**
@@ -1119,278 +1222,311 @@ fun EditDailyTaskDialog(
     val statuses = listOf("Backlog", "In Progress", "In Review", "Completed")
     val timeOptions = listOf("1 Hour", "2 Hours", "4 Hours", "1 Day", "2 Days", "1 Week")
 
-    AlertDialog(
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding(),
+            color = Color(0xFFF8FAFC)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top Header
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFEDE9FE),
-                    modifier = Modifier.size(36.dp)
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.EditNote,
-                            contentDescription = null,
-                            tint = VibrantPurple,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    "Edit Daily Task",
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 18.sp,
-                    color = Color(0xFF0F172A)
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Task Title
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Task Title *") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("edit_task_title_input")
-                )
-
-                // 🎨 Category Selection (Color-Coded Chips)
-                Column {
-                    Text(
-                        "Category (Color-Coded):",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF475569)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        standardCategories.forEach { catName ->
-                            val config = getCategoryConfig(catName)
-                            val isSel = category.equals(catName, ignoreCase = true)
-
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (isSel) config.leftAccentColor else config.tagBgColor,
-                                border = BorderStroke(1.dp, if (isSel) config.leftAccentColor else config.cardBorderColor),
-                                modifier = Modifier
-                                    .clickable { category = catName }
-                                    .testTag("edit_task_category_$catName")
+                                color = Color(0xFFEDE9FE),
+                                modifier = Modifier.size(38.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = config.icon,
+                                        Icons.Default.EditNote,
                                         contentDescription = null,
-                                        tint = if (isSel) Color.White else config.tagTextColor,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = catName,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSel) Color.White else config.tagTextColor
+                                        tint = VibrantPurple,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    "Edit Daily Task",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    "Modify status, duration & project",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                        }
+
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF64748B))
                         }
                     }
                 }
 
-                // ⏱️ Time Needed for Completion
-                Column {
-                    Text(
-                        "Time Needed for Project / Task:",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF475569)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                // Scrollable Form Body
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                     ) {
-                        timeOptions.forEach { tOpt ->
-                            val isSel = estimatedTimeNeeded.equals(tOpt, ignoreCase = true)
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSel) ElectricBlue else Color(0xFFF1F5F9),
-                                border = BorderStroke(1.dp, if (isSel) ElectricBlue else Color(0xFFE2E8F0)),
-                                modifier = Modifier.clickable { estimatedTimeNeeded = tOpt }
-                            ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Task Title
+                            OutlinedTextField(
+                                value = title,
+                                onValueChange = { title = it },
+                                label = { Text("Task Title *") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("edit_task_title_input")
+                            )
+
+                            // Status Selection
+                            Column {
+                                Text("Status:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    statuses.forEach { s ->
+                                        val isSel = status.equals(s, ignoreCase = true)
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isSel) ElectricBlue else Color(0xFFF1F5F9),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { status = s }
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(vertical = 8.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = s,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSel) Color.White else Color(0xFF475569)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ⏱️ Time Needed for Project Completion
+                            Column {
                                 Text(
-                                    text = tOpt,
-                                    fontSize = 11.sp,
+                                    "Time Needed for Completion:",
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isSel) Color.White else Color(0xFF334155),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                    color = Color(0xFF475569)
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    timeOptions.forEach { tOpt ->
+                                        val isSel = estimatedTimeNeeded.equals(tOpt, ignoreCase = true)
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isSel) ElectricBlue else Color(0xFFF1F5F9),
+                                            border = BorderStroke(1.dp, if (isSel) ElectricBlue else Color(0xFFE2E8F0)),
+                                            modifier = Modifier.clickable { estimatedTimeNeeded = tOpt }
+                                        ) {
+                                            Text(
+                                                text = tOpt,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSel) Color.White else Color(0xFF334155),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = estimatedTimeNeeded,
+                                    onValueChange = { estimatedTimeNeeded = it },
+                                    label = { Text("Estimated Duration") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = estimatedTimeNeeded,
-                        onValueChange = { estimatedTimeNeeded = it },
-                        label = { Text("Custom Estimated Time (e.g. 4 Hours, 2 Days)") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
 
-                // Project Field
-                OutlinedTextField(
-                    value = project,
-                    onValueChange = { project = it },
-                    label = { Text("Project / Category") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Priority Selection
-                Column {
-                    Text("Priority:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                     ) {
-                        priorities.forEach { p ->
-                            val isSel = priority.equals(p, ignoreCase = true)
-                            val pColor = when (p) {
-                                "High" -> StatusRed
-                                "Medium" -> StatusOrange
-                                else -> StatusGreen
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSel) pColor else Color(0xFFF1F5F9),
-                                border = if (isSel) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { priority = p }
-                            ) {
-                                Box(
-                                    modifier = Modifier.padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Project Field
+                            OutlinedTextField(
+                                value = project,
+                                onValueChange = { project = it },
+                                label = { Text("Project / Category") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Priority Selection
+                            Column {
+                                Text("Priority:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(
-                                        text = p,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSel) Color.White else Color(0xFF334155)
-                                    )
+                                    priorities.forEach { p ->
+                                        val isSel = priority.equals(p, ignoreCase = true)
+                                        val pColor = when (p) {
+                                            "High" -> StatusRed
+                                            "Medium" -> StatusOrange
+                                            else -> StatusGreen
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSel) pColor else Color(0xFFF1F5F9),
+                                            border = if (isSel) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { priority = p }
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(vertical = 8.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = p,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSel) Color.White else Color(0xFF334155)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
+
+                            // Due Date Field
+                            OutlinedTextField(
+                                value = dueDate,
+                                onValueChange = { dueDate = it },
+                                label = { Text("Due Date") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
 
-                // Status Selection
-                Column {
-                    Text("Status:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
-                    Spacer(modifier = Modifier.height(4.dp))
+                // Pinned Bottom Footer Actions
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        statuses.forEach { s ->
-                            val isSel = status.equals(s, ignoreCase = true)
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSel) ElectricBlue else Color(0xFFF1F5F9),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { status = s }
-                            ) {
-                                Box(
-                                    modifier = Modifier.padding(vertical = 6.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = s,
-                                        fontSize = 10.sp,
-                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSel) Color.White else Color(0xFF475569)
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                        ) {
+                            Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (title.isNotBlank()) {
+                                    val isComp = status.equals("Completed", ignoreCase = true)
+                                    val updated = task.copy(
+                                        title = title.trim(),
+                                        category = category,
+                                        projectName = project.trim(),
+                                        priority = priority,
+                                        dueDate = dueDate.trim(),
+                                        status = status,
+                                        isCompleted = isComp,
+                                        estimatedTimeNeeded = estimatedTimeNeeded.trim()
                                     )
+                                    onSaveTask(updated)
                                 }
-                            }
+                            },
+                            enabled = title.isNotBlank(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ElectricBlue,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("edit_task_save_button")
+                        ) {
+                            Text("Save Changes", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
-
-                // Due Date Field
-                OutlinedTextField(
-                    value = dueDate,
-                    onValueChange = { dueDate = it },
-                    label = { Text("Due Date") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        val isComp = status.equals("Completed", ignoreCase = true)
-                        val updated = task.copy(
-                            title = title.trim(),
-                            category = category,
-                            projectName = project.trim(),
-                            priority = priority,
-                            dueDate = dueDate.trim(),
-                            status = status,
-                            isCompleted = isComp,
-                            estimatedTimeNeeded = estimatedTimeNeeded.trim()
-                        )
-                        onSaveTask(updated)
-                    }
-                },
-                enabled = title.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = ElectricBlue,
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.testTag("edit_task_save_button")
-            ) {
-                Text("Save Changes", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
             }
         }
-    )
+    }
 }

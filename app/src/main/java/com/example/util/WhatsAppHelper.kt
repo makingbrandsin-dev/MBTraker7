@@ -272,4 +272,15 @@ Best regards,
 
         return sendWhatsAppMessage(context, recipientPhone, message, showSuccessToast = true)
     }
+
+    /**
+     * Directly opens a WhatsApp chat thread for the provided phone number.
+     */
+    fun openWhatsAppDirectChat(
+        context: Context,
+        phoneNumber: String,
+        initialMessage: String = "Hello, connecting from Making Brands."
+    ): Boolean {
+        return sendWhatsAppMessage(context, phoneNumber, initialMessage, showSuccessToast = false)
+    }
 }

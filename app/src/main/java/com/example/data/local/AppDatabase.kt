@@ -36,9 +36,10 @@ import java.util.Date
         ExpenseClaimEntity::class,
         ProjectMilestoneEntity::class,
         VaultDocumentEntity::class,
-        AttendanceRegularizationEntity::class
+        AttendanceRegularizationEntity::class,
+        ActivityFeedItemEntity::class
     ],
-    version = 14,
+    version = 17,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -51,6 +52,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun followUpDao(): FollowUpDao
     abstract fun callLogDao(): CallLogDao
     abstract fun chatDao(): ChatDao
+    abstract fun activityFeedDao(): ActivityFeedDao
     abstract fun notificationDao(): NotificationDao
     abstract fun userProfileDao(): UserProfileDao
     abstract fun leaveDao(): LeaveDao
@@ -147,6 +149,57 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration from version 14 to 15: Adds read status fields to chat_messages.
+         */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `isRead` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `readBy` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `readAt` INTEGER")
+            }
+        }
+
+        /**
+         * Migration from version 15 to 16: Adds reactionsJson to chat_messages and activity_feed_items table.
+         */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `reactionsJson` TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `activity_feed_items` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `authorName` TEXT NOT NULL,
+                        `authorRole` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `likesCount` INTEGER NOT NULL,
+                        `likedByUsers` TEXT NOT NULL,
+                        `reactionsJson` TEXT NOT NULL,
+                        `commentsCount` INTEGER NOT NULL,
+                        `isPinned` INTEGER NOT NULL,
+                        `timestampText` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_activity_feed_items_category` ON `activity_feed_items` (`category`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_activity_feed_items_createdAt` ON `activity_feed_items` (`createdAt`)")
+            }
+        }
+
+        /**
+         * Migration from version 16 to 17: Adds isSynced column to attendance_records and chat_messages for offline Room caching.
+         */
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `attendance_records` ADD COLUMN `isSynced` INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `isSynced` INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -154,7 +207,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mb_traker_database"
                 )
-                    .addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .addCallback(DatabaseCallback())
                     .fallbackToDestructiveMigration()
                     .build()

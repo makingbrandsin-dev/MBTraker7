@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -265,7 +266,7 @@ fun MiloAnimatedAvatar(
                         if (mood == MiloMood.SLEEPING) {
                             MiloHaptics.performWakeUp(context, hapticFeedback)
                         } else {
-                            MiloHaptics.performButtonTap(context, hapticFeedback)
+                            MiloHaptics.performMiloMascotTap(context, hapticFeedback)
                         }
                         onClick()
                     }
@@ -336,13 +337,19 @@ fun MiloAnimatedAvatar(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.milo_final),
-                    contentDescription = "Milo Lion Mascot",
-                    modifier = Modifier
-                        .size((sizeDp * 0.82f).dp)
-                        .clip(CircleShape)
-                )
+                Crossfade(
+                    targetState = if (mood == MiloMood.THINKING) R.drawable.milo_thinking else R.drawable.milo_final,
+                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+                    label = "MiloAvatarCrossfade"
+                ) { imageRes ->
+                    Image(
+                        painter = painterResource(id = imageRes),
+                        contentDescription = "Milo Lion Mascot",
+                        modifier = Modifier
+                            .size((sizeDp * 0.82f).dp)
+                            .clip(CircleShape)
+                    )
+                }
 
                 // Small mood badge overlay in bottom center
                 Box(

@@ -3,12 +3,15 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // MB Traker Brand Palette
-val BrandBlue = Color(0xFF1976D2)
-val BrandDarkBlue = Color(0xFF0D47A1)
-val BrandLightBlue = Color(0xFF2196F3)
+val BrandBlue = Color(0xFF298CD8)
+val BrandDarkBlue = Color(0xFF1B6FA8)
+val BrandLightBlue = Color(0xFF5AB1F0)
 val BrandAccent = Color(0xFF00E5FF)
 
-val SurfaceBg = Color(0xFFF4F7FB)
+// Light blue background for all screens
+val SurfaceBg = Color(0xFFEBF4FC)        // Crisp light blue background (#EBF4FC / #E8F2FA)
+val ScreenBackground = Color(0xFFEBF4FC) // Light blue screen backdrop
+val HeaderBg = Color(0xFFFFFFFF)         // Clean white header matching white footer
 val CardBg = Color(0xFFFFFFFF)
 val TextPrimary = Color(0xFF1E293B)
 val TextSecondary = Color(0xFF64748B)

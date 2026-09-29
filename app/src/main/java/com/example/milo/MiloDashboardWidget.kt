@@ -1,6 +1,7 @@
 package com.example.milo
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import com.example.domain.milo.MiloEvent
 import com.example.domain.milo.MiloState
 import androidx.compose.foundation.BorderStroke
@@ -48,6 +49,9 @@ fun MiloDashboardWidget(
     val speechText by miloViewModel.speechText.collectAsState()
     val subSpeechText by miloViewModel.subSpeechText.collectAsState()
     val suggestedAction by miloViewModel.suggestedAction.collectAsState()
+    val isAiThinking by miloViewModel.isAiThinking.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     var showStatePicker by remember { mutableStateOf(false) }
 
@@ -72,8 +76,23 @@ fun MiloDashboardWidget(
                         )
                     )
                 )
-                .padding(16.dp)
         ) {
+            // Linear progress indicator when AI assistant is processing a query
+            if (isAiThinking || state == MiloState.THINKING) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.5.dp),
+                    color = state.primaryColor,
+                    trackColor = state.primaryColor.copy(alpha = 0.15f)
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
             // Header Row: Mascot title & State badge / Interactive mode toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -158,6 +177,7 @@ fun MiloDashboardWidget(
                                     if (isSelected) st.primaryColor else BorderLight
                                 ),
                                 modifier = Modifier.clickable {
+                                    com.example.util.MiloHaptics.performReactionTick(context, hapticFeedback)
                                     miloViewModel.setState(st)
                                 }
                             ) {
@@ -187,44 +207,67 @@ fun MiloDashboardWidget(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Animated Milo Lion
+                // Animated Milo Mascot (Full body without green background)
                 MiloCharacter(
                     state = state,
-                    size = 90.dp,
+                    size = 110.dp,
                     showStateBadge = true,
+                    useFullBody = true,
                     onClick = {
+                        com.example.util.MiloHaptics.performMiloMascotTap(context, hapticFeedback)
                         onOpenAiAssistant()
                     }
                 )
 
                 Spacer(modifier = Modifier.width(14.dp))
 
-                // Speech Bubble Container
+                // Speech Bubble Container with animated text crossfade
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = SurfaceBg,
                     border = BorderStroke(1.dp, BorderLight),
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { onOpenAiAssistant() }
+                        .clickable {
+                            com.example.util.MiloHaptics.performMiloMascotTap(context, hapticFeedback)
+                            onOpenAiAssistant()
+                        }
                 ) {
                     Column(
                         modifier = Modifier.padding(12.dp)
                     ) {
-                        Text(
-                            text = speechText,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = BrandDarkBlue,
-                            lineHeight = 18.sp
-                        )
+                        AnimatedContent(
+                            targetState = speechText,
+                            transitionSpec = {
+                                (fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)))
+                                    .togetherWith(fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing)))
+                            },
+                            label = "SpeechTextCrossfade"
+                        ) { targetText ->
+                            Text(
+                                text = targetText,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = BrandDarkBlue,
+                                lineHeight = 18.sp
+                            )
+                        }
                         Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = subSpeechText,
-                            fontSize = 11.sp,
-                            color = TextSecondary,
-                            lineHeight = 15.sp
-                        )
+                        AnimatedContent(
+                            targetState = subSpeechText,
+                            transitionSpec = {
+                                (fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)))
+                                    .togetherWith(fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing)))
+                            },
+                            label = "SubSpeechTextCrossfade"
+                        ) { targetSubText ->
+                            Text(
+                                text = targetSubText,
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                lineHeight = 15.sp
+                            )
+                        }
                     }
                 }
             }
@@ -353,4 +396,5 @@ fun MiloDashboardWidget(
             }
         }
     }
+}
 }

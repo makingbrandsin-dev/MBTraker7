@@ -21,6 +21,18 @@ interface AttendanceDao {
     @Delete
     suspend fun delete(record: AttendanceRecord)
 
+    @Query("SELECT * FROM attendance_records WHERE isSynced = 0 ORDER BY id ASC")
+    suspend fun getUnsyncedAttendance(): List<AttendanceRecord>
+
+    @Query("SELECT COUNT(*) FROM attendance_records WHERE isSynced = 0")
+    fun getUnsyncedAttendanceCount(): Flow<Int>
+
+    @Query("UPDATE attendance_records SET isSynced = 1 WHERE id = :id")
+    suspend fun markAttendanceAsSynced(id: Long)
+
+    @Query("UPDATE attendance_records SET isSynced = 1")
+    suspend fun markAllAttendanceAsSynced()
+
     @Query("DELETE FROM attendance_records")
     suspend fun clearAll()
 }
@@ -29,6 +41,9 @@ interface AttendanceDao {
 interface EmployeeDao {
     @Query("SELECT * FROM employees ORDER BY id ASC")
     fun getAllEmployees(): Flow<List<EmployeeEntity>>
+
+    @Query("SELECT * FROM employees ORDER BY id ASC")
+    suspend fun getAllEmployeesDirectly(): List<EmployeeEntity>
 
     @Query("SELECT * FROM employees WHERE id = :id")
     fun getEmployeeById(id: Long): Flow<EmployeeEntity?>
@@ -150,6 +165,9 @@ interface LeadDao {
     @Query("SELECT * FROM leads ORDER BY id DESC, createdAt DESC")
     fun getAllLeads(): Flow<List<LeadEntity>>
 
+    @Query("SELECT * FROM leads ORDER BY id DESC, createdAt DESC")
+    suspend fun getAllLeadsDirectly(): List<LeadEntity>
+
     @Query("SELECT * FROM leads WHERE id = :id")
     fun getLeadById(id: Long): Flow<LeadEntity?>
 
@@ -228,13 +246,24 @@ interface CallLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(logs: List<CallLogEntity>)
 
+    @Delete
+    suspend fun delete(log: CallLogEntity)
+
+    @Query("DELETE FROM call_logs WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Query("DELETE FROM call_logs")
     suspend fun clearAll()
 }
 
 @Dao
 interface ChatDao {
-    @Query("SELECT * FROM chat_messages WHERE channelId = :channelId ORDER BY id ASC")
+    @Query("""
+        SELECT * FROM chat_messages 
+        WHERE channelId = :channelId 
+           OR REPLACE(channelId, '-', '_') = REPLACE(:channelId, '-', '_')
+        ORDER BY id ASC
+    """)
     fun getMessagesForChannel(channelId: String): Flow<List<ChatMessageEntity>>
 
     @Query("SELECT * FROM chat_messages ORDER BY id DESC")
@@ -253,6 +282,74 @@ interface ChatDao {
     suspend fun delete(message: ChatMessageEntity)
 
     @Query("DELETE FROM chat_messages")
+    suspend fun clearAll()
+
+    @Query("""
+        UPDATE chat_messages 
+        SET isRead = 1, readBy = :readerName, readAt = :readAt
+        WHERE (channelId = :channelId OR REPLACE(channelId, '-', '_') = REPLACE(:channelId, '-', '_'))
+          AND isMe = 0
+          AND isRead = 0
+    """)
+    suspend fun markChannelMessagesAsRead(channelId: String, readerName: String, readAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE chat_messages SET isRead = 1, readBy = :readerName, readAt = :readAt WHERE id = :messageId")
+    suspend fun markMessageAsRead(messageId: Long, readerName: String, readAt: Long = System.currentTimeMillis())
+
+    @Query("""
+        SELECT COUNT(*) FROM chat_messages 
+        WHERE (channelId = :channelId OR REPLACE(channelId, '-', '_') = REPLACE(:channelId, '-', '_'))
+          AND isMe = 0
+          AND isRead = 0
+    """)
+    fun getUnreadCountForChannel(channelId: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM chat_messages WHERE isMe = 0 AND isRead = 0")
+    fun getTotalUnreadChatCount(): Flow<Int>
+
+    @Query("UPDATE chat_messages SET reactionsJson = :reactionsJson WHERE id = :messageId")
+    suspend fun updateReactions(messageId: Long, reactionsJson: String)
+
+    @Query("UPDATE chat_messages SET audioPath = :audioPath WHERE id = :messageId")
+    suspend fun updateAudioPath(messageId: Long, audioPath: String)
+
+    @Query("SELECT * FROM chat_messages WHERE id = :messageId LIMIT 1")
+    suspend fun getMessageById(messageId: Long): ChatMessageEntity?
+
+    @Query("SELECT * FROM chat_messages WHERE isSynced = 0 ORDER BY id ASC")
+    suspend fun getUnsyncedMessages(): List<ChatMessageEntity>
+
+    @Query("SELECT COUNT(*) FROM chat_messages WHERE isSynced = 0")
+    fun getUnsyncedMessageCount(): Flow<Int>
+
+    @Query("UPDATE chat_messages SET isSynced = 1 WHERE id = :id")
+    suspend fun markMessageAsSynced(id: Long)
+
+    @Query("UPDATE chat_messages SET isSynced = 1")
+    suspend fun markAllMessagesAsSynced()
+}
+
+@Dao
+interface ActivityFeedDao {
+    @Query("SELECT * FROM activity_feed_items ORDER BY isPinned DESC, createdAt DESC")
+    fun getAllFeedItems(): Flow<List<ActivityFeedItemEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(item: ActivityFeedItemEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<ActivityFeedItemEntity>)
+
+    @Query("UPDATE activity_feed_items SET likesCount = :count, likedByUsers = :likedBy WHERE id = :id")
+    suspend fun updateLikes(id: Long, count: Int, likedBy: String)
+
+    @Query("UPDATE activity_feed_items SET reactionsJson = :reactionsJson WHERE id = :id")
+    suspend fun updateReactions(id: Long, reactionsJson: String)
+
+    @Delete
+    suspend fun delete(item: ActivityFeedItemEntity)
+
+    @Query("DELETE FROM activity_feed_items")
     suspend fun clearAll()
 }
 

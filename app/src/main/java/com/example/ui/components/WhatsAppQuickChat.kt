@@ -23,12 +23,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.screens.MainViewModel
+import com.example.ui.screens.formatLegibleTime
+import com.example.util.AudioRecorderHelper
+import com.example.util.MiloHaptics
 import kotlinx.coroutines.launch
 
 // WhatsApp Theme Colors
@@ -49,6 +54,8 @@ fun WhatsAppQuickChatDialog(
     val messages by viewModel.chatMessages.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val hapticFeedback = LocalHapticFeedback.current
     var inputText by remember { mutableStateOf("") }
     var selectedChannel by remember { mutableStateOf("company_chat") }
     var isRecordingAudio by remember { mutableStateOf(false) }
@@ -210,6 +217,7 @@ fun WhatsAppQuickChatDialog(
                                     shape = RoundedCornerShape(16.dp),
                                     color = if (isSel) Color.White else Color.White.copy(alpha = 0.15f),
                                     modifier = Modifier.clickable {
+                                        MiloHaptics.performReactionTick(context, hapticFeedback)
                                         selectedChannel = cId
                                         viewModel.selectChatChannel(cId)
                                     }
@@ -298,15 +306,13 @@ fun WhatsAppQuickChatDialog(
                                 modifier = Modifier.widthIn(max = maxBubbleWidth)
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                    if (!isMe) {
-                                        Text(
-                                            text = msg.senderName,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF1E88E5)
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                    }
+                                    Text(
+                                        text = msg.senderName,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = if (isMe) Color(0xFF0F766E) else Color(0xFF1E88E5)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
 
                                     if (msg.attachmentFileName != null) {
                                         Surface(
@@ -344,6 +350,74 @@ fun WhatsAppQuickChatDialog(
                                         }
                                     }
 
+                                    if (msg.isVoiceMessage) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isMe) Color(0xFFC7F8C0) else Color(0xFFF1F5F9),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(bottom = 4.dp)
+                                        ) {
+                                            var isPlaying by remember { mutableStateOf(false) }
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                IconButton(
+                                                    onClick = {
+                                                        MiloHaptics.performButtonClick(context, hapticFeedback)
+                                                        if (isPlaying) {
+                                                            AudioRecorderHelper.stopPlaying()
+                                                            isPlaying = false
+                                                        } else {
+                                                            val path = msg.audioPath
+                                                            if (!path.isNullOrBlank()) {
+                                                                AudioRecorderHelper.playAudio(
+                                                                    filePathOrUrl = path,
+                                                                    onPrepared = { isPlaying = true },
+                                                                    onCompletion = { isPlaying = false }
+                                                                )
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        if (isPlaying) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
+                                                        contentDescription = "Play voice note",
+                                                        tint = WhatsAppTeal,
+                                                        modifier = Modifier.size(28.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Column {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        if (msg.audioPath?.startsWith("http") == true) {
+                                                            Icon(
+                                                                Icons.Default.CloudDone,
+                                                                contentDescription = "Firebase Storage",
+                                                                tint = WhatsAppTeal,
+                                                                modifier = Modifier.size(12.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(3.dp))
+                                                        }
+                                                        Text(
+                                                            "Voice Note • ${msg.audioDurationSeconds}s",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF0F172A)
+                                                        )
+                                                    }
+                                                    Text(
+                                                        if (isPlaying) "Playing audio..." else "Tap to play",
+                                                        fontSize = 9.sp,
+                                                        color = Color(0xFF64748B)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     Text(
                                         text = msg.messageText,
                                         fontSize = 14.sp,
@@ -358,8 +432,9 @@ fun WhatsAppQuickChatDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = msg.timestampText,
-                                            fontSize = 10.sp,
+                                            text = formatLegibleTime(msg.timestampText),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
                                             color = Color(0xFF667781)
                                         )
                                         if (isMe) {
@@ -398,6 +473,7 @@ fun WhatsAppQuickChatDialog(
                             color = Color.White,
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
                             modifier = Modifier.clickable {
+                                MiloHaptics.performMessageSent(context, hapticFeedback)
                                 viewModel.sendChatMessage(reply)
                             }
                         ) {
@@ -514,10 +590,17 @@ fun WhatsAppQuickChatDialog(
                                         )
                                     }
                                     Text(
-                                        "Slide to cancel",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF64748B),
-                                        modifier = Modifier.clickable { isRecordingAudio = false }
+                                        "Cancel",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFE11D48),
+                                        modifier = Modifier
+                                            .clickable {
+                                                MiloHaptics.performActionWarning(context, hapticFeedback)
+                                                AudioRecorderHelper.cancelRecording()
+                                                isRecordingAudio = false
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
                             } else {
@@ -572,14 +655,27 @@ fun WhatsAppQuickChatDialog(
                         FloatingActionButton(
                             onClick = {
                                 if (isRecordingAudio) {
-                                    viewModel.sendChatMessage("🎙️ Voice Note (${recordingSeconds}s)", "voice_note_${System.currentTimeMillis()}.m4a", "140 KB")
+                                    val duration = recordingSeconds.coerceAtLeast(1)
+                                    val audioFile = AudioRecorderHelper.stopRecording()
                                     isRecordingAudio = false
+                                    if (audioFile != null && audioFile.exists()) {
+                                        MiloHaptics.performMessageSent(context, hapticFeedback)
+                                        viewModel.sendVoiceChatMessage(audioFile.absolutePath, duration)
+                                    } else {
+                                        viewModel.sendChatMessage("🎙️ Voice Note (${duration}s)", "voice_note_${System.currentTimeMillis()}.m4a", "140 KB")
+                                    }
                                 } else if (inputText.isNotBlank()) {
+                                    MiloHaptics.performMessageSent(context, hapticFeedback)
                                     viewModel.sendChatMessage(inputText.trim())
                                     inputText = ""
                                 } else {
-                                    // Start voice note
-                                    isRecordingAudio = true
+                                    // Start voice note with AudioRecorderHelper
+                                    val recorded = AudioRecorderHelper.startRecording(context)
+                                    if (recorded != null) {
+                                        MiloHaptics.performReactionTick(context, hapticFeedback)
+                                        isRecordingAudio = true
+                                        recordingSeconds = 0
+                                    }
                                 }
                             },
                             containerColor = WhatsAppLightGreen,

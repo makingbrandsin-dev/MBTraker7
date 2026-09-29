@@ -11,6 +11,10 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS" android:maxSdkVersion="28" />
 
     <queries>
         <package android:name="com.whatsapp" />
@@ -50,6 +54,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Phone Call State & Logging Broadcast Receiver -->
+        <receiver
+            android:name=".receiver.PhoneCallStateReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+                <action android:name="android.intent.action.NEW_OUTGOING_CALL" />
+            </intent-filter>
+        </receiver>
+
         <!-- Firebase Cloud Messaging Service -->
         <service
             android:name="com.example.data.firebase.AppFirebaseMessagingService"
@@ -58,6 +72,14 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- Automatic Firebase Messaging token retrieval disabled on startup (initialized programmatically when available) -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_analytics_collection_deactivated"
+            android:value="true" />
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

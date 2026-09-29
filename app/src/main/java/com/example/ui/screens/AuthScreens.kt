@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -52,7 +53,7 @@ fun SplashScreen(
     onTimeout: () -> Unit
 ) {
     LaunchedEffect(Unit) {
-        delay(750)
+        delay(1400)
         onTimeout()
     }
 
@@ -61,7 +62,7 @@ fun SplashScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(BrandDarkBlue, Color(0xFF0F172A))
+                    colors = listOf(BrandDarkBlue, Color(0xFF0A0F1D), Color(0xFF020617))
                 )
             ),
         contentAlignment = Alignment.Center
@@ -70,51 +71,77 @@ fun SplashScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Making Brands Executive Logo Emblem (Clean, Modern Enterprise Branding)
             Surface(
-                shape = RoundedCornerShape(22.dp),
-                color = BrandBlue,
-                shadowElevation = 8.dp,
-                modifier = Modifier.size(92.dp)
+                modifier = Modifier
+                    .size(96.dp)
+                    .shadow(
+                        elevation = 20.dp,
+                        shape = RoundedCornerShape(26.dp),
+                        spotColor = BrandBlue.copy(alpha = 0.5f),
+                        ambientColor = BrandBlue.copy(alpha = 0.3f)
+                    ),
+                shape = RoundedCornerShape(26.dp),
+                color = Color(0xFF1E293B),
+                border = BorderStroke(
+                    1.5.dp,
+                    Brush.linearGradient(
+                        listOf(BrandAccent.copy(alpha = 0.8f), BrandBlue.copy(alpha = 0.3f))
+                    )
+                )
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        "MB",
-                        color = Color.White,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 38.sp
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(BrandBlue.copy(alpha = 0.35f), Color(0xFF0F172A))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CorporateFare,
+                        contentDescription = "MB Logo",
+                        tint = BrandAccent,
+                        modifier = Modifier.size(48.dp)
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(18.dp))
+
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 "MB Traker",
                 color = Color.White,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 28.sp
+                fontSize = 30.sp,
+                letterSpacing = 0.5.sp
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 "Track · Manage · Grow",
                 color = BrandAccent,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp
+                fontSize = 14.sp,
+                letterSpacing = 1.sp
             )
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(32.dp))
             CircularProgressIndicator(
                 color = BrandAccent,
                 strokeWidth = 3.dp,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
 
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 36.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 28.dp)
         ) {
             Text(
-                "Making Brands Enterprise Suite\nBiometric Authorization & Cloud Security",
-                color = Color.White.copy(alpha = 0.65f),
+                "Making Brands Enterprise Suite\nCloud Telemetry & Smart CRM Operations",
+                color = Color.White.copy(alpha = 0.6f),
                 textAlign = TextAlign.Center,
                 fontSize = 12.sp,
                 lineHeight = 16.sp
@@ -182,8 +209,29 @@ fun LoginScreen(
             ) { success, errorMessage, _ ->
                 isSigningIn = false
                 if (success) {
-                    Toast.makeText(context, "Welcome back! Opening Employee Workspace", Toast.LENGTH_SHORT).show()
-                    onLoginSuccess(false)
+                    if (activity != null && BiometricHelper.isBiometricForEmployeeLoginEnabled(context)) {
+                        BiometricHelper.promptBiometricAuth(
+                            activity = activity,
+                            title = "Employee Biometric Verification",
+                            subtitle = "Scan fingerprint or face to unlock employee dashboard & sensitive data",
+                            description = "Enterprise security policy requires biometric verification before accessing the employee dashboard and chat.",
+                            onSuccess = {
+                                viewModel.unlockAllBiometrics()
+                                Toast.makeText(context, "Identity verified! Opening Employee Workspace", Toast.LENGTH_SHORT).show()
+                                onLoginSuccess(false)
+                            },
+                            onError = { err ->
+                                Toast.makeText(context, "Biometric authentication required: $err", Toast.LENGTH_LONG).show()
+                            },
+                            onCancel = {
+                                Toast.makeText(context, "Biometric authentication cancelled. Dashboard remains secured.", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    } else {
+                        viewModel.unlockAllBiometrics()
+                        Toast.makeText(context, "Welcome back! Opening Employee Workspace", Toast.LENGTH_SHORT).show()
+                        onLoginSuccess(false)
+                    }
                 } else {
                     Toast.makeText(context, errorMessage ?: "Sign in failed.", Toast.LENGTH_LONG).show()
                 }
@@ -480,6 +528,110 @@ fun LoginScreen(
                                 color = Color.White
                             )
                         }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // OR Divider
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = BorderLight)
+                    Text(
+                        "OR",
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = BorderLight)
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Quick Biometric Sign-In Button (Fingerprint / Face ID)
+                OutlinedButton(
+                    onClick = {
+                        if (activity != null) {
+                            BiometricHelper.promptBiometricAuth(
+                                activity = activity,
+                                title = "Employee Biometric Unlock",
+                                subtitle = "Scan fingerprint or face to verify your identity and open Employee Workspace",
+                                description = "Instant biometric verification powered by androidx.biometric.",
+                                onSuccess = {
+                                    viewModel.loginWithBiometricsWithFirestore(
+                                        phoneNumber = "+91 98765 43210",
+                                        selectedRoleHint = "Employee"
+                                    ) { isAdmin, _ ->
+                                        viewModel.unlockAllBiometrics()
+                                        Toast.makeText(context, "Biometric verified! Opening Employee Workspace", Toast.LENGTH_SHORT).show()
+                                        onLoginSuccess(isAdmin)
+                                    }
+                                },
+                                onError = { err ->
+                                    Toast.makeText(context, "Biometric failed: $err", Toast.LENGTH_SHORT).show()
+                                },
+                                onCancel = {
+                                    Toast.makeText(context, "Biometric scan cancelled", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.5.dp, BrandBlue.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFFF0FDF4).copy(alpha = 0.7f),
+                        contentColor = BrandDarkBlue
+                    )
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Fingerprint,
+                            contentDescription = "Quick Biometric Login",
+                            tint = BrandBlue,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "Quick Biometric Sign-In",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BrandDarkBlue
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Security Policy Pill
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.White.copy(alpha = 0.85f),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = Color(0xFF059669),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Secured with androidx.biometric • Fingerprint / Face ID required for sensitive data & chat access.",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            lineHeight = 15.sp
+                        )
                     }
                 }
 

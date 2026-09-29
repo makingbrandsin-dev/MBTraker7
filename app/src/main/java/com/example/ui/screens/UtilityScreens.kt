@@ -1614,7 +1614,8 @@ fun SettingsScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit,
     onLogout: () -> Unit = {},
-    onNavigateToMiloDebug: () -> Unit = {}
+    onNavigateToMiloDebug: () -> Unit = {},
+    onNavigateToMiloOnboarding: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val activity = context as? androidx.fragment.app.FragmentActivity
@@ -1623,6 +1624,10 @@ fun SettingsScreen(
     var pushNotificationsEnabled by remember { mutableStateOf(true) }
     var soundEnabled by remember { mutableStateOf(true) }
     var biometricEnabled by remember { mutableStateOf(com.example.util.BiometricHelper.isBiometricSettingEnabled(context)) }
+    var biometricEmployeeLogin by remember { mutableStateOf(com.example.util.BiometricHelper.isBiometricForEmployeeLoginEnabled(context)) }
+    var biometricDashboard by remember { mutableStateOf(com.example.util.BiometricHelper.isBiometricForDashboardEnabled(context)) }
+    var biometricChat by remember { mutableStateOf(com.example.util.BiometricHelper.isBiometricForChatEnabled(context)) }
+    val sensorInfo = remember { com.example.util.BiometricHelper.getBiometricSensorInfo(context) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
@@ -1858,6 +1863,187 @@ fun SettingsScreen(
                                             color = TextSecondary
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 🔋 Battery Saver & Power Optimization Card
+            item {
+                val batteryState by viewModel.batteryState.collectAsState()
+                val isSaverActive by viewModel.isBatterySaverActive.collectAsState()
+
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSaverActive) Color(0xFFFEF3C7) else Color(0xFFDCFCE7),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.BatterySaver,
+                                            contentDescription = null,
+                                            tint = if (isSaverActive) Color(0xFFD97706) else Color(0xFF16A34A),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Battery Saver & Power Optimization", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                    Text("Throttle background sync & listeners on low battery", fontSize = 12.sp, color = TextSecondary)
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSaverActive) Color(0xFFFEF3C7) else Color(0xFFF1F5F9)
+                            ) {
+                                Text(
+                                    text = if (isSaverActive) "⚡ SAVER ACTIVE" else "🔋 NORMAL",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSaverActive) Color(0xFF92400E) else Color(0xFF475569),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Real-time Battery Status Bar
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Device Battery Level:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("${batteryState.levelPercent}%", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                                        if (batteryState.isCharging) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("🔌 (Charging)", fontSize = 11.sp, color = StatusGreen, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    Text(
+                                        text = "Sync: ${batteryState.syncIntervalSeconds}s",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSaverActive) StatusOrange else StatusGreen
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                LinearProgressIndicator(
+                                    progress = { (batteryState.levelPercent / 100f).coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                    color = when {
+                                        batteryState.levelPercent <= 15 -> StatusRed
+                                        batteryState.levelPercent <= 30 -> StatusOrange
+                                        else -> StatusGreen
+                                    },
+                                    trackColor = Color(0xFFE2E8F0)
+                                )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = batteryState.statusDescription,
+                                    fontSize = 11.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text("Battery Saver Mode:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            com.example.util.BatterySaverMode.values().forEach { mode ->
+                                val isSelected = batteryState.mode == mode
+                                val modeLabel = when (mode) {
+                                    com.example.util.BatterySaverMode.AUTO -> "Auto (Low)"
+                                    com.example.util.BatterySaverMode.ALWAYS_ON -> "Force On"
+                                    com.example.util.BatterySaverMode.OFF -> "Disabled"
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) ElectricBlueBg else Color(0xFFF1F5F9),
+                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isSelected) ElectricBlue else Color.Transparent),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            viewModel.setBatterySaverMode(mode)
+                                            toastMessage = "Battery Saver mode set to $modeLabel"
+                                        }
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = modeLabel,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) ElectricBlue else TextPrimary,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (batteryState.mode == com.example.util.BatterySaverMode.AUTO) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Low Battery Threshold:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(15, 20, 25, 30).forEach { pct ->
+                                    val isThreshSelected = batteryState.lowThresholdPercent == pct
+                                    FilterChip(
+                                        selected = isThreshSelected,
+                                        onClick = {
+                                            viewModel.setBatterySaverThreshold(pct)
+                                            toastMessage = "Battery Saver threshold set to $pct%"
+                                        },
+                                        label = { Text("≤ $pct%", fontSize = 11.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = ElectricBlueBg,
+                                            selectedLabelColor = ElectricBlue
+                                        )
+                                    )
                                 }
                             }
                         }
@@ -2131,15 +2317,31 @@ fun SettingsScreen(
                         )
 
                         Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = onNavigateToMiloDebug,
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Open Milo AI Debug Screen", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Button(
+                                onClick = onNavigateToMiloDebug,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                            ) {
+                                Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Milo Debug", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+
+                            OutlinedButton(
+                                onClick = onNavigateToMiloOnboarding,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandBlue)
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp), tint = BrandBlue)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Milo Guide", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -2182,16 +2384,16 @@ fun SettingsScreen(
                             showPasswordDialog = true
                         }
                         Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
-                        SettingToggleRow("Biometric Unlock", "Use Fingerprint or Face ID to sign in", biometricEnabled) { isChecked ->
+                        SettingToggleRow("Biometric Security (Master)", "Use Fingerprint or Face ID for authentication", biometricEnabled) { isChecked ->
                             if (isChecked && activity != null) {
                                 com.example.util.BiometricHelper.promptBiometricAuth(
                                     activity = activity,
                                     title = "Enable Biometric Security",
-                                    subtitle = "Authenticate to enable fingerprint unlock for MB Traker",
+                                    subtitle = "Authenticate to enable fingerprint/face unlock for MB Traker",
                                     onSuccess = {
                                         biometricEnabled = true
                                         com.example.util.BiometricHelper.setBiometricSettingEnabled(context, true)
-                                        toastMessage = "Biometric unlock activated successfully!"
+                                        toastMessage = "Biometric security activated successfully!"
                                     },
                                     onError = { err ->
                                         toastMessage = "Biometric setup: $err"
@@ -2201,6 +2403,102 @@ fun SettingsScreen(
                                 biometricEnabled = isChecked
                                 com.example.util.BiometricHelper.setBiometricSettingEnabled(context, isChecked)
                                 toastMessage = if (isChecked) "Biometric unlock enabled" else "Biometric unlock disabled"
+                            }
+                        }
+
+                        if (biometricEnabled) {
+                            Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                            SettingToggleRow(
+                                "Employee Login Scan",
+                                "Require biometric scan on employee login",
+                                biometricEmployeeLogin
+                            ) { isChecked ->
+                                biometricEmployeeLogin = isChecked
+                                com.example.util.BiometricHelper.setBiometricForEmployeeLoginEnabled(context, isChecked)
+                                toastMessage = if (isChecked) "Employee Login Biometrics Enabled" else "Employee Login Biometrics Disabled"
+                            }
+
+                            Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                            SettingToggleRow(
+                                "Employee Dashboard Lock",
+                                "Require scan before viewing attendance trends & KPIs",
+                                biometricDashboard
+                            ) { isChecked ->
+                                biometricDashboard = isChecked
+                                com.example.util.BiometricHelper.setBiometricForDashboardEnabled(context, isChecked)
+                                toastMessage = if (isChecked) "Dashboard Biometric Gate Enabled" else "Dashboard Biometric Gate Disabled"
+                            }
+
+                            Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                            SettingToggleRow(
+                                "Team Chat Biometric Gate",
+                                "Require scan before viewing confidential communications",
+                                biometricChat
+                            ) { isChecked ->
+                                biometricChat = isChecked
+                                com.example.util.BiometricHelper.setBiometricForChatEnabled(context, isChecked)
+                                toastMessage = if (isChecked) "Team Chat Biometric Gate Enabled" else "Team Chat Biometric Gate Disabled"
+                            }
+
+                            Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                            SettingActionRow(
+                                Icons.Default.Fingerprint,
+                                "Test Biometric Scanner",
+                                "Test native androidx.biometric prompt & sensor response"
+                            ) {
+                                if (activity != null) {
+                                    com.example.util.BiometricHelper.promptBiometricAuth(
+                                        activity = activity,
+                                        title = "Biometric Sensor Test",
+                                        subtitle = "Testing sensor response using androidx.biometric",
+                                        onSuccess = {
+                                            toastMessage = "✅ Biometric sensor verified successfully!"
+                                        },
+                                        onError = { err ->
+                                            toastMessage = "Biometric test: $err"
+                                        },
+                                        onCancel = {
+                                            toastMessage = "Biometric test cancelled"
+                                        }
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Sensor Hardware Diagnostics Pill
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.VerifiedUser,
+                                        contentDescription = null,
+                                        tint = if (sensorInfo.isSupported) Color(0xFF059669) else Color(0xFF3B82F6),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = sensorInfo.title,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF0F172A)
+                                        )
+                                        Text(
+                                            text = sensorInfo.description,
+                                            fontSize = 11.sp,
+                                            color = TextSecondary,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

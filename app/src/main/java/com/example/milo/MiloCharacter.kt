@@ -3,9 +3,13 @@ package com.example.milo
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import com.example.domain.milo.MiloState
+import com.example.milo.MiloXpManager
+import com.example.milo.MiloThemeAccessory
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,10 +29,17 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import kotlinx.coroutines.delay
+import com.example.R
 import com.example.ui.theme.*
 import kotlin.math.sin
 
@@ -35,14 +47,29 @@ import kotlin.math.sin
  * Reusable animated Milo Character Composable.
  * Adapts smoothly to all 13 states with event-driven transitions.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MiloCharacter(
     state: MiloState,
     modifier: Modifier = Modifier,
     size: Dp = 100.dp,
     showStateBadge: Boolean = false,
+    useFullBody: Boolean = true,
+    showTooltipOnTap: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
+    var showTooltip by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Auto-dismiss tooltip after 3.5 seconds
+    LaunchedEffect(showTooltip) {
+        if (showTooltip) {
+            delay(3500)
+            showTooltip = false
+        }
+    }
+
     // Infinite Animation Transitions
     val infiniteTransition = rememberInfiniteTransition(label = "MiloAnimations")
 
@@ -76,6 +103,7 @@ fun MiloCharacter(
     )
 
     // Wave / Typing / Bounce cycle
+    val xpState by MiloXpManager.xpState.collectAsState()
     val waveRotation by infiniteTransition.animateFloat(
         initialValue = -12f,
         targetValue = 16f,
@@ -113,7 +141,22 @@ fun MiloCharacter(
     Box(
         modifier = modifier
             .size(size)
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+            .combinedClickable(
+                onClick = {
+                    com.example.util.MiloHaptics.performMiloMascotTap(context, haptics)
+                    if (showTooltipOnTap) {
+                        showTooltip = !showTooltip
+                    } else if (onClick != null) {
+                        onClick()
+                    } else {
+                        showTooltip = !showTooltip
+                    }
+                },
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    showTooltip = true
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         // Subtle aura ring behind Milo based on current state color
@@ -125,13 +168,18 @@ fun MiloCharacter(
                 .scale(breathingScale)
         ) {}
 
+        // Smooth crossfade animation with gentle scale easing for seamless Milo state changes
         AnimatedContent(
             targetState = state,
             transitionSpec = {
-                fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.85f) togetherWith
-                        fadeOut(animationSpec = tween(200)) + scaleOut(targetScale = 0.9f)
+                (fadeIn(animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)) +
+                        scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)))
+                    .togetherWith(
+                        fadeOut(animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)) +
+                                scaleOut(targetScale = 1.04f, animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing))
+                    )
             },
-            label = "MiloStateAnimation"
+            label = "MiloStateCrossfade"
         ) { targetState ->
             Box(
                 modifier = Modifier
@@ -139,35 +187,46 @@ fun MiloCharacter(
                     .offset(y = if (targetState == MiloState.CELEBRATION) jumpOffset.dp else 0.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // Render Milo Canvas Base (Head, Mane, Ears, Eyes, MB Polo, Nose, Smile)
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .scale(breathingScale)
-                ) {
-                    drawMiloBase(
-                        state = targetState,
-                        blink = blinkProgress > 0.6f,
-                        waveRot = waveRotation,
-                        pulse = pulseAlpha
-                    )
-                }
+                // Render Real Milo Character with MP4 Video Playback Support via ExoPlayer
+                val videoUri = remember(targetState) { MiloVideoHelper.getMiloVideoUri(context, targetState) }
+                val hasMp4 = videoUri != null
 
-                // Render State-Specific Floating Vector Overlays
-                when (targetState) {
-                    MiloState.IDLE -> MiloIdleOverlay()
-                    MiloState.WELCOME -> MiloWelcomeOverlay(waveRotation)
-                    MiloState.WORKING -> MiloWorkingOverlay(waveRotation)
-                    MiloState.THINKING -> MiloThinkingOverlay(pulseAlpha)
-                    MiloState.LEAD_IMPORTED -> MiloLeadImportedOverlay()
-                    MiloState.NEW_LEAD -> MiloNewLeadOverlay()
-                    MiloState.FOLLOW_UP -> MiloFollowUpOverlay()
-                    MiloState.SUCCESS -> MiloSuccessOverlay()
-                    MiloState.CONVERTED -> MiloConvertedOverlay(confetti, pulseAlpha)
-                    MiloState.WARNING -> MiloWarningOverlay(pulseAlpha)
-                    MiloState.ERROR -> MiloErrorOverlay()
-                    MiloState.GOODBYE -> MiloGoodbyeOverlay(waveRotation)
-                    MiloState.CELEBRATION -> MiloCelebrationOverlay(confetti)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize(if (targetState == MiloState.THINKING) 0.98f else 0.92f)
+                        .scale(breathingScale),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val imageRes = if (targetState == MiloState.THINKING) {
+                        R.drawable.milo_thinking
+                    } else {
+                        R.drawable.milo_final
+                    }
+                    Crossfade(
+                        targetState = imageRes,
+                        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+                        label = "MiloImageCrossfade"
+                    ) { targetImage ->
+                        Image(
+                            painter = painterResource(id = targetImage),
+                            contentDescription = "Milo Lion - ${targetState.title}: ${targetState.description}",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
+                    if (size > 64.dp && hasMp4 && videoUri != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            MiloVideoSurface(
+                                videoUri = videoUri,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -184,6 +243,73 @@ fun MiloCharacter(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(state.emoji, fontSize = 12.sp)
+                }
+            }
+        }
+
+        // Equipped Milo Accessory Theme Badge at top-right
+        if (xpState.equippedTheme != MiloThemeAccessory.CLASSIC) {
+            Surface(
+                shape = CircleShape,
+                color = Color(xpState.equippedTheme.primaryColorHex),
+                shadowElevation = 4.dp,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(22.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(xpState.equippedTheme.iconEmoji, fontSize = 11.sp)
+                }
+            }
+        }
+
+        // State Description Tooltip Popup
+        if (showTooltip) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = androidx.compose.ui.unit.IntOffset(0, -140),
+                onDismissRequest = { showTooltip = false },
+                properties = PopupProperties(focusable = false, dismissOnClickOutside = true)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF0F172A),
+                    shadowElevation = 8.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, state.primaryColor.copy(alpha = 0.6f)),
+                    modifier = Modifier
+                        .widthIn(max = 240.dp)
+                        .padding(horizontal = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = state.emoji,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Milo • ${state.title}",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = state.description,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = Color(0xFFCBD5E1),
+                                fontSize = 11.5.sp,
+                                lineHeight = 15.sp
+                            )
+                        )
+                    }
                 }
             }
         }

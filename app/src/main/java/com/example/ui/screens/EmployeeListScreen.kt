@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -624,71 +626,223 @@ private fun AddEmployeeDialog(
     var selectedRole by remember { mutableStateOf(EmployeeRole.DEVELOPER) }
     var skillsText by remember { mutableStateOf("Kotlin, Compose, Android") }
 
-    AlertDialog(
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Team Member", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Full Name") },
-                    singleLine = true,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding(),
+            color = SurfaceBg
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top Header
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 2.dp,
                     modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text("Email Address") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Phone Number") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = designation,
-                    onValueChange = { designation = it },
-                    label = { Text("Designation (e.g. Lead Android Dev)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = skillsText,
-                    onValueChange = { skillsText = it },
-                    label = { Text("Skills (comma separated)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.isNotBlank() && email.isNotBlank()) {
-                        val skillsList = skillsText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                        onAdd(name, email, phone, designation, selectedDept, selectedRole, skillsList)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = ElectricBlueBg,
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.PersonAdd,
+                                        contentDescription = null,
+                                        tint = BrandBlue,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    "Add Team Member",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    "Assign department, role & skills",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        }
                     }
-                },
-                enabled = name.isNotBlank() && email.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
-            ) {
-                Text("Add Member")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                }
+
+                // Scrollable Form Body
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, BorderLight)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("Personal Details", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+
+                            OutlinedTextField(
+                                value = name,
+                                onValueChange = { name = it },
+                                label = { Text("Full Name *") },
+                                placeholder = { Text("e.g. Rahul Sharma") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = email,
+                                onValueChange = { email = it },
+                                label = { Text("Email Address *") },
+                                placeholder = { Text("e.g. rahul@makingbrands.in") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = phone,
+                                onValueChange = { phone = it },
+                                label = { Text("Phone Number") },
+                                placeholder = { Text("+91 9876543210") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, BorderLight)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("Role & Department", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+
+                            OutlinedTextField(
+                                value = designation,
+                                onValueChange = { designation = it },
+                                label = { Text("Designation") },
+                                placeholder = { Text("e.g. Senior Android Engineer") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Text("Department:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(Department.values()) { dept ->
+                                    FilterChip(
+                                        selected = selectedDept == dept,
+                                        onClick = { selectedDept = dept },
+                                        label = { Text(dept.name.lowercase().capitalize(java.util.Locale.ROOT), fontSize = 12.sp) }
+                                    )
+                                }
+                            }
+
+                            Text("Role:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(EmployeeRole.values()) { role ->
+                                    FilterChip(
+                                        selected = selectedRole == role,
+                                        onClick = { selectedRole = role },
+                                        label = { Text(role.name.lowercase().capitalize(java.util.Locale.ROOT), fontSize = 12.sp) }
+                                    )
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = skillsText,
+                                onValueChange = { skillsText = it },
+                                label = { Text("Skills (comma separated)") },
+                                placeholder = { Text("Kotlin, Jetpack Compose, UI/UX") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+
+                // Pinned Bottom Footer Actions
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Cancel", color = TextSecondary, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (name.isNotBlank() && email.isNotBlank()) {
+                                    val skillsList = skillsText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                                    onAdd(name, email, phone, designation, selectedDept, selectedRole, skillsList)
+                                }
+                            },
+                            enabled = name.isNotBlank() && email.isNotBlank(),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Add Member", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
             }
         }
-    )
+    }
 }

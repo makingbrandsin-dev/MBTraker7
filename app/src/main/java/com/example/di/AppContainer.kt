@@ -40,6 +40,7 @@ class AppContainer(private val context: Context) {
     val attendanceRegularizationDao: AttendanceRegularizationDao by lazy {
         DatabaseModule.provideAttendanceRegularizationDao(database)
     }
+    val activityFeedDao: ActivityFeedDao by lazy { database.activityFeedDao() }
 
     // Repositories
     val employeeRepository: IEmployeeRepository by lazy {

@@ -31,7 +31,6 @@ import com.example.ui.components.CrmTasksAttendanceSwitcher
 import com.example.ui.components.StandardScreenHeader
 import com.example.ui.components.WhatsAppQuickChatDialog
 import com.example.ui.components.MiloAssistantDialog
-import com.example.ui.components.FloatingAskMiloButton
 import com.example.ui.components.formatLiveSeconds
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
@@ -57,6 +56,8 @@ fun AttendanceScreen(
     val employeeName by viewModel.currentEmployeeName.collectAsState()
     val employeeRole by viewModel.currentEmployeeRole.collectAsState()
     val regularizations by viewModel.attendanceRegularizations.collectAsState()
+    val unsyncedAttendanceCount by viewModel.unsyncedAttendanceCount.collectAsState()
+    val isDeviceOnline by viewModel.isDeviceOnline.collectAsState()
 
     val isWorking = attendance?.isWorking ?: false
 
@@ -173,6 +174,82 @@ fun AttendanceScreen(
                 )
             }
 
+            // 💾 Offline Room Database Local Cache & Sync Status Banner
+            if (!isDeviceOnline || unsyncedAttendanceCount > 0) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (!isDeviceOnline) Color(0xFFFFFBEB) else Color(0xFFF0FDF4)
+                        ),
+                        border = BorderStroke(
+                            1.dp,
+                            if (!isDeviceOnline) Color(0xFFFCD34D) else Color(0xFF86EFAC)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(
+                                            if (!isDeviceOnline) Color(0xFFFEF3C7) else Color(0xFFDCFCE7),
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (!isDeviceOnline) Icons.Default.CloudOff else Icons.Default.CloudSync,
+                                        contentDescription = "Room Local Cache",
+                                        tint = if (!isDeviceOnline) Color(0xFFD97706) else Color(0xFF16A34A),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = if (!isDeviceOnline) "Offline Mode · Room Cache Active" else "Room Cache: $unsyncedAttendanceCount Pending Sync",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = if (!isDeviceOnline) Color(0xFF92400E) else Color(0xFF166534)
+                                    )
+                                    Text(
+                                        text = if (!isDeviceOnline) 
+                                            "All punches and logs persist safely in local Room DB and auto-sync when online."
+                                        else 
+                                            "Changes safely stored locally in Room. Ready to sync with Firestore.",
+                                        fontSize = 11.sp,
+                                        color = if (!isDeviceOnline) Color(0xFFB45309) else Color(0xFF15803D),
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+                            if (isDeviceOnline && unsyncedAttendanceCount > 0) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = { viewModel.syncCachedRoomDataNow() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Sync Now", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // ⏱️ Live Punch & Break Action Card (Clean Stacked Vertical Layout One Below the Other)
             item {
                 Card(
@@ -198,12 +275,38 @@ fun AttendanceScreen(
                                     fontSize = 22.sp,
                                     fontWeight = FontWeight.Black
                                 )
-                                Text(
-                                    text = liveDateString,
-                                    color = Color(0xFF93C5FD),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = liveDateString,
+                                        color = Color(0xFF93C5FD),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFF22C55E).copy(alpha = 0.2f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(5.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF4ADE80))
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                "Firestore Synced",
+                                                color = Color(0xFF86EFAC),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
                             }
 
                             Surface(
@@ -929,6 +1032,24 @@ fun DayAttendanceCard(
                                 fontSize = 11.sp,
                                 color = TextSecondary
                             )
+                        }
+                        if (!record.isSynced) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.CloudQueue,
+                                    contentDescription = "Room Cached",
+                                    tint = Color(0xFFEA580C),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Room Cached (Offline)",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFEA580C)
+                                )
+                            }
                         }
                     }
                 }

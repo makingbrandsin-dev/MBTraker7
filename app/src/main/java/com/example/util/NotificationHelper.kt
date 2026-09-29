@@ -17,11 +17,25 @@ object NotificationHelper {
     const val CHANNEL_TASK_UPDATES = "task_updates_channel"
     const val CHANNEL_LEAD_ALERTS = "lead_alerts_channel"
     const val CHANNEL_AUTH_ALERTS = "auth_security_channel"
+    const val CHANNEL_BROADCAST = "admin_broadcast_channel"
+    const val CHANNEL_CALL_LOGS = "call_logs_channel"
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                 ?: return
+
+            // 0. Admin Broadcast & Push Announcements Channel
+            val broadcastChannel = NotificationChannel(
+                CHANNEL_BROADCAST,
+                "Admin Push Announcements",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Company-wide announcements, admin broadcast alerts, and urgent notices"
+                enableLights(true)
+                enableVibration(true)
+                setShowBadge(true)
+            }
 
             // 1. Team Chat & Mentions Channel
             val chatChannel = NotificationChannel(
@@ -71,10 +85,66 @@ object NotificationHelper {
                 setShowBadge(true)
             }
 
+            // 5. Call Logging & Telephony Channel
+            val callChannel = NotificationChannel(
+                CHANNEL_CALL_LOGS,
+                "Call Logs & Recording Alerts",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Auto-logged incoming & outgoing phone calls and CRM client sync"
+                enableLights(true)
+                enableVibration(true)
+                setShowBadge(true)
+            }
+
+            notificationManager.createNotificationChannel(broadcastChannel)
             notificationManager.createNotificationChannel(chatChannel)
             notificationManager.createNotificationChannel(taskChannel)
             notificationManager.createNotificationChannel(leadChannel)
             notificationManager.createNotificationChannel(authChannel)
+            notificationManager.createNotificationChannel(callChannel)
+        }
+    }
+
+    fun showBroadcastAlert(
+        context: Context,
+        title: String,
+        messageText: String,
+        audience: String = "All Users",
+        priority: String = "High"
+    ) {
+        createNotificationChannels(context)
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("destination", "notifications")
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            System.currentTimeMillis().toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_BROADCAST)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("📢 $title")
+            .setContentText(messageText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("[$audience] $messageText"))
+            .setAutoCancel(true)
+            .setSound(defaultSound)
+            .setPriority(if (priority.equals("urgent", ignoreCase = true) || priority.equals("critical", ignoreCase = true)) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setContentIntent(pendingIntent)
+
+        try {
+            val notificationManager = NotificationManagerCompat.from(context)
+            val notificationId = (System.currentTimeMillis() % 10000).toInt() + 5000
+            notificationManager.notify(notificationId, notificationBuilder.build())
+        } catch (_: SecurityException) {
         }
     }
 
@@ -243,5 +313,70 @@ object NotificationHelper {
             notificationManager.notify(notificationId, notificationBuilder.build())
         } catch (_: SecurityException) {
         }
+    }
+
+    fun showCallAlert(
+        context: Context,
+        contactName: String,
+        callType: String,
+        durationText: String,
+        phoneNumber: String
+    ) {
+        createNotificationChannels(context)
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("destination", "call_tracker")
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            System.currentTimeMillis().toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val title = when (callType.lowercase()) {
+            "missed" -> "🔴 Missed Call: $contactName"
+            "incoming" -> "📲 Incoming Call Logged: $contactName"
+            else -> "📞 Outgoing Call Logged: $contactName"
+        }
+
+        val subtitle = "$callType Call • $durationText • $phoneNumber"
+
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_CALL_LOGS)
+            .setSmallIcon(android.R.drawable.sym_call_incoming)
+            .setContentTitle(title)
+            .setContentText(subtitle)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Contact: $contactName\nNumber: $phoneNumber\nType: $callType\nDuration: $durationText\nSaved to CRM Call Tracker."))
+            .setAutoCancel(true)
+            .setSound(defaultSound)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setContentIntent(pendingIntent)
+
+        try {
+            val notificationManager = NotificationManagerCompat.from(context)
+            val notificationId = (System.currentTimeMillis() % 10000).toInt() + 4000
+            notificationManager.notify(notificationId, notificationBuilder.build())
+        } catch (_: SecurityException) {
+        }
+    }
+
+    fun showNotification(
+        context: Context,
+        title: String,
+        message: String,
+        notificationId: Int = 1001
+    ) {
+        showBroadcastAlert(
+            context = context,
+            title = title,
+            messageText = message,
+            audience = "Milo Assistant",
+            priority = "High"
+        )
     }
 }
