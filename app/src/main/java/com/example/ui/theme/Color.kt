@@ -2,49 +2,57 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// MB Traker Brand Palette
-val BrandBlue = Color(0xFF298CD8)
-val BrandDarkBlue = Color(0xFF1B6FA8)
-val BrandLightBlue = Color(0xFF5AB1F0)
-val BrandAccent = Color(0xFF00E5FF)
+// MB Taker Luxury Warm Color Palette
+val SurfaceBg = Color(0xFFF9F5EF)        // Background color #f9f5ef
+val ScreenBackground = Color(0xFFF9F5EF) // Warm cream screen backdrop #f9f5ef
 
-// Light blue background for all screens
-val SurfaceBg = Color(0xFFEBF4FC)        // Crisp light blue background (#EBF4FC / #E8F2FA)
-val ScreenBackground = Color(0xFFEBF4FC) // Light blue screen backdrop
-val HeaderBg = Color(0xFFFFFFFF)         // Clean white header matching white footer
-val CardBg = Color(0xFFFFFFFF)
-val TextPrimary = Color(0xFF1E293B)
-val TextSecondary = Color(0xFF64748B)
-val TextMuted = Color(0xFF94A3B8)
-val BorderLight = Color(0xFFE2E8F0)
+val ImportantCardBg = Color(0xFFF8E0A8)  // Important cards color #f8e0a8
+val CardBg = Color(0xFFFFFFFF)           // Clean white card background
+val CardBorder = Color(0xFFE8DEC8)       // Subtle warm border
 
-val StatusGreen = Color(0xFF10B981)
-val StatusGreenBg = Color(0xFFE8F5E9)
-val StatusOrange = Color(0xFFF59E0B)
-val StatusOrangeBg = Color(0xFFFEF3C7)
-val StatusRed = Color(0xFFEF4444)
+val ButtonPrimary = Color(0xFF705C30)    // Button color #705c30 (Warm Luxury Bronze/Gold)
+val ButtonSecondary = Color(0xFF4A7C59)  // Other button colors #4a7c59 (Deep Emerald Green)
+val AccentSage = Color(0xFFC8E8D0)       // Other color #c8e8d0 (Soft Mint Sage)
+
+// Brand Color Aliases mapped to Luxury Palette
+val BrandBlue = Color(0xFF705C30)        // Primary Action / Brand Color (#705c30)
+val BrandDarkBlue = Color(0xFF524424)    // Darker variant
+val BrandLightBlue = Color(0xFF8A7644)   // Lighter variant
+val BrandAccent = Color(0xFF4A7C59)      // Secondary Brand Accent (#4a7c59)
+
+val HeaderBg = Color(0xFFF9F5EF)
+val TextPrimary = Color(0xFF2C2416)      // Deep warm charcoal text
+val TextSecondary = Color(0xFF6B5F4D)    // Muted warm slate text
+val TextMuted = Color(0xFF9E9281)
+val BorderLight = Color(0xFFE2D8C3)
+
+// Status & Accent Palette
+val StatusGreen = Color(0xFF4A7C59)      // Emerald Green (#4a7c59)
+val StatusGreenBg = Color(0xFFC8E8D0)    // Sage mint bg (#c8e8d0)
+val StatusOrange = Color(0xFFD97706)
+val StatusOrangeBg = Color(0xFFF8E0A8)    // Important card amber/gold (#f8e0a8)
+val StatusRed = Color(0xFFDC2626)
 val StatusRedBg = Color(0xFFFEE2E2)
-val StatusPurple = Color(0xFF8B5CF6)
-val StatusPurpleBg = Color(0xFFEDE9FE)
-val StatusBlue = Color(0xFF3B82F6)
-val StatusBlueBg = Color(0xFFDBEAFE)
+val StatusPurple = Color(0xFF705C30)
+val StatusPurpleBg = Color(0xFFF8E0A8)
+val StatusBlue = Color(0xFF4A7C59)
+val StatusBlueBg = Color(0xFFC8E8D0)
 
-// Modern UI & Colorful Bottom Nav Palette
-val ElectricBlue = Color(0xFF2563EB)
-val ElectricBlueBg = Color(0xFFDBEAFE)
-val VibrantPurple = Color(0xFF7C3AED)
-val VibrantPurpleBg = Color(0xFFEDE9FE)
-val VibrantEmerald = Color(0xFF059669)
-val VibrantEmeraldBg = Color(0xFFD1FAE5)
-val VibrantAmber = Color(0xFFD97706)
-val VibrantAmberBg = Color(0xFFFEF3C7)
-val VibrantCyan = Color(0xFF0284C7)
-val VibrantCyanBg = Color(0xFFE0F2FE)
+// Modern UI & Navigation Palette
+val ElectricBlue = Color(0xFF705C30)
+val ElectricBlueBg = Color(0xFFF8E0A8)
+val VibrantPurple = Color(0xFF705C30)
+val VibrantPurpleBg = Color(0xFFF8E0A8)
+val VibrantEmerald = Color(0xFF4A7C59)
+val VibrantEmeraldBg = Color(0xFFC8E8D0)
+val VibrantAmber = Color(0xFF705C30)
+val VibrantAmberBg = Color(0xFFF8E0A8)
+val VibrantCyan = Color(0xFF4A7C59)
+val VibrantCyanBg = Color(0xFFC8E8D0)
 
-val BlueGradientStart = Color(0xFF1D4ED8)
-val BlueGradientEnd = Color(0xFF3B82F6)
+val BlueGradientStart = Color(0xFF705C30)
+val BlueGradientEnd = Color(0xFF4A7C59)
 
-val AccentGold = Color(0xFFF59E0B)
-val BrandGreen = Color(0xFF16A34A)
-val AccentGreen = Color(0xFF10B981)
-
+val AccentGold = Color(0xFFF8E0A8)
+val BrandGreen = Color(0xFF4A7C59)
+val AccentGreen = Color(0xFF4A7C59)

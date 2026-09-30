@@ -250,24 +250,13 @@ fun DashboardScreen(
                         lead = lead,
                         onLeadClick = { onNavigateToLeadDetail(lead.id) },
                         onCallClick = {
-                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${lead.phone}"))
-                            try {
-                                context.startActivity(intent)
-                                miloViewModel.handleEvent(MiloEvent.FollowUpDue(count = 1, clientName = lead.name))
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Calling ${lead.phone}", Toast.LENGTH_SHORT).show()
-                            }
+                            com.example.util.WhatsAppHelper.dialPhoneNumber(context, lead.phone)
+                            miloViewModel.handleEvent(MiloEvent.FollowUpDue(count = 1, clientName = lead.name))
                         },
                         onWhatsAppClick = {
                             val message = "Hello ${lead.name}, this is $employeeDisplayName from Making Brands following up on your ${lead.requirement} inquiry."
-                            val encoded = Uri.encode(message)
-                            val url = "https://api.whatsapp.com/send?phone=${lead.phone.replace("[^0-9]".toRegex(), "")}&text=$encoded"
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                miloViewModel.handleEvent(MiloEvent.TaskCompleted("WhatsApp Follow-up"))
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "WhatsApp to ${lead.phone}", Toast.LENGTH_SHORT).show()
-                            }
+                            com.example.util.WhatsAppHelper.sendWhatsAppMessage(context, lead.phone, message)
+                            miloViewModel.handleEvent(MiloEvent.TaskCompleted("WhatsApp Follow-up"))
                         }
                     )
                 }
@@ -1105,15 +1094,24 @@ private fun MiloAssistantBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color.White
+        containerColor = Color.Transparent,
+        scrimColor = Color.Black.copy(alpha = 0.50f),
+        dragHandle = null,
+        shape = RoundedCornerShape(28.dp)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(Color.White)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1221,4 +1219,5 @@ private fun MiloAssistantBottomSheet(
             }
         }
     }
+}
 }

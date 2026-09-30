@@ -47,6 +47,20 @@ object AppPreferences {
             .apply()
     }
 
+    private const val KEY_AUTO_CALL_RECORDING = "auto_call_recording_enabled"
+
+    fun isAutoCallRecordingEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_AUTO_CALL_RECORDING, true)
+    }
+
+    fun setAutoCallRecordingEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_AUTO_CALL_RECORDING, enabled)
+            .apply()
+    }
+
     private const val KEY_BATTERY_SAVER_MODE = "battery_saver_mode"
     private const val KEY_BATTERY_SAVER_THRESHOLD = "battery_saver_threshold"
 

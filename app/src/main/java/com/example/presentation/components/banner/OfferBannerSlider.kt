@@ -32,7 +32,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 
 /**
- * Data model for promotional & offer banners.
+ * Data model for promotional & offer banners with Image / MP4 video support.
  */
 data class AppOfferBanner(
     val id: String,
@@ -47,6 +47,9 @@ data class AppOfferBanner(
     val accentIcon: String = "⚡",
     val routeAction: String,
     val imageUri: String? = null,
+    val videoUri: String? = null,
+    val isVideo: Boolean = false,
+    val videoDuration: String? = null,
     val isActive: Boolean = true,
     val displayOrder: Int = 0
 )
@@ -148,20 +151,28 @@ fun OfferBannerCard(
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
+        val imageModel = remember(banner.imageUri) {
+            val uriStr = banner.imageUri
+            if (uriStr.isNullOrBlank()) null
+            else if (uriStr.startsWith("/")) java.io.File(uriStr)
+            else if (uriStr.startsWith("file://")) java.io.File(uriStr.removePrefix("file://"))
+            else uriStr
+        }
+        val hasImage = imageModel != null
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 145.dp)
                 .background(
                     Brush.horizontalGradient(
                         colors = banner.bgGradientColors
                     )
                 )
         ) {
-            val hasImage = !banner.imageUri.isNullOrBlank()
-
             if (hasImage) {
                 AsyncImage(
-                    model = banner.imageUri,
+                    model = imageModel,
                     contentDescription = banner.headline,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.matchParentSize()
@@ -255,18 +266,51 @@ fun OfferBannerCard(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 18.dp)
             ) {
-                if (banner.badge != null) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (hasImage) banner.ctaButtonColor else banner.ctaButtonColor.copy(alpha = 0.15f)
+                if (banner.badge != null || banner.isVideo) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            text = banner.badge,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (hasImage) Color.White else banner.ctaButtonColor,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                        if (banner.badge != null) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (hasImage) banner.ctaButtonColor else banner.ctaButtonColor.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = banner.badge,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (hasImage) Color.White else banner.ctaButtonColor,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        if (banner.isVideo) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFDC2626)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = "Video Preview",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = banner.videoDuration ?: "MP4 VIDEO",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                 }
@@ -340,6 +384,32 @@ fun OfferBannerCard(
  */
 val defaultOfferBanners = listOf(
     AppOfferBanner(
+        id = "auto_call_recording_active",
+        headline = "Auto Call Recording & Smart Lead Notes Active",
+        subtext = "Every incoming & outgoing client call is auto-recorded and indexed to CRM leads.",
+        ctaText = "Open Call Tracker",
+        disclaimer = "*High-fidelity 16kHz audio capture with instant Room database sync",
+        badge = "AUTO RECORDING",
+        bgGradientColors = listOf(Color(0xFFFEF2F2), Color(0xFFFEE2E2), Color(0xFFFECACA)),
+        ctaButtonColor = Color(0xFFDC2626),
+        routeAction = "calls",
+        displayOrder = 0
+    ),
+    AppOfferBanner(
+        id = "sales_training_video_mp4",
+        headline = "Watch Video: Closing Deals 3X Faster with Making Brands",
+        subtext = "Quick MP4 walkthrough on WhatsApp auto-quotes and CRM pipeline conversions.",
+        ctaText = "Play Video Guide",
+        disclaimer = "*HD MP4 Video walkthrough for sales executives",
+        badge = "TRAINING",
+        bgGradientColors = listOf(Color(0xFFF5F3FF), Color(0xFFEDE9FE), Color(0xFFDDD6FE)),
+        ctaButtonColor = Color(0xFF7C3AED),
+        routeAction = "milo_ai",
+        isVideo = true,
+        videoDuration = "02:15 MP4",
+        displayOrder = 1
+    ),
+    AppOfferBanner(
         id = "instant_lead_import",
         headline = "Enjoy Instant Lead Settlement & Auto Sync",
         subtext = "Get real-time Justdial & Meta Ads leads distributed in 15 seconds.",
@@ -349,7 +419,7 @@ val defaultOfferBanners = listOf(
         bgGradientColors = listOf(Color(0xFFF0FDF4), Color(0xFFDCFCE7), Color(0xFFBBF7D0)),
         ctaButtonColor = Color(0xFF0D9488),
         routeAction = "leads",
-        displayOrder = 0
+        displayOrder = 2
     ),
     AppOfferBanner(
         id = "milo_ai_copilot",
@@ -361,7 +431,7 @@ val defaultOfferBanners = listOf(
         bgGradientColors = listOf(Color(0xFFEFF6FF), Color(0xFFDBEAFE), Color(0xFFBFDBFE)),
         ctaButtonColor = Color(0xFF2563EB),
         routeAction = "milo_ai",
-        displayOrder = 1
+        displayOrder = 3
     ),
     AppOfferBanner(
         id = "whatsapp_automation",
@@ -373,18 +443,6 @@ val defaultOfferBanners = listOf(
         bgGradientColors = listOf(Color(0xFFFFF7ED), Color(0xFFFFEDD5), Color(0xFFFED7AA)),
         ctaButtonColor = Color(0xFFEA580C),
         routeAction = "invoices",
-        displayOrder = 2
-    ),
-    AppOfferBanner(
-        id = "top_performer_bonus",
-        headline = "Monthly Sales Target Rewards: 100% Commission",
-        subtext = "Close 10 deals this month and win the Making Brands Star Trophy!",
-        ctaText = "View Target Progress",
-        disclaimer = "*Valid till end of current billing cycle",
-        badge = "REWARDS",
-        bgGradientColors = listOf(Color(0xFFFAF5FF), Color(0xFFF3E8FF), Color(0xFFE9D5FF)),
-        ctaButtonColor = Color(0xFF7C3AED),
-        routeAction = "tasks",
-        displayOrder = 3
+        displayOrder = 4
     )
 )

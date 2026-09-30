@@ -48,22 +48,15 @@ fun MiloMiniAvatar(
     modifier: Modifier = Modifier,
     sizeDp: Int = 32
 ) {
-    Surface(
-        shape = CircleShape,
-        color = BrandDarkBlue,
-        shadowElevation = 2.dp,
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, BrandAccent),
+    Box(
+        contentAlignment = Alignment.Center,
         modifier = modifier.size(sizeDp.dp)
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Image(
-                painter = painterResource(id = R.drawable.milo_final),
-                contentDescription = "Milo",
-                modifier = Modifier
-                    .size((sizeDp * 0.85f).dp)
-                    .clip(CircleShape)
-            )
-        }
+        Image(
+            painter = painterResource(id = R.drawable.milo_final),
+            contentDescription = "Milo",
+            modifier = Modifier.size(sizeDp.dp)
+        )
     }
 }
 
@@ -125,21 +118,13 @@ fun FloatingAskMiloButton(
                 modifier = Modifier.size(38.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF1E293B),
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFFFB300)),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.milo_final),
-                        contentDescription = "Milo Lion",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(2.dp)
-                            .clip(CircleShape)
-                    )
-                }
+                Image(
+                    painter = painterResource(id = R.drawable.milo_final),
+                    contentDescription = "Milo Lion",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(2.dp)
+                )
 
                 // Active dot
                 Box(
@@ -307,49 +292,25 @@ fun MiloAnimatedAvatar(
             }
         }
 
-        // Avatar Core Container
-        Surface(
-            shape = CircleShape,
-            color = when (mood) {
-                MiloMood.SLEEPING -> Color(0xFF334155) // Dimmed rest mode
-                MiloMood.LISTENING -> Color(0xFF047857) // Active listening emerald
-                MiloMood.THINKING -> BrandDarkBlue
-                MiloMood.SPEAKING -> Color(0xFFD97706) // Roar amber
-                MiloMood.AWAKE_IDLE -> BrandDarkBlue
-            },
-            shadowElevation = if (mood == MiloMood.SLEEPING) 2.dp else 8.dp,
+        // Avatar Core Container - Clean transparent, NO circle shape, NO dark background
+        Box(
             modifier = Modifier
                 .size(sizeDp.dp)
                 .scale(scale)
-                .rotate(rotation)
-                .border(
-                    width = 2.5.dp,
-                    color = when (mood) {
-                        MiloMood.SLEEPING -> Color(0xFF64748B)
-                        MiloMood.LISTENING -> Color(0xFF10B981)
-                        MiloMood.SPEAKING -> BrandAccent
-                        else -> BrandAccent
-                    },
-                    shape = CircleShape
-                )
+                .rotate(rotation),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Crossfade(
-                    targetState = if (mood == MiloMood.THINKING) R.drawable.milo_thinking else R.drawable.milo_final,
-                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
-                    label = "MiloAvatarCrossfade"
-                ) { imageRes ->
-                    Image(
-                        painter = painterResource(id = imageRes),
-                        contentDescription = "Milo Lion Mascot",
-                        modifier = Modifier
-                            .size((sizeDp * 0.82f).dp)
-                            .clip(CircleShape)
-                    )
-                }
+            Crossfade(
+                targetState = if (mood == MiloMood.THINKING) R.drawable.milo_thinking else R.drawable.milo_final,
+                animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+                label = "MiloAvatarCrossfade"
+            ) { imageRes ->
+                Image(
+                    painter = painterResource(id = imageRes),
+                    contentDescription = "Milo Lion Mascot",
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
                 // Small mood badge overlay in bottom center
                 Box(
@@ -380,4 +341,3 @@ fun MiloAnimatedAvatar(
             }
         }
     }
-}

@@ -392,6 +392,18 @@ object FirebaseAuthHelper {
     }
 
     /**
+     * Checks if a user is currently signed in via Firebase Auth or active user record.
+     */
+    fun isUserSignedIn(): Boolean {
+        val fbUser = try {
+            auth?.currentUser ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+        } catch (_: Exception) {
+            null
+        }
+        return fbUser != null || _currentUserRecord.value != null
+    }
+
+    /**
      * Signs out the user from Firebase Auth and clears listeners.
      */
     fun signOut() {

@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -43,108 +47,59 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.example.ui.components.AppHeader
+import com.example.ui.components.MBAppLogo
 import com.example.ui.theme.*
 import com.example.util.BiometricHelper
 import kotlinx.coroutines.delay
 
 // ---------------- Screen 1: Splash Screen ----------------
+// User requirement: Show ONLY logo then splash or login screen and no other screens
 @Composable
 fun SplashScreen(
     onTimeout: () -> Unit
 ) {
+    var isLogoVisible by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
+        isLogoVisible = true
         delay(1400)
         onTimeout()
     }
 
+    val alphaAnim by animateFloatAsState(
+        targetValue = if (isLogoVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+        label = "SplashLogoAlpha"
+    )
+
+    val scaleAnim by animateFloatAsState(
+        targetValue = if (isLogoVisible) 1f else 0.85f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "SplashLogoScale"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(BrandDarkBlue, Color(0xFF0A0F1D), Color(0xFF020617))
-                )
-            ),
+            .background(SurfaceBg),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Making Brands Executive Logo Emblem (Clean, Modern Enterprise Branding)
-            Surface(
-                modifier = Modifier
-                    .size(96.dp)
-                    .shadow(
-                        elevation = 20.dp,
-                        shape = RoundedCornerShape(26.dp),
-                        spotColor = BrandBlue.copy(alpha = 0.5f),
-                        ambientColor = BrandBlue.copy(alpha = 0.3f)
-                    ),
-                shape = RoundedCornerShape(26.dp),
-                color = Color(0xFF1E293B),
-                border = BorderStroke(
-                    1.5.dp,
-                    Brush.linearGradient(
-                        listOf(BrandAccent.copy(alpha = 0.8f), BrandBlue.copy(alpha = 0.3f))
-                    )
-                )
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(BrandBlue.copy(alpha = 0.35f), Color(0xFF0F172A))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CorporateFare,
-                        contentDescription = "MB Logo",
-                        tint = BrandAccent,
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                "MB Traker",
-                color = Color.White,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 30.sp,
-                letterSpacing = 0.5.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                "Track · Manage · Grow",
-                color = BrandAccent,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            CircularProgressIndicator(
-                color = BrandAccent,
-                strokeWidth = 3.dp,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
+        // Show ONLY the Logo as strictly requested
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 28.dp)
+                .graphicsLayer {
+                    alpha = alphaAnim
+                    scaleX = scaleAnim
+                    scaleY = scaleAnim
+                },
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                "Making Brands Enterprise Suite\nCloud Telemetry & Smart CRM Operations",
-                color = Color.White.copy(alpha = 0.6f),
-                textAlign = TextAlign.Center,
-                fontSize = 12.sp,
-                lineHeight = 16.sp
+            MBAppLogo(
+                size = 150.dp,
+                inCircle = true
             )
         }
     }
@@ -162,6 +117,11 @@ fun LoginScreen(
     val activity = context as? FragmentActivity
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    // Strict security: Back press on login screen closes the app; no other screens can be revealed
+    BackHandler {
+        activity?.finish()
+    }
 
     var selectedRole by remember { mutableStateOf("Employee") } // "Employee" or "MB Admin"
     var email by remember { mutableStateOf("") }
@@ -209,29 +169,9 @@ fun LoginScreen(
             ) { success, errorMessage, _ ->
                 isSigningIn = false
                 if (success) {
-                    if (activity != null && BiometricHelper.isBiometricForEmployeeLoginEnabled(context)) {
-                        BiometricHelper.promptBiometricAuth(
-                            activity = activity,
-                            title = "Employee Biometric Verification",
-                            subtitle = "Scan fingerprint or face to unlock employee dashboard & sensitive data",
-                            description = "Enterprise security policy requires biometric verification before accessing the employee dashboard and chat.",
-                            onSuccess = {
-                                viewModel.unlockAllBiometrics()
-                                Toast.makeText(context, "Identity verified! Opening Employee Workspace", Toast.LENGTH_SHORT).show()
-                                onLoginSuccess(false)
-                            },
-                            onError = { err ->
-                                Toast.makeText(context, "Biometric authentication required: $err", Toast.LENGTH_LONG).show()
-                            },
-                            onCancel = {
-                                Toast.makeText(context, "Biometric authentication cancelled. Dashboard remains secured.", Toast.LENGTH_SHORT).show()
-                            }
-                        )
-                    } else {
-                        viewModel.unlockAllBiometrics()
-                        Toast.makeText(context, "Welcome back! Opening Employee Workspace", Toast.LENGTH_SHORT).show()
-                        onLoginSuccess(false)
-                    }
+                    viewModel.unlockAllBiometrics()
+                    Toast.makeText(context, "Welcome back! Opening Employee Workspace", Toast.LENGTH_SHORT).show()
+                    onLoginSuccess(false)
                 } else {
                     Toast.makeText(context, errorMessage ?: "Sign in failed.", Toast.LENGTH_LONG).show()
                 }
@@ -257,27 +197,22 @@ fun LoginScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // App Brand Emblem
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = BrandBlue,
-                shadowElevation = 6.dp,
-                modifier = Modifier.size(64.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("MB", color = Color.White, fontWeight = FontWeight.Black, fontSize = 28.sp)
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("MB Traker", fontWeight = FontWeight.Bold, fontSize = 24.sp, color = BrandDarkBlue)
+            // App Brand Emblem in a Circle
+            MBAppLogo(
+                size = 90.dp,
+                inCircle = true
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            Text("MB Taker", fontFamily = CinzelFontFamily, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = ButtonPrimary)
             Text("Enterprise Employee & Operations Portal", fontSize = 13.sp, color = TextSecondary)
 
             Spacer(modifier = Modifier.height(24.dp))
 
             // Role Selector Tabs (Employee vs MB Admin)
             Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = Color(0xFFE2E8F0),
+                shape = RoundedCornerShape(12.dp),
+                color = ImportantCardBg.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, CardBorder),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -289,7 +224,7 @@ fun LoginScreen(
                         val isSelected = selectedRole == role
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = if (isSelected) (if (role == "MB Admin") BrandDarkBlue else BrandBlue) else Color.Transparent,
+                            color = if (isSelected) ButtonPrimary else Color.Transparent,
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable {
@@ -306,7 +241,7 @@ fun LoginScreen(
                                     Icon(
                                         imageVector = if (role == "MB Admin") Icons.Default.AdminPanelSettings else Icons.Default.Person,
                                         contentDescription = null,
-                                        tint = if (isSelected) Color.White else Color(0xFF334155),
+                                        tint = if (isSelected) Color.White else TextSecondary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -314,7 +249,7 @@ fun LoginScreen(
                                         text = role,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
-                                        color = if (isSelected) Color.White else Color(0xFF0F172A)
+                                        color = if (isSelected) Color.White else TextPrimary
                                     )
                                 }
                             }
@@ -454,9 +389,9 @@ fun LoginScreen(
 
                 // Employee Authentication Note
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFEFF6FF),
-                    border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                    shape = RoundedCornerShape(10.dp),
+                    color = ImportantCardBg.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, CardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -465,7 +400,7 @@ fun LoginScreen(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = BrandBlue,
+                            color = ButtonPrimary,
                             modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -478,12 +413,12 @@ fun LoginScreen(
                                 text = "Employee Email Access",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E40AF)
+                                color = TextPrimary
                             )
                             Text(
                                 text = "Sign in securely with your employee email and password.",
                                 fontSize = 11.sp,
-                                color = Color(0xFF1E3A8A),
+                                color = TextSecondary,
                                 lineHeight = 15.sp
                             )
                         }
@@ -500,9 +435,9 @@ fun LoginScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = BrandBlue,
+                        containerColor = ButtonPrimary,
                         contentColor = Color.White
                     ),
                     enabled = !isSigningIn
@@ -582,18 +517,18 @@ fun LoginScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.5.dp, BrandBlue.copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.5.dp, ButtonSecondary.copy(alpha = 0.6f)),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = Color(0xFFF0FDF4).copy(alpha = 0.7f),
-                        contentColor = BrandDarkBlue
+                        containerColor = AccentSage.copy(alpha = 0.35f),
+                        contentColor = ButtonSecondary
                     )
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.Fingerprint,
                             contentDescription = "Quick Biometric Login",
-                            tint = BrandBlue,
+                            tint = ButtonSecondary,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
@@ -601,7 +536,7 @@ fun LoginScreen(
                             "Quick Biometric Sign-In",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = BrandDarkBlue
+                            color = ButtonSecondary
                         )
                     }
                 }
@@ -725,9 +660,9 @@ fun LoginScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(54.dp),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = BrandDarkBlue,
+                                containerColor = ButtonPrimary,
                                 contentColor = Color.White
                             ),
                             enabled = !isAdminAuthenticating

@@ -45,7 +45,8 @@ fun ProfileScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
-    onNavigateToHelp: () -> Unit = {}
+    onNavigateToHelp: () -> Unit = {},
+    onNavigateToMiloAdmin: () -> Unit = {}
 ) {
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var showDeleteAllFieldsDialog by remember { mutableStateOf(false) }
@@ -67,32 +68,35 @@ fun ProfileScreen(
     val skills = userProfile?.skills ?: "Kotlin, Jetpack Compose, Android, Cloud, UI/UX"
     val bio = userProfile?.bio ?: "Building enterprise mobile experiences for Making Brands"
 
-    // Edit Profile Dialog with all fields + Clear All Inputs button
-    if (showEditProfileDialog) {
-        val configuration = LocalConfiguration.current
-        val isTablet = configuration.screenWidthDp >= 600
-        val screenHeight = configuration.screenHeightDp.dp
+    var showDeleteAllEnterpriseDataDialog by remember { mutableStateOf(false) }
 
-        androidx.compose.ui.window.Dialog(onDismissRequest = { showEditProfileDialog = false }) {
+    // Edit Profile Dialog with all fields (90% of screen width & height according to device)
+    if (showEditProfileDialog) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showEditProfileDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color.White,
                 tonalElevation = 8.dp,
                 modifier = Modifier
-                    .widthIn(max = 600.dp)
-                    .fillMaxWidth(if (isTablet) 0.8f else 0.95f)
-                    .heightIn(max = screenHeight * 0.92f)
+                    .fillMaxWidth(0.90f)
+                    .fillMaxHeight(0.90f)
             ) {
-                var editName by remember { mutableStateOf(empName) }
-                var editRole by remember { mutableStateOf(empRole) }
-                var editEmail by remember { mutableStateOf(email) }
-                var editPhone by remember { mutableStateOf(phone) }
-                var editDepartment by remember { mutableStateOf(department) }
-                var editJoiningDate by remember { mutableStateOf(joiningDate) }
-                var editEmergencyContact by remember { mutableStateOf(emergencyContact) }
-                var editAddress by remember { mutableStateOf(address) }
-                var editSkills by remember { mutableStateOf(skills) }
-                var editBio by remember { mutableStateOf(bio) }
+                var editName by remember(showEditProfileDialog) { mutableStateOf(userProfile?.name?.ifBlank { empName } ?: empName) }
+                var editRole by remember(showEditProfileDialog) { mutableStateOf(userProfile?.role?.ifBlank { empRole } ?: empRole) }
+                var editEmail by remember(showEditProfileDialog) { mutableStateOf(userProfile?.email ?: email) }
+                var editPhone by remember(showEditProfileDialog) { mutableStateOf(userProfile?.phone ?: phone) }
+                var editDepartment by remember(showEditProfileDialog) { mutableStateOf(userProfile?.department ?: department) }
+                var editJoiningDate by remember(showEditProfileDialog) { mutableStateOf(userProfile?.joiningDate ?: joiningDate) }
+                var editEmergencyContact by remember(showEditProfileDialog) { mutableStateOf(userProfile?.emergencyContact ?: emergencyContact) }
+                var editAddress by remember(showEditProfileDialog) { mutableStateOf(userProfile?.address ?: address) }
+                var editSkills by remember(showEditProfileDialog) { mutableStateOf(userProfile?.skills ?: skills) }
+                var editBio by remember(showEditProfileDialog) { mutableStateOf(userProfile?.bio ?: bio) }
 
                 Column(
                     modifier = Modifier
@@ -105,7 +109,7 @@ fun ProfileScreen(
                     ) {
                         Column {
                             Text("Edit Profile Fields", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = TextPrimary)
-                            Text("All fields sync with Room & Firebase", fontSize = 11.sp, color = ElectricBlue)
+                            Text("90% Screen Responsive • Persists in Room & Cloud", fontSize = 11.sp, color = ElectricBlue)
                         }
                         // Clear all inputs inside dialog
                         TextButton(
@@ -188,7 +192,7 @@ fun ProfileScreen(
                             OutlinedTextField(
                                 value = editPhone,
                                 onValueChange = { editPhone = it },
-                                label = { Text("Phone Number") },
+                                label = { Text("Mobile / Phone Number") },
                                 leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = ElectricBlue) },
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
@@ -227,7 +231,7 @@ fun ProfileScreen(
                                 label = { Text("Work / Residential Address") },
                                 leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = ElectricBlue) },
                                 shape = RoundedCornerShape(12.dp),
-                                singleLine = true,
+                                minLines = 2,
                                 colors = appTextFieldColors(),
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -236,10 +240,10 @@ fun ProfileScreen(
                             OutlinedTextField(
                                 value = editSkills,
                                 onValueChange = { editSkills = it },
-                                label = { Text("Skills & Expertise") },
+                                label = { Text("Skills & Expertise (comma separated)") },
                                 leadingIcon = { Icon(Icons.Default.Stars, contentDescription = null, tint = ElectricBlue) },
                                 shape = RoundedCornerShape(12.dp),
-                                singleLine = true,
+                                minLines = 2,
                                 colors = appTextFieldColors(),
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -282,6 +286,7 @@ fun ProfileScreen(
                                     bio = editBio
                                 )
                                 showEditProfileDialog = false
+                                Toast.makeText(context, "Employee Profile Updated Successfully!", Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
@@ -292,6 +297,41 @@ fun ProfileScreen(
                 }
             }
         }
+    }
+
+    // Confirmation Dialog for Delete All Application & Enterprise Data
+    if (showDeleteAllEnterpriseDataDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllEnterpriseDataDialog = false },
+            icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = StatusRed, modifier = Modifier.size(40.dp)) },
+            title = { Text("Delete All Application Data?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "⚠️ WARNING: This will permanently delete ALL leads, customer contacts, tasks, chat histories, attendance records, expense claims, call logs, quotations, and employee fields across the entire database. This action CANNOT be undone.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF475569),
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteAllEnterpriseData {
+                            Toast.makeText(context, "All application data deleted completely!", Toast.LENGTH_LONG).show()
+                        }
+                        showDeleteAllEnterpriseDataDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusRed)
+                ) {
+                    Text("Permanently Delete All Data", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllEnterpriseDataDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
     }
 
     // Confirmation Dialog for Delete / Clear All Profile Fields
@@ -313,6 +353,7 @@ fun ProfileScreen(
                     onClick = {
                         viewModel.deleteAllUserProfileFields()
                         showDeleteAllFieldsDialog = false
+                        Toast.makeText(context, "All profile fields cleared!", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = StatusRed)
                 ) {
@@ -699,6 +740,8 @@ fun ProfileScreen(
                     Column(modifier = Modifier.padding(12.dp)) {
                         ProfileNavRow(Icons.Default.Person, "Edit Profile Fields", onClick = { showEditProfileDialog = true })
                         Divider(color = BorderLight)
+                        ProfileNavRow(Icons.Default.SmartToy, "Milo AI, Splash & Video Admin", iconTint = BrandBlue, onClick = onNavigateToMiloAdmin)
+                        Divider(color = BorderLight)
                         ProfileNavRow(Icons.Default.Settings, "Settings & Preferences", onClick = onNavigateToSettings)
                         Divider(color = BorderLight)
                         ProfileNavRow(Icons.Default.HelpOutline, "Help & Support", onClick = onNavigateToHelp)
@@ -711,7 +754,34 @@ fun ProfileScreen(
                             onClick = { showClearEmployeeDataDialog = true }
                         )
                         Divider(color = BorderLight)
+                        ProfileNavRow(
+                            icon = Icons.Default.DeleteForever,
+                            label = "Delete All Data (Permanent Reset)",
+                            textColor = StatusRed,
+                            iconTint = StatusRed,
+                            onClick = { showDeleteAllEnterpriseDataDialog = true }
+                        )
+                        Divider(color = BorderLight)
                         ProfileNavRow(Icons.Default.Logout, "Logout Account", textColor = StatusRed, iconTint = StatusRed, onClick = onLogout)
+                    }
+                }
+            }
+
+            // Version 5 Badge Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("MB Traker Enterprise Suite", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+                        Text("Version 5.0.0 (Enterprise Build 500)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BrandBlue)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Making Brands © 2026. All Systems Operational.", fontSize = 10.sp, color = TextMuted)
                     }
                 }
             }
@@ -1615,7 +1685,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit = {},
     onNavigateToMiloDebug: () -> Unit = {},
-    onNavigateToMiloOnboarding: () -> Unit = {}
+    onNavigateToMiloOnboarding: () -> Unit = {},
+    onNavigateToMiloAdmin: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val activity = context as? androidx.fragment.app.FragmentActivity
@@ -2505,6 +2576,138 @@ fun SettingsScreen(
                 }
             }
 
+            // 🦁 Milo AI, Splash Screen & Video Admin Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFE0F2FE),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.SmartToy, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Milo AI & Video Admin", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                    Text("Splash status, Ask Milo video & card uploads", fontSize = 12.sp, color = TextSecondary)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = onNavigateToMiloAdmin,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandDarkBlue),
+                            modifier = Modifier.fillMaxWidth().height(44.dp)
+                        ) {
+                            Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open Milo AI & Video Admin Panel", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+
+            // 🗑️ Data Management & System Wipe Card
+            item {
+                var showSettingsDeleteAllDialog by remember { mutableStateOf(false) }
+
+                if (showSettingsDeleteAllDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showSettingsDeleteAllDialog = false },
+                        icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = StatusRed, modifier = Modifier.size(40.dp)) },
+                        title = { Text("Delete All Application Data?", fontWeight = FontWeight.Bold) },
+                        text = {
+                            Text(
+                                "⚠️ This will permanently erase ALL data across all modules (leads, clients, tasks, attendance records, chat logs, call logs, expenses, and employee fields) from local storage and offline cache.",
+                                fontSize = 13.sp,
+                                color = Color(0xFF475569),
+                                lineHeight = 18.sp
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    viewModel.deleteAllEnterpriseData {
+                                        toastMessage = "All application data deleted completely!"
+                                    }
+                                    showSettingsDeleteAllDialog = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = StatusRed)
+                            ) {
+                                Text("Permanently Delete All Data", fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showSettingsDeleteAllDialog = false }) {
+                                Text("Cancel", color = TextSecondary)
+                            }
+                        }
+                    )
+                }
+
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFFEE2E2)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFFEF2F2),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.DeleteForever, contentDescription = null, tint = StatusRed, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Data Management & Reset", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                    Text("Wipe CRM, tasks, chats, and records", fontSize = 12.sp, color = TextSecondary)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = { showSettingsDeleteAllDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = StatusRed),
+                            modifier = Modifier.fillMaxWidth().height(44.dp)
+                        ) {
+                            Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Delete All Data", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+
             // Session & Logout Card
             item {
                 Card(
@@ -2545,8 +2748,8 @@ fun SettingsScreen(
                         modifier = Modifier.padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("MB Traker Enterprise", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
-                        Text("Version 2.4.0 (Build 2026)", fontSize = 12.sp, color = TextSecondary)
+                        Text("MB Traker Enterprise Suite", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+                        Text("Version 5.0.0 (Enterprise Build 500)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BrandBlue)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text("© 2026 Making Brands. All Rights Reserved.", fontSize = 10.sp, color = TextMuted)
                     }

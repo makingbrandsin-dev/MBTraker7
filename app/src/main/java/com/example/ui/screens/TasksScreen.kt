@@ -48,6 +48,11 @@ fun TasksScreen(
     onNavigateToProfile: (() -> Unit)? = null
 ) {
     val tasks by viewModel.tasks.collectAsState()
+    val employees by viewModel.employees.collectAsState()
+    val allAttendance by viewModel.allAttendance.collectAsState()
+    val activeEmployeeNames = remember(allAttendance) {
+        allAttendance.filter { it.isWorking }.map { it.employeeName }.toSet()
+    }
     var selectedScopeTab by remember { mutableIntStateOf(0) } // 0: All, 1: My Tasks
     var selectedStatusFilter by remember { mutableStateOf("All") }
     var selectedCategoryFilter by remember { mutableStateOf("All") }
@@ -299,8 +304,18 @@ fun TasksScreen(
         var newPriority by remember { mutableStateOf("High") }
         var newDueDate by remember { mutableStateOf("30 Sep 2026") }
         var newEstimatedTime by remember { mutableStateOf("4 Hours") }
+        var selectedAssignee by remember { mutableStateOf("Rahul Sharma") }
+        var filterActiveOnly by remember { mutableStateOf(false) }
         var selectedDependencyTaskId by remember { mutableStateOf<Long?>(null) }
         var selectedDependencyTitle by remember { mutableStateOf<String?>(null) }
+
+        val candidateEmployees = remember(employees, filterActiveOnly, activeEmployeeNames) {
+            if (filterActiveOnly) {
+                employees.filter { it.name in activeEmployeeNames || it.status == com.example.data.model.EmployeeStatus.ACTIVE }
+            } else {
+                employees
+            }
+        }
 
         AlertDialog(
             onDismissRequest = { showAddTaskDialog = false },
@@ -337,6 +352,102 @@ fun TasksScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    // Assignee Selection Section with Active Staff Filter
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Assign To Employee:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF475569)
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (!filterActiveOnly) ElectricBlueBg else Color(0xFFF1F5F9),
+                                    modifier = Modifier.clickable { filterActiveOnly = false }
+                                ) {
+                                    Text(
+                                        "All (${employees.size})",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (!filterActiveOnly) ElectricBlue else Color(0xFF64748B),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (filterActiveOnly) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
+                                    modifier = Modifier.clickable { filterActiveOnly = true }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Surface(shape = CircleShape, color = Color(0xFF16A34A), modifier = Modifier.size(5.dp)) {}
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            "Active Clocked-In",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (filterActiveOnly) Color(0xFF15803D) else Color(0xFF64748B)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            candidateEmployees.forEach { emp ->
+                                val isSelected = selectedAssignee.equals(emp.name, ignoreCase = true)
+                                val isActive = emp.name in activeEmployeeNames || emp.status == com.example.data.model.EmployeeStatus.ACTIVE
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) ElectricBlue else Color(0xFFF8FAFC),
+                                    border = BorderStroke(1.dp, if (isSelected) ElectricBlue else Color(0xFFE2E8F0)),
+                                    modifier = Modifier.clickable { selectedAssignee = emp.name }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isActive) Color(0xFF22C55E) else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(7.dp)
+                                        ) {}
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Column {
+                                            Text(
+                                                emp.name,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color.White else Color(0xFF0F172A)
+                                            )
+                                            Text(
+                                                emp.designation,
+                                                fontSize = 9.sp,
+                                                color = if (isSelected) Color.White.copy(alpha = 0.85f) else Color(0xFF64748B)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     // Category Selection Chips
                     Column {
@@ -528,6 +639,7 @@ fun TasksScreen(
                                 dueDate = newDueDate,
                                 category = newCategory,
                                 estimatedTimeNeeded = newEstimatedTime,
+                                assignee = selectedAssignee,
                                 dependsOnTaskId = selectedDependencyTaskId,
                                 dependsOnTaskTitle = selectedDependencyTitle
                             )
@@ -650,6 +762,21 @@ fun TaskCardItem(
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (task.isCompleted) Color(0xFF94A3B8) else Color(0xFFB45309)
                                 )
+                                if (task.assignee.isNotBlank()) {
+                                    Text("•", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                                    Icon(
+                                        Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = ElectricBlue,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        text = task.assignee,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElectricBlue
+                                    )
+                                }
                             }
                         }
 

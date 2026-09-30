@@ -378,6 +378,9 @@ interface NotificationDao {
 
     @Query("DELETE FROM notifications")
     suspend fun clearAll()
+
+    @Query("DELETE FROM notifications WHERE subtitle LIKE '%·%' AND (timeAgo LIKE '%m ago' OR timeAgo LIKE '%h ago')")
+    suspend fun removeDummyNotifications()
 }
 
 @Dao
@@ -540,6 +543,9 @@ interface SocialReviewDao {
 
     @Delete
     suspend fun delete(config: SocialReviewConfigEntity)
+
+    @Query("DELETE FROM social_review_configs")
+    suspend fun clearAll()
 }
 
 @Dao

@@ -331,7 +331,7 @@ private fun WorkloadChartLegend() {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        LegendIndicator(color = Color(0xFF2563EB), label = "Pending")
+        LegendIndicator(color = Color(0xFF705C30), label = "Pending")
         LegendIndicator(color = Color(0xFFD97706), label = "In Progress")
         LegendIndicator(color = Color(0xFF10B981), label = "Completed")
     }
@@ -493,11 +493,11 @@ private fun ProjectWorkloadBarItem(
                     currentX += width
                 }
 
-                // Pending segment (Blue)
+                // Pending segment (Dark Bronze)
                 if (pendingRatio > 0f) {
                     val width = canvasWidth * pendingRatio
                     drawRoundRect(
-                        color = Color(0xFF2563EB),
+                        color = Color(0xFF705C30),
                         topLeft = Offset(currentX, 0f),
                         size = Size(width, canvasHeight),
                         cornerRadius = cornerRadius

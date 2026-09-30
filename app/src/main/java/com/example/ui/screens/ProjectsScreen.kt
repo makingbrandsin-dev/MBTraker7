@@ -168,11 +168,13 @@ fun ProjectsScreen(
         ) {
             Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .imePadding(),
-                color = Color(0xFFF8FAFC)
+                    .fillMaxWidth(0.90f)
+                    .fillMaxHeight(0.88f)
+                    .padding(vertical = 16.dp)
+                    .clip(RoundedCornerShape(24.dp)),
+                color = Color(0xFFF8FAFC),
+                shape = RoundedCornerShape(24.dp),
+                tonalElevation = 8.dp
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     // Top Header

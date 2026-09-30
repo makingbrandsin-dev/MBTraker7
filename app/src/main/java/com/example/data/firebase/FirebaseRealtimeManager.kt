@@ -22,6 +22,7 @@ import com.example.data.model.EmployeeEntity
 import com.example.data.model.EmployeeStatus
 import com.example.data.model.LeadEntity
 import com.example.data.model.NotificationEntity
+import com.example.data.model.ProjectEntity
 import com.example.data.model.TaskEntity
 import com.example.data.model.UserProfileEntity
 import com.example.data.websocket.RealtimeWebSocketManager
@@ -96,6 +97,7 @@ object FirebaseRealtimeManager {
     private var firestore: FirebaseFirestore? = null
     private var attendanceListener: ListenerRegistration? = null
     private var taskListener: ListenerRegistration? = null
+    private var projectListener: ListenerRegistration? = null
     private var profileListener: ListenerRegistration? = null
     private var chatListener: ListenerRegistration? = null
     private var feedListener: ListenerRegistration? = null
@@ -113,6 +115,7 @@ object FirebaseRealtimeManager {
 
     private var attendanceDaoRef: AttendanceDao? = null
     private var chatDaoRef: ChatDao? = null
+    private var projectDaoRef: com.example.data.local.ProjectDao? = null
     private var notificationDaoRef: NotificationDao? = null
     private var notificationListener: ListenerRegistration? = null
     private val handledNotificationDocIds = ConcurrentHashMap.newKeySet<String>()
@@ -151,11 +154,13 @@ object FirebaseRealtimeManager {
         chatDao: ChatDao? = null,
         activityFeedDao: ActivityFeedDao? = null,
         scope: CoroutineScope,
-        notificationDao: NotificationDao? = null
+        notificationDao: NotificationDao? = null,
+        projectDao: com.example.data.local.ProjectDao? = null
     ) {
         attendanceDaoRef = attendanceDao
         chatDaoRef = chatDao
         notificationDaoRef = notificationDao
+        projectDaoRef = projectDao
         appContext = context.applicationContext
         appScope = scope
         registerNetworkCallback(context)
@@ -290,6 +295,9 @@ object FirebaseRealtimeManager {
             if (taskDao != null && taskListener == null) {
                 startRealtimeTaskListener(taskDao, scope)
             }
+            if (projectDao != null && projectListener == null) {
+                startRealtimeProjectListener(projectDao, scope)
+            }
             return
         }
 
@@ -331,6 +339,9 @@ object FirebaseRealtimeManager {
             startRealtimeProfileListener(userProfileDao, scope)
             if (taskDao != null) {
                 startRealtimeTaskListener(taskDao, scope)
+            }
+            if (projectDao != null) {
+                startRealtimeProjectListener(projectDao, scope)
             }
             if (chatDao != null) {
                 startGlobalChatListener(chatDao, scope)
@@ -630,6 +641,82 @@ object FirebaseRealtimeManager {
             firestore?.collection("tasks")?.document(docId)?.delete()
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting task from Firebase: ${e.message}")
+        }
+    }
+
+    fun syncProjectToFirebase(project: ProjectEntity) {
+        if (!isEffectiveOnline()) {
+            updateSyncState(
+                status = NetworkSyncStatus.OFFLINE,
+                isOnline = false,
+                statusMessage = "Offline: Project cached in Room"
+            )
+            return
+        }
+
+        updateSyncState(
+            status = NetworkSyncStatus.SYNCING,
+            isSyncing = true,
+            statusMessage = "Syncing project '${project.name}'..."
+        )
+
+        try {
+            val docId = if (project.id > 0L) "project_${project.id}" else "project_${System.currentTimeMillis()}"
+            val data = hashMapOf(
+                "id" to project.id,
+                "name" to project.name,
+                "clientName" to project.clientName,
+                "totalTasks" to project.totalTasks,
+                "completedTasks" to project.completedTasks,
+                "progressPercent" to project.progressPercent,
+                "status" to project.status,
+                "priority" to project.priority,
+                "startDate" to project.startDate,
+                "deadline" to project.deadline,
+                "managerName" to project.managerName,
+                "teamSize" to project.teamSize,
+                "description" to project.description,
+                "budget" to project.budget,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            firestore?.collection("projects")?.document(docId)
+                ?.set(data, SetOptions.merge())
+                ?.addOnSuccessListener {
+                    val now = System.currentTimeMillis()
+                    updateSyncState(
+                        status = NetworkSyncStatus.SYNCED,
+                        isOnline = true,
+                        isSyncing = false,
+                        statusMessage = "Firebase Realtime: Live & Synced",
+                        newTimestamp = now
+                    )
+                    Log.d(TAG, "Successfully synced project $docId to Firebase")
+                }
+                ?.addOnFailureListener { e ->
+                    Log.w(TAG, "Firebase project sync error: ${e.message}")
+                    updateSyncState(
+                        status = NetworkSyncStatus.ERROR,
+                        isSyncing = false,
+                        statusMessage = "Sync failed: Retrying soon"
+                    )
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in syncProjectToFirebase: ${e.message}")
+            updateSyncState(
+                status = NetworkSyncStatus.ERROR,
+                isSyncing = false,
+                statusMessage = "Sync failed"
+            )
+        }
+    }
+
+    fun deleteProjectFromFirebase(projectId: Long) {
+        if (!isEffectiveOnline()) return
+        try {
+            val docId = "project_$projectId"
+            firestore?.collection("projects")?.document(docId)?.delete()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting project from Firebase: ${e.message}")
         }
     }
 
@@ -1006,6 +1093,64 @@ object FirebaseRealtimeManager {
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start task listener: ${e.message}")
+        }
+    }
+
+    private fun startRealtimeProjectListener(projectDao: com.example.data.local.ProjectDao, scope: CoroutineScope) {
+        try {
+            projectListener?.remove()
+            projectListener = firestore?.collection("projects")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.w(TAG, "Realtime project listen error: ${error.message}")
+                        return@addSnapshotListener
+                    }
+
+                    if (snapshot != null && !snapshot.isEmpty) {
+                        scope.launch(Dispatchers.IO) {
+                            for (doc in snapshot.documents) {
+                                val id = doc.getLong("id")
+                                    ?: doc.id.replace("project_", "").toLongOrNull()
+                                    ?: 0L
+                                val name = doc.getString("name") ?: ""
+                                val clientName = doc.getString("clientName") ?: ""
+                                val totalTasks = doc.getLong("totalTasks")?.toInt() ?: 10
+                                val completedTasks = doc.getLong("completedTasks")?.toInt() ?: 0
+                                val progressPercent = doc.getLong("progressPercent")?.toInt() ?: 0
+                                val status = doc.getString("status") ?: "Active"
+                                val priority = doc.getString("priority") ?: "High"
+                                val startDate = doc.getString("startDate") ?: "01 Sep 2025"
+                                val deadline = doc.getString("deadline") ?: "28 Sep 2025"
+                                val managerName = doc.getString("managerName") ?: "Rahul Sharma"
+                                val teamSize = doc.getLong("teamSize")?.toInt() ?: 5
+                                val description = doc.getString("description") ?: ""
+                                val budget = doc.getDouble("budget")
+
+                                if (id > 0L && name.isNotBlank()) {
+                                    val project = ProjectEntity(
+                                        id = id,
+                                        name = name,
+                                        clientName = clientName,
+                                        totalTasks = totalTasks,
+                                        completedTasks = completedTasks,
+                                        progressPercent = progressPercent,
+                                        status = status,
+                                        priority = priority,
+                                        startDate = startDate,
+                                        deadline = deadline,
+                                        managerName = managerName,
+                                        teamSize = teamSize,
+                                        description = description,
+                                        budget = budget
+                                    )
+                                    projectDao.insert(project)
+                                }
+                            }
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start project listener: ${e.message}")
         }
     }
 
@@ -1874,7 +2019,8 @@ object FirebaseRealtimeManager {
         taskDao: TaskDao,
         attendanceDao: AttendanceDao,
         leadDao: LeadDao,
-        employeeDao: EmployeeDao
+        employeeDao: EmployeeDao,
+        projectDao: com.example.data.local.ProjectDao? = null
     ) = withContext(Dispatchers.IO) {
         if (!isEffectiveOnline()) {
             updateSyncState(
@@ -2011,6 +2157,53 @@ object FirebaseRealtimeManager {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Refresh leads failed: ${e.message}")
+        }
+
+        // 5. Fetch latest projects from Firestore
+        if (projectDao != null) {
+            try {
+                val projSnapshot = firestore?.collection("projects")?.get(Source.DEFAULT)?.awaitTask()
+                if (projSnapshot != null && !projSnapshot.isEmpty) {
+                    for (doc in projSnapshot.documents) {
+                        val id = doc.getLong("id") ?: doc.id.replace("project_", "").toLongOrNull() ?: 0L
+                        val name = doc.getString("name") ?: ""
+                        val clientName = doc.getString("clientName") ?: ""
+                        val totalTasks = doc.getLong("totalTasks")?.toInt() ?: 10
+                        val completedTasks = doc.getLong("completedTasks")?.toInt() ?: 0
+                        val progressPercent = doc.getLong("progressPercent")?.toInt() ?: 0
+                        val status = doc.getString("status") ?: "Active"
+                        val priority = doc.getString("priority") ?: "High"
+                        val startDate = doc.getString("startDate") ?: "01 Sep 2025"
+                        val deadline = doc.getString("deadline") ?: "28 Sep 2025"
+                        val managerName = doc.getString("managerName") ?: "Rahul Sharma"
+                        val teamSize = doc.getLong("teamSize")?.toInt() ?: 5
+                        val description = doc.getString("description") ?: ""
+                        val budget = doc.getDouble("budget")
+
+                        if (id > 0L && name.isNotBlank()) {
+                            val project = ProjectEntity(
+                                id = id,
+                                name = name,
+                                clientName = clientName,
+                                totalTasks = totalTasks,
+                                completedTasks = completedTasks,
+                                progressPercent = progressPercent,
+                                status = status,
+                                priority = priority,
+                                startDate = startDate,
+                                deadline = deadline,
+                                managerName = managerName,
+                                teamSize = teamSize,
+                                description = description,
+                                budget = budget
+                            )
+                            projectDao.insert(project)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Refresh projects failed: ${e.message}")
+            }
         }
 
         updateSyncState(

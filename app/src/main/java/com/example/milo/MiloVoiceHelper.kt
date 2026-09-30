@@ -7,6 +7,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import android.speech.tts.TextToSpeech
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
@@ -15,12 +16,103 @@ import java.util.Locale
  * Feature 2: Hands-Free Voice Mode (MiloVoiceHelper.kt)
  * Integrates Android's native SpeechRecognizer directly into Jetpack Compose so field agents
  * can talk to Milo while driving or visiting client sites.
+ * Also provides Milo Text-To-Speech audio briefing on app open!
  */
 class MiloVoiceHelper(
     private val context: Context,
     private val onResult: (String) -> Unit,
     private val onErrorState: (String) -> Unit = {}
 ) : RecognitionListener {
+
+    companion object {
+        private const val TAG = "MiloVoiceHelper"
+        private var tts: TextToSpeech? = null
+        private var isTtsInitialized = false
+        private var pendingTextToSpeak: String? = null
+
+        fun initTts(context: Context, onReady: (() -> Unit)? = null) {
+            if (tts == null) {
+                tts = TextToSpeech(context.applicationContext) { status ->
+                    if (status == TextToSpeech.SUCCESS) {
+                        tts?.language = Locale.ENGLISH
+                        tts?.setPitch(1.08f)
+                        tts?.setSpeechRate(1.02f)
+                        isTtsInitialized = true
+                        Log.d(TAG, "Milo TextToSpeech initialized successfully")
+                        pendingTextToSpeak?.let { text ->
+                            speakText(context, text)
+                            pendingTextToSpeak = null
+                        }
+                        onReady?.invoke()
+                    } else {
+                        Log.w(TAG, "Milo TextToSpeech failed initialization with status $status")
+                    }
+                }
+            } else if (isTtsInitialized) {
+                onReady?.invoke()
+            }
+        }
+
+        fun speakDailyBriefing(
+            context: Context,
+            employeeName: String,
+            pendingTasksCount: Int,
+            activeProjectsCount: Int,
+            leadsCount: Int,
+            callLogsCount: Int,
+            force: Boolean = false
+        ) {
+            val name = if (employeeName.isNotBlank() && !employeeName.equals("User", true)) employeeName else "Team Member"
+            val briefingMessage = buildString {
+                append("Good day, $name! ")
+                append("Here is your status update from Milo. ")
+                if (pendingTasksCount > 0) {
+                    append("You have $pendingTasksCount pending tasks requiring attention. ")
+                } else {
+                    append("All your tasks are currently up to date. ")
+                }
+                if (activeProjectsCount > 0) {
+                    append("There are $activeProjectsCount active projects in progress. ")
+                }
+                if (leadsCount > 0) {
+                    append("You have $leadsCount active leads in the pipeline. ")
+                }
+                if (callLogsCount > 0) {
+                    append("And $callLogsCount call logs are registered. ")
+                }
+                append("Ready to conquer today's goals!")
+            }
+
+            speakText(context, briefingMessage)
+        }
+
+        fun speakText(context: Context, text: String) {
+            if (tts == null || !isTtsInitialized) {
+                pendingTextToSpeak = text
+                initTts(context) {
+                    try {
+                        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error speaking text", e)
+                    }
+                }
+            } else {
+                try {
+                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error invoking tts.speak", e)
+                }
+            }
+        }
+
+        fun stopSpeaking() {
+            try {
+                tts?.stop()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping TTS", e)
+            }
+        }
+    }
 
     private var speechRecognizer: SpeechRecognizer? = null
 

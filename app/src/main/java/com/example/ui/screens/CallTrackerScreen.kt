@@ -62,6 +62,42 @@ fun CallTrackerScreen(
 
     var showQuickLogDialog by remember { mutableStateOf(false) }
     var logToDelete by remember { mutableStateOf<CallLogEntity?>(null) }
+    var showDeleteAllLogsDialog by remember { mutableStateOf(false) }
+    val isAutoCallRecordingEnabled by viewModel.isAutoCallRecordingEnabled.collectAsState()
+    var currentlyPlayingLogId by remember { mutableStateOf<Long?>(null) }
+
+    // Dialog: Delete All Call Logs Confirmation
+    if (showDeleteAllLogsDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllLogsDialog = false },
+            icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = StatusRed, modifier = Modifier.size(36.dp)) },
+            title = { Text("Delete All Call Logs?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to permanently delete all call logs and recorded call audio? These will not reproduce once deleted.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearAllCallLogs()
+                        showDeleteAllLogsDialog = false
+                        Toast.makeText(context, "All call logs and recordings deleted", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusRed)
+                ) {
+                    Text("Delete All", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllLogsDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
 
     // Metrics calculations
     val totalCount = callLogs.size
@@ -121,6 +157,15 @@ fun CallTrackerScreen(
                             tint = BrandBlue
                         )
                     }
+                    if (callLogs.isNotEmpty()) {
+                        IconButton(onClick = { showDeleteAllLogsDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteSweep,
+                                contentDescription = "Delete All Call Logs",
+                                tint = StatusRed
+                            )
+                        }
+                    }
                 }
             )
         },
@@ -146,6 +191,91 @@ fun CallTrackerScreen(
         ) {
             item {
                 Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            // 0. Auto Call Recording Configuration Card (Option ON/OFF)
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isAutoCallRecordingEnabled) Color(0xFFF0FDF4) else Color(0xFFF8FAFC)
+                    ),
+                    border = BorderStroke(1.dp, if (isAutoCallRecordingEnabled) Color(0xFFBBF7D0) else Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isAutoCallRecordingEnabled) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isAutoCallRecordingEnabled) Icons.Default.Mic else Icons.Default.MicOff,
+                                        contentDescription = null,
+                                        tint = if (isAutoCallRecordingEnabled) Color(0xFF16A34A) else Color(0xFF64748B),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "Auto Call Recording",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = TextPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (isAutoCallRecordingEnabled) Color(0xFF16A34A) else Color(0xFF64748B)
+                                    ) {
+                                        Text(
+                                            if (isAutoCallRecordingEnabled) "ON" else "OFF",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    if (isAutoCallRecordingEnabled)
+                                        "Auto-records in-call audio & logs with CRM clients"
+                                    else
+                                        "Call audio recording is turned OFF",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+
+                        Switch(
+                            checked = isAutoCallRecordingEnabled,
+                            onCheckedChange = { isChecked ->
+                                viewModel.setAutoCallRecordingEnabled(isChecked)
+                                Toast.makeText(
+                                    context,
+                                    if (isChecked) "Auto Call Recording turned ON" else "Auto Call Recording turned OFF",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF16A34A)
+                            )
+                        )
+                    }
+                }
             }
 
             // 1. Telephony BroadcastReceiver Live Status Banner
@@ -294,6 +424,17 @@ fun CallTrackerScreen(
                 items(filteredLogs, key = { it.id }) { log ->
                     CallLogItemCard(
                         log = log,
+                        isAudioPlaying = currentlyPlayingLogId == log.id,
+                        onPlayAudio = {
+                            if (currentlyPlayingLogId == log.id) {
+                                com.example.util.AudioRecorderHelper.stopPlaying()
+                                currentlyPlayingLogId = null
+                            } else {
+                                com.example.util.AudioRecorderHelper.stopPlaying()
+                                currentlyPlayingLogId = log.id
+                                Toast.makeText(context, "Playing call recording for ${log.contactName}", Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         onCallClick = {
                             try {
                                 val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${log.phoneNumber}"))
@@ -519,6 +660,8 @@ private fun MetricMiniCard(
 @Composable
 fun CallLogItemCard(
     log: CallLogEntity,
+    isAudioPlaying: Boolean = false,
+    onPlayAudio: () -> Unit = {},
     onCallClick: () -> Unit,
     onWhatsAppClick: () -> Unit,
     onDeleteClick: () -> Unit

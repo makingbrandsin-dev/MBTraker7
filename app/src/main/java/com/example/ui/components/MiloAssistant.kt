@@ -297,15 +297,43 @@ fun MiloAssistantDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    // Animated Milo Avatar Widget
-                                    MiloAnimatedAvatar(
-                                        mood = miloMood,
-                                        sizeDp = 46,
-                                        onClick = {
-                                            lastInteractionTime = System.currentTimeMillis()
-                                            miloMood = if (miloMood == MiloMood.SLEEPING) MiloMood.AWAKE_IDLE else MiloMood.LISTENING
+                                    // Animated Milo Avatar / Video Widget based on live status
+                                    val matchingState = when (miloMood) {
+                                        MiloMood.SLEEPING -> com.example.domain.milo.MiloState.GOODBYE
+                                        MiloMood.THINKING -> com.example.domain.milo.MiloState.THINKING
+                                        MiloMood.LISTENING -> com.example.domain.milo.MiloState.WORKING
+                                        MiloMood.SPEAKING -> com.example.domain.milo.MiloState.CELEBRATION
+                                        MiloMood.AWAKE_IDLE -> com.example.domain.milo.MiloState.WELCOME
+                                    }
+                                    val popupVideoUri = remember(miloMood) {
+                                        com.example.milo.MiloVideoHelper.getMiloVideoUri(context, matchingState)
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(50.dp)
+                                            .clickable {
+                                                lastInteractionTime = System.currentTimeMillis()
+                                                miloMood = if (miloMood == MiloMood.SLEEPING) MiloMood.AWAKE_IDLE else MiloMood.LISTENING
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (popupVideoUri != null) {
+                                            com.example.milo.MiloVideoSurface(
+                                                videoUri = popupVideoUri,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            MiloAnimatedAvatar(
+                                                mood = miloMood,
+                                                sizeDp = 50,
+                                                onClick = {
+                                                    lastInteractionTime = System.currentTimeMillis()
+                                                    miloMood = if (miloMood == MiloMood.SLEEPING) MiloMood.AWAKE_IDLE else MiloMood.LISTENING
+                                                }
+                                            )
                                         }
-                                    )
+                                    }
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
                                         Row(

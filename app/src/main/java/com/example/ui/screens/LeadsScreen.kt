@@ -2,6 +2,9 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.ActivityResult
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -693,13 +696,7 @@ fun LeadsScreen(
                                 // Call button
                                 OutlinedButton(
                                     onClick = {
-                                        val dialIntent = Intent(
-                                            Intent.ACTION_DIAL,
-                                            Uri.parse("tel:${lead.phone.replace(" ", "")}")
-                                        )
-                                        try {
-                                            context.startActivity(dialIntent)
-                                        } catch (_: Exception) {}
+                                        WhatsAppHelper.dialPhoneNumber(context, lead.phone)
                                         viewModel.addCallLog(lead.name, lead.phone, "Outgoing", "Initiated")
                                     },
                                     modifier = Modifier
@@ -762,18 +759,18 @@ fun LeadsScreen(
                                         .weight(1.1f)
                                         .height(40.dp),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFEFF6FF)),
-                                    border = BorderStroke(1.dp, Color(0xFF93C5FD)),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = ImportantCardBg.copy(alpha = 0.5f)),
+                                    border = BorderStroke(1.dp, ButtonPrimary.copy(alpha = 0.4f)),
                                     contentPadding = PaddingValues(horizontal = 6.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Share,
                                         contentDescription = "Brochure",
-                                        tint = Color(0xFF2563EB),
+                                        tint = ButtonPrimary,
                                         modifier = Modifier.size(15.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Profile", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                                    Text("Profile", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ButtonPrimary)
                                 }
 
                                 // Details arrow button
@@ -824,6 +821,68 @@ fun LeadsScreen(
         var nameError by remember { mutableStateOf(false) }
         var phoneError by remember { mutableStateOf(false) }
 
+        val speechLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == android.app.Activity.RESULT_OK) {
+                val spokenText = result.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull() ?: ""
+                if (spokenText.isNotBlank()) {
+                    // Extract phone number (10 consecutive digits)
+                    val phoneRegex = Regex("\\b[6-9]\\d{9}\\b")
+                    val foundPhone = phoneRegex.find(spokenText.replace(" ", ""))?.value
+                        ?: Regex("\\d{10}").find(spokenText.replace(" ", ""))?.value
+                    if (foundPhone != null) {
+                        phone = foundPhone
+                        phoneError = false
+                    }
+
+                    // Extract email
+                    val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+                    val foundEmail = emailRegex.find(spokenText)?.value
+                    if (foundEmail != null) {
+                        email = foundEmail
+                    }
+
+                    // Extract amount/value
+                    val valueRegex = Regex("(?:value|budget|amount|worth|rupees|inr|of)\\s*(\\d+[\\d,]*)", RegexOption.IGNORE_CASE)
+                    val foundValue = valueRegex.find(spokenText)?.groupValues?.getOrNull(1)
+                    if (foundValue != null) {
+                        rawAmount = foundValue
+                    }
+
+                    // Extract company
+                    val companyRegex = Regex("(?:from|at|company)\\s+([a-zA-Z0-9&\\s]+?)(?:\\s+(?:phone|number|mobile|requirement|for|needs|value|email)|$)", RegexOption.IGNORE_CASE)
+                    val foundCompany = companyRegex.find(spokenText)?.groupValues?.getOrNull(1)?.trim()
+                    if (!foundCompany.isNullOrBlank()) {
+                        company = foundCompany
+                    }
+
+                    // Extract requirement
+                    val reqRegex = Regex("(?:requirement|needs|for|project|inquiry|inquired)\\s+(.+?)(?:\\s+(?:phone|value|amount|from)|$)", RegexOption.IGNORE_CASE)
+                    val foundReq = reqRegex.find(spokenText)?.groupValues?.getOrNull(1)?.trim()
+                    if (!foundReq.isNullOrBlank()) {
+                        requirement = foundReq
+                    } else if (requirement.isBlank()) {
+                        requirement = spokenText
+                    }
+
+                    // Extract name
+                    val nameRegex = Regex("^([a-zA-Z\\s]+?)(?:\\s+(?:from|at|phone|mobile|company)|$)", RegexOption.IGNORE_CASE)
+                    val foundName = nameRegex.find(spokenText)?.groupValues?.getOrNull(1)?.trim()
+                    if (!foundName.isNullOrBlank() && foundName.split(" ").size <= 4) {
+                        name = foundName
+                        nameError = false
+                    } else if (name.isBlank()) {
+                        val words = spokenText.split(" ")
+                        name = words.take(2).joinToString(" ")
+                        nameError = false
+                    }
+
+                    android.widget.Toast.makeText(context, "Voice details parsed into lead form!", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
         val sourcesList = listOf("Website", "Justdial", "Facebook", "Google Ads", "WhatsApp", "OLX", "LinkedIn", "Direct")
         val stages = listOf("New", "Contacted", "Interested", "Follow-up", "Proposal", "Negotiation", "Won")
 
@@ -836,13 +895,20 @@ fun LeadsScreen(
         ) {
             Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .imePadding(),
-                color = Color(0xFFF8FAFC)
+                    .fillMaxWidth(0.90f)
+                    .fillMaxHeight(0.88f)
+                    .padding(vertical = 16.dp)
+                    .clip(RoundedCornerShape(24.dp)),
+                color = Color(0xFFF8FAFC),
+                shape = RoundedCornerShape(24.dp),
+                tonalElevation = 8.dp
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .navigationBarsPadding()
+                        .imePadding()
+                ) {
                     // Top Header
                     Surface(
                         color = Color.White,
@@ -907,6 +973,74 @@ fun LeadsScreen(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
+
+                // 🎙️ Voice Lead Input Feature Card
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = ImportantCardBg),
+                    border = BorderStroke(1.dp, CardBorder)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Surface(
+                                shape = CircleShape,
+                                color = ButtonPrimary,
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Mic,
+                                        contentDescription = "Voice Input",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Speak to Add Lead",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "E.g. 'Rahul from Acme Corp phone 9876543210 requirement Cloud Portal'",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary,
+                                    maxLines = 2
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                    putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Speak lead details: Name, Company, Phone, Requirement...")
+                                }
+                                try {
+                                    speechLauncher.launch(intent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Voice recognition not available on this device", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ButtonPrimary),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Speak", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
 
                 // ── Card 1: Contact Information ─────────────────────────
                 Card(
@@ -974,6 +1108,58 @@ fun LeadsScreen(
                             colors = appTextFieldColors(),
                             singleLine = true
                         )
+
+                        // Quick Call & WhatsApp Action Buttons directly in Contact Details Card
+                        if (phone.isNotBlank()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        if (phone.isBlank()) {
+                                            phoneError = true
+                                            return@OutlinedButton
+                                        }
+                                        WhatsAppHelper.dialPhoneNumber(context, phone)
+                                        viewModel.addCallLog(name.ifBlank { "New Lead" }, phone, "Outgoing", "Initiated")
+                                    },
+                                    modifier = Modifier.weight(1f).height(38.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF0FDF4)),
+                                    border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                                ) {
+                                    Icon(Icons.Default.Phone, contentDescription = "Call", tint = Color(0xFF15803D), modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Call Form Number", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        if (phone.isBlank()) {
+                                            phoneError = true
+                                            return@OutlinedButton
+                                        }
+                                        WhatsAppHelper.sendWhatsAppMessage(
+                                            context = context,
+                                            phoneNumber = phone,
+                                            message = "Hello ${name.ifBlank { "there" }}, connecting with you from Making Brands regarding your inquiry.",
+                                            showSuccessToast = true
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1.2f).height(38.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFD1FAE5)),
+                                    border = BorderStroke(1.dp, Color(0xFF6EE7B7)),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                                ) {
+                                    Icon(Icons.Default.Chat, contentDescription = "WhatsApp", tint = Color(0xFF059669), modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("WhatsApp Form Number", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669))
+                                }
+                            }
+                        }
 
                         // Email
                         OutlinedTextField(
@@ -1270,86 +1456,161 @@ fun LeadsScreen(
 
                     }
 
-                    // Pinned Bottom Footer Actions
+                    // Pinned Bottom Footer Actions with Call, WhatsApp, Cancel & Save
                     Surface(
                         color = Color.White,
                         shadowElevation = 8.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            OutlinedButton(
-                                onClick = { showAddLeadBottomSheet = false },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                            // Row 1: Direct Call & WhatsApp Action Buttons using Phone provided in Form
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
+                                OutlinedButton(
+                                    onClick = {
+                                        if (phone.isBlank()) {
+                                            phoneError = true
+                                            android.widget.Toast.makeText(context, "Please enter a phone number in the form first", android.widget.Toast.LENGTH_SHORT).show()
+                                            return@OutlinedButton
+                                        }
+                                        WhatsAppHelper.dialPhoneNumber(context, phone)
+                                        viewModel.addCallLog(name.ifBlank { "New Lead" }, phone, "Outgoing", "Initiated")
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF0FDF4)),
+                                    border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                    contentPadding = PaddingValues(horizontal = 6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Phone,
+                                        contentDescription = "Call Lead",
+                                        tint = Color(0xFF15803D),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Call Lead", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        if (phone.isBlank()) {
+                                            phoneError = true
+                                            android.widget.Toast.makeText(context, "Please enter a phone number in the form first", android.widget.Toast.LENGTH_SHORT).show()
+                                            return@OutlinedButton
+                                        }
+                                        WhatsAppHelper.sendWhatsAppMessage(
+                                            context = context,
+                                            phoneNumber = phone,
+                                            message = "Hello ${name.ifBlank { "there" }}, connecting with you from Making Brands regarding your inquiry.",
+                                            showSuccessToast = true
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .height(42.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFD1FAE5)),
+                                    border = BorderStroke(1.dp, Color(0xFF6EE7B7)),
+                                    contentPadding = PaddingValues(horizontal = 6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Chat,
+                                        contentDescription = "WhatsApp Lead",
+                                        tint = Color(0xFF059669),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("WhatsApp", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669))
+                                }
                             }
 
-                            Button(
-                                onClick = {
-                                    if (name.isBlank()) {
-                                        nameError = true
-                                        return@Button
-                                    }
-                                    if (phone.isBlank()) {
-                                        phoneError = true
-                                        return@Button
-                                    }
-                                    isSaving = true
-                                    val formattedValue = "$selectedCurrency ${rawAmount.trim()}"
-                                    val cleanName = name.trim()
-                                    val cleanCompany = company.ifBlank { "Independent" }.trim()
-                                    val cleanPhone = phone.trim()
-                                    val cleanEmail = email.trim()
-                                    val cleanReq = requirement.trim()
-
-                                    viewModel.addLead(
-                                        name = cleanName,
-                                        company = cleanCompany,
-                                        phone = cleanPhone,
-                                        email = cleanEmail,
-                                        requirement = cleanReq,
-                                        value = formattedValue,
-                                        stage = selectedStage,
-                                        score = leadScore.toInt(),
-                                        source = selectedSource
-                                    )
-
-                                    // Launch WhatsApp with Company Profile immediately if toggle is enabled
-                                    if (autoSendWhatsAppBrochure) {
-                                        WhatsAppHelper.sendCompanyProfileToLead(
-                                            context = context,
-                                            leadName = cleanName,
-                                            leadPhone = cleanPhone,
-                                            companyName = cleanCompany,
-                                            brochureConfig = autoBrochureCfg
-                                        )
-                                    }
-
-                                    isSaving = false
-                                    showAddLeadBottomSheet = false
-                                },
-                                modifier = Modifier
-                                    .weight(1.6f)
-                                    .height(48.dp)
-                                    .testTag("save_lead_button"),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                            // Row 2: Form Actions (Cancel & Save & Create Lead)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (isSaving) {
-                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                } else {
-                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Save & Create Lead", fontWeight = FontWeight.Bold, color = Color.White)
+                                OutlinedButton(
+                                    onClick = { showAddLeadBottomSheet = false },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                                ) {
+                                    Text("Cancel", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (name.isBlank()) {
+                                            nameError = true
+                                            return@Button
+                                        }
+                                        if (phone.isBlank()) {
+                                            phoneError = true
+                                            return@Button
+                                        }
+                                        isSaving = true
+                                        val formattedValue = "$selectedCurrency ${rawAmount.trim()}"
+                                        val cleanName = name.trim()
+                                        val cleanCompany = company.ifBlank { "Independent" }.trim()
+                                        val cleanPhone = phone.trim()
+                                        val cleanEmail = email.trim()
+                                        val cleanReq = requirement.trim()
+
+                                        viewModel.addLead(
+                                            name = cleanName,
+                                            company = cleanCompany,
+                                            phone = cleanPhone,
+                                            email = cleanEmail,
+                                            requirement = cleanReq,
+                                            value = formattedValue,
+                                            stage = selectedStage,
+                                            score = leadScore.toInt(),
+                                            source = selectedSource,
+                                            triggerWhatsAppDispatch = !autoSendWhatsAppBrochure
+                                        )
+
+                                        // Launch WhatsApp with Company Profile immediately if toggle is enabled
+                                        if (autoSendWhatsAppBrochure) {
+                                            WhatsAppHelper.sendCompanyProfileToLead(
+                                                context = context,
+                                                leadName = cleanName,
+                                                leadPhone = cleanPhone,
+                                                companyName = cleanCompany,
+                                                brochureConfig = autoBrochureCfg
+                                            )
+                                        }
+
+                                        isSaving = false
+                                        showAddLeadBottomSheet = false
+                                    },
+                                    modifier = Modifier
+                                        .weight(1.8f)
+                                        .height(46.dp)
+                                        .testTag("save_lead_button"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                                ) {
+                                    if (isSaving) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Save & Create Lead", fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
                                 }
                             }
                         }

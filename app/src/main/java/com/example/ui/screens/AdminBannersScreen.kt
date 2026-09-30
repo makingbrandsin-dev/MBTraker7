@@ -1028,6 +1028,8 @@ private fun AddOrEditBannerDialog(
     ) { uri: Uri? ->
         if (uri != null) {
             selectedImageUri = uri
+            val localPath = onSaveImageLocally(uri)
+            uploadedCloudUrl = localPath ?: uri.toString()
             isUploadingToStorage = true
             uploadProgress = 0.05f
 
@@ -1037,10 +1039,9 @@ private fun AddOrEditBannerDialog(
                 }
                 isUploadingToStorage = false
                 result.onSuccess { cloudUrl ->
-                    uploadedCloudUrl = cloudUrl
-                }.onFailure {
-                    // Local fallback
-                    uploadedCloudUrl = onSaveImageLocally(uri) ?: uri.toString()
+                    if (cloudUrl.isNotBlank()) {
+                        uploadedCloudUrl = cloudUrl
+                    }
                 }
             }
         }

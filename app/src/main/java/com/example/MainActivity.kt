@@ -91,6 +91,8 @@ sealed class Screen(val route: String) {
     object MiloOnboarding : Screen("milo_onboarding")
     object AdminBanners : Screen("admin_banners")
     object AdminBroadcast : Screen("admin_broadcast")
+    object AdminMilo : Screen("admin_milo")
+    object AskMilo : Screen("ask_milo")
 }
 
 private fun getScreenOrder(route: String?): Int {
@@ -193,31 +195,35 @@ fun MainAppNavHost(viewModel: MainViewModel) {
         // Permissions acknowledged
     }
 
-    // Automatically prompt for all required app permissions upon initial install/launch
-    LaunchedEffect(Unit) {
-        val ungranted = requiredPermissions.filter {
-            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (ungranted.isNotEmpty()) {
-            permissionsLauncher.launch(ungranted.toTypedArray())
+    // Prompt for required app permissions only after user enters the main app (not during splash or login)
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != null && currentRoute != Screen.Splash.route && currentRoute != Screen.Login.route && currentRoute != Screen.Otp.route) {
+            val ungranted = requiredPermissions.filter {
+                ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (ungranted.isNotEmpty()) {
+                permissionsLauncher.launch(ungranted.toTypedArray())
+            }
         }
     }
 
-    // Handle deep links when user taps a background notification alert
+    // Handle deep links when user taps a background notification alert (authenticated users only)
     LaunchedEffect(activity?.intent) {
-        activity?.intent?.let { intent ->
-            val destination = intent.getStringExtra("destination")
-            if (destination == "chat") {
-                val channelId = intent.getStringExtra("channelId") ?: "company_chat"
-                val channelTitle = intent.getStringExtra("channelTitle") ?: "Team Chat"
-                viewModel.selectChatChannel(channelId)
-                navController.navigate(Screen.ChatRoom.createRoute(channelId, channelTitle))
-            } else if (destination == "tasks") {
-                navController.navigate(Screen.Tasks.route)
-            } else if (destination == "call_tracker") {
-                navController.navigate(Screen.CallTracker.route)
-            } else if (destination == "notifications") {
-                navController.navigate(Screen.Notifications.route)
+        if (viewModel.isLoggedIn.value) {
+            activity?.intent?.let { intent ->
+                val destination = intent.getStringExtra("destination")
+                if (destination == "chat") {
+                    val channelId = intent.getStringExtra("channelId") ?: "company_chat"
+                    val channelTitle = intent.getStringExtra("channelTitle") ?: "Team Chat"
+                    viewModel.selectChatChannel(channelId)
+                    navController.navigate(Screen.ChatRoom.createRoute(channelId, channelTitle))
+                } else if (destination == "tasks") {
+                    navController.navigate(Screen.Tasks.route)
+                } else if (destination == "call_tracker") {
+                    navController.navigate(Screen.CallTracker.route)
+                } else if (destination == "notifications") {
+                    navController.navigate(Screen.Notifications.route)
+                }
             }
         }
     }
@@ -252,10 +258,23 @@ fun MainAppNavHost(viewModel: MainViewModel) {
         containerColor = SurfaceBg,
         bottomBar = {
             if (showBottomBar) {
+                val crmCount by viewModel.pendingCrmCount.collectAsState()
+                val taskCount by viewModel.pendingTaskCount.collectAsState()
+                val attendanceCount by viewModel.pendingAttendanceCount.collectAsState()
+                val chatCount by viewModel.unreadChatCount.collectAsState()
+
                 AppBottomNavigationBar(
                     navController = navController,
+                    crmBadgeCount = crmCount,
+                    taskBadgeCount = taskCount,
+                    attendanceBadgeCount = attendanceCount,
+                    chatBadgeCount = chatCount,
                     onAskMiloClick = {
-                        showGlobalMiloAssistant = true
+                        if (currentRoute != Screen.AskMilo.route) {
+                            navController.navigate(Screen.AskMilo.route) {
+                                launchSingleTop = true
+                            }
+                        }
                     }
                 )
             }
@@ -271,7 +290,7 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 startDestination = Screen.Splash.route,
                 modifier = Modifier.fillMaxSize()
             ) {
-            // Splash Screen
+            // Splash Screen: Shows only App Logo, then routes strictly to Login Screen
             composable(
                 route = Screen.Splash.route,
                 enterTransition = { fadeIn(tween(400)) },
@@ -279,16 +298,8 @@ fun MainAppNavHost(viewModel: MainViewModel) {
             ) {
                 SplashScreen(
                     onTimeout = {
-                        val isLogged = viewModel.isUserLoggedIn()
-                        val hasCompletedOnboarding = com.example.util.AppPreferences.isOnboardingCompleted(context)
-                        val destination = if (isLogged) {
-                            if (viewModel.userRole.value == "MB Admin") Screen.Manager.route else Screen.Home.route
-                        } else if (!hasCompletedOnboarding) {
-                            Screen.MiloOnboarding.route
-                        } else {
-                            Screen.Login.route
-                        }
-                        navController.navigate(destination) {
+                        // User requirement: Always show only Logo then Splash or Login screen and no other screens
+                        navController.navigate(Screen.Login.route) {
                             popUpTo(Screen.Splash.route) { inclusive = true }
                         }
                     }
@@ -549,7 +560,8 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                         }
                     },
                     onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
-                    onNavigateToHelp = { navController.navigate(Screen.HelpSupport.route) }
+                    onNavigateToHelp = { navController.navigate(Screen.HelpSupport.route) },
+                    onNavigateToMiloAdmin = { navController.navigate(Screen.AdminMilo.route) }
                 )
             }
 
@@ -569,7 +581,8 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                         }
                     },
                     onNavigateToMiloDebug = { navController.navigate(Screen.MiloDebug.route) },
-                    onNavigateToMiloOnboarding = { navController.navigate(Screen.MiloOnboarding.route) }
+                    onNavigateToMiloOnboarding = { navController.navigate(Screen.MiloOnboarding.route) },
+                    onNavigateToMiloAdmin = { navController.navigate(Screen.AdminMilo.route) }
                 )
             }
 
@@ -806,7 +819,8 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onNavigateToVault = { navController.navigate(Screen.Vault.route) },
                     onNavigateToCalls = { navController.navigate(Screen.CallTracker.route) },
                     onNavigateToBannersAdmin = { navController.navigate(Screen.AdminBanners.route) },
-                    onNavigateToBroadcastAdmin = { navController.navigate(Screen.AdminBroadcast.route) }
+                    onNavigateToBroadcastAdmin = { navController.navigate(Screen.AdminBroadcast.route) },
+                    onNavigateToMiloAdmin = { navController.navigate(Screen.AdminMilo.route) }
                 )
             }
 
@@ -831,6 +845,19 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 popExitTransition = { detailPopExitTransition() }
             ) {
                 AdminBroadcastScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.AdminMilo.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                AdminMiloScreen(
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() }
                 )
@@ -913,11 +940,27 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onBack = { navController.popBackStack() }
                 )
             }
+
+            composable(
+                route = Screen.AskMilo.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                AskMiloScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    onNavigateToLeads = { navController.navigate(Screen.Crm.route) },
+                    onNavigateToTasks = { navController.navigate(Screen.Tasks.route) },
+                    onNavigateToCalls = { navController.navigate(Screen.CallTracker.route) }
+                )
+            }
         }
     }
 
     // 🦁 Global Milo AI Smart Assistant Sheet (Triggers from bottom bar or any screen)
-    if (showGlobalMiloAssistant) {
+    if (showGlobalMiloAssistant && currentRoute != null && currentRoute != Screen.Splash.route) {
         MiloSmartAssistantSheet(
             viewModel = viewModel,
             onDismiss = { showGlobalMiloAssistant = false },

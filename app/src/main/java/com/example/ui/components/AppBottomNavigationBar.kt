@@ -3,10 +3,8 @@ package com.example.ui.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -17,13 +15,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -34,14 +28,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.example.ui.theme.*
 import com.example.R
 import com.example.Screen
 import com.example.domain.milo.MiloState
 import com.example.milo.MiloAiAssistantSheet
 import com.example.milo.MiloCharacter
+import com.example.milo.MiloRealStatusView
 import com.example.milo.MiloViewModel
 import com.example.util.MiloHaptics
-import kotlin.math.sin
 
 /**
  * Navigation item specification for the persistent bottom bar.
@@ -53,81 +48,92 @@ data class BottomNavItem(
     val activeColor: Color,
     val activeBgColor: Color,
     val testTag: String,
+    val badgeCount: Int = 0,
     val isRouteMatching: (String?) -> Boolean = { it == route }
 )
 
 /**
- * Redesigned Floating Cradle Bottom Navigation Dock featuring:
- * - "Home" removed from bottom bar
- * - Center floating cradle button: "ASK MILO"
- * - Dynamic 10X interactive icon bounce & tilt animations on click
- * - Continuous liquid "River Flow" animation along the dock
+ * Modern Elevated Dock Bottom Navigation Bar featuring:
+ * - Completely transparent outer box background (clean floating dock)
+ * - Center elevated cradle button: "ASK MILO" with instant reliable tap action & spring lift
+ * - Interactive spring scale bounce & tilt animations on click
+ * - Real-time badge indicators for pending CRM, Tasks, Attendance & Team Chat
  */
 @Composable
 fun AppBottomNavigationBar(
     currentRoute: String?,
     onNavigateToRoute: (String) -> Unit,
     onAskMiloClick: (() -> Unit)? = null,
+    crmBadgeCount: Int = 0,
+    taskBadgeCount: Int = 0,
+    attendanceBadgeCount: Int = 0,
+    chatBadgeCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var localShowMiloSheet by remember { mutableStateOf(false) }
     val miloViewModel: MiloViewModel = viewModel()
+    val currentMiloState by miloViewModel.state.collectAsState()
 
-    // Left navigation items (CRM, Tasks)
-    val leftItems = remember {
-        listOf(
-            BottomNavItem(
-                route = Screen.Crm.route,
-                title = "CRM",
-                drawableRes = R.drawable.ic_nav_crm,
-                activeColor = Color(0xFF00838F),
-                activeBgColor = Color(0xFFE0F7FA),
-                testTag = "bottom_nav_crm",
-                isRouteMatching = { it == Screen.Crm.route || it == Screen.Leads.route }
-            ),
-            BottomNavItem(
-                route = Screen.Tasks.route,
-                title = "Tasks",
-                drawableRes = R.drawable.ic_nav_tasks,
-                activeColor = Color(0xFF059669),
-                activeBgColor = Color(0xFFDCFCE7),
-                testTag = "bottom_nav_tasks",
-                isRouteMatching = { it == Screen.Tasks.route }
-            )
+    // Left navigation items (CRM, Task) with live pending issue badges
+    val leftItems = listOf(
+        BottomNavItem(
+            route = Screen.Crm.route,
+            title = "CRM",
+            drawableRes = R.drawable.ic_nav_crm,
+            activeColor = ButtonPrimary,
+            activeBgColor = ImportantCardBg.copy(alpha = 0.6f),
+            testTag = "bottom_nav_crm",
+            badgeCount = crmBadgeCount,
+            isRouteMatching = { it == Screen.Crm.route || it == Screen.Leads.route }
+        ),
+        BottomNavItem(
+            route = Screen.Tasks.route,
+            title = "Task",
+            drawableRes = R.drawable.ic_nav_tasks,
+            activeColor = ButtonPrimary,
+            activeBgColor = ImportantCardBg.copy(alpha = 0.6f),
+            testTag = "bottom_nav_tasks",
+            badgeCount = taskBadgeCount,
+            isRouteMatching = { it == Screen.Tasks.route }
         )
-    }
+    )
 
-    // Right navigation items (Attendance, Team Chat)
-    val rightItems = remember {
-        listOf(
-            BottomNavItem(
-                route = Screen.Attendance.route,
-                title = "Attendance",
-                drawableRes = R.drawable.ic_nav_attendance,
-                activeColor = Color(0xFF4F46E5),
-                activeBgColor = Color(0xFFEEF2FF),
-                testTag = "bottom_nav_attendance",
-                isRouteMatching = { it == Screen.Attendance.route }
-            ),
-            BottomNavItem(
-                route = Screen.Chat.route,
-                title = "Team Chat",
-                drawableRes = R.drawable.ic_nav_chat,
-                activeColor = Color(0xFF7C3AED),
-                activeBgColor = Color(0xFFEDE9FE),
-                testTag = "bottom_nav_chat",
-                isRouteMatching = { it == Screen.Chat.route || it?.startsWith("chat_room/") == true }
-            )
+    // Right navigation items (Attendance, Team Chat) with live pending action badges
+    val rightItems = listOf(
+        BottomNavItem(
+            route = Screen.Attendance.route,
+            title = "Attendance",
+            drawableRes = R.drawable.ic_nav_attendance,
+            activeColor = ButtonSecondary,
+            activeBgColor = AccentSage.copy(alpha = 0.45f),
+            testTag = "bottom_nav_attendance",
+            badgeCount = attendanceBadgeCount,
+            isRouteMatching = { it == Screen.Attendance.route }
+        ),
+        BottomNavItem(
+            route = Screen.Chat.route,
+            title = "Team Chat",
+            drawableRes = R.drawable.ic_nav_chat,
+            activeColor = ButtonSecondary,
+            activeBgColor = AccentSage.copy(alpha = 0.45f),
+            testTag = "bottom_nav_chat",
+            badgeCount = chatBadgeCount,
+            isRouteMatching = { it == Screen.Chat.route || it?.startsWith("chat_room/") == true }
         )
-    }
+    )
+
+    val isAskMiloActive = currentRoute == Screen.AskMilo.route
+    val centerInteractionSource = remember { MutableInteractionSource() }
+    val askButtonVideoUri = remember { com.example.milo.MiloVideoHelper.getAskMiloButtonVideoUri(context) }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .background(Color.Transparent)
             .navigationBarsPadding()
-            .padding(start = 12.dp, end = 12.dp, bottom = 4.dp)
-            .height(86.dp),
+            .padding(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 10.dp)
+            .height(84.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         // Main Floating Navbar Dock Surface
@@ -136,9 +142,9 @@ fun AppBottomNavigationBar(
                 .fillMaxWidth()
                 .height(64.dp)
                 .shadow(
-                    elevation = 12.dp,
+                    elevation = 10.dp,
                     shape = RoundedCornerShape(32.dp),
-                    spotColor = Color(0xFF1E293B).copy(alpha = 0.25f)
+                    spotColor = Color(0xFF1E293B).copy(alpha = 0.22f)
                 ),
             color = Color.White,
             shape = RoundedCornerShape(32.dp),
@@ -168,7 +174,7 @@ fun AppBottomNavigationBar(
                 }
 
                 // Spacer gap for center floating "ASK MILO" button
-                Spacer(modifier = Modifier.width(68.dp))
+                Spacer(modifier = Modifier.width(76.dp))
 
                 // Right 2 items: Attendance & Team Chat
                 Row(
@@ -187,72 +193,82 @@ fun AppBottomNavigationBar(
             }
         }
 
-        // 🦁 Center Floating "ASK MILO" Elevated Cradle Button with Smooth Lift-Up Hover Effect
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+        val openAskMilo = {
+            MiloHaptics.performButtonTap(context)
+            if (onAskMiloClick != null) {
+                onAskMiloClick()
+            } else {
+                onNavigateToRoute(Screen.AskMilo.route)
+            }
+        }
+
+        val miloButtonInteractionSource = remember { MutableInteractionSource() }
+        val textButtonInteractionSource = remember { MutableInteractionSource() }
+
+        // 🦁 Center Floating "ASK MILO" Elevated Cradle Dock
+        // Dual-action: Clicking on Milo Mascot OR on "ASK MILO" text button both open "ASK MILO"
+        Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 2.dp)
-                .liftOnPress(elevationLift = 14.dp, translateY = (-5).dp)
+                .offset(y = (-6).dp)
+                .width(84.dp)
+                .height(90.dp)
+                .testTag("bottom_nav_ask_milo")
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = centerInteractionSource,
                     indication = null
                 ) {
-                    MiloHaptics.performButtonTap(context)
-                    if (onAskMiloClick != null) {
-                        onAskMiloClick()
-                    } else {
-                        localShowMiloSheet = true
-                    }
+                    openAskMilo()
                 }
+                .liftOnPress(elevationLift = 12.dp, translateY = (-5).dp, scaleLift = 1.05f, interactionSource = centerInteractionSource),
+            contentAlignment = Alignment.TopCenter
         ) {
-            Surface(
-                shape = CircleShape,
-                color = Color.White,
-                shadowElevation = 10.dp,
-                border = BorderStroke(2.5.dp, Color(0xFF00E5FF)),
-                modifier = Modifier.size(56.dp)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(1.dp)
             ) {
+                // 1. Milo Mascot Icon (20% bigger: 60.dp, NO circle shape, NO border, transparent background, live status visible)
                 Box(
-                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color.White,
-                                    Color(0xFFE0F7FA)
-                                )
-                            )
-                        )
+                        .size(60.dp)
+                        .testTag("nav_milo_mascot_button")
+                        .clickable(
+                            interactionSource = miloButtonInteractionSource,
+                            indication = null
+                        ) { openAskMilo() },
+                    contentAlignment = Alignment.Center
                 ) {
-                    MiloCharacter(
-                        state = MiloState.WELCOME,
-                        size = 46.dp,
-                        showStateBadge = false
+                    MiloRealStatusView(
+                        state = if (isAskMiloActive) MiloState.THINKING else currentMiloState,
+                        size = 60.dp,
+                        showStateBadge = false,
+                        onClick = { openAskMilo() }
                     )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(2.dp))
-
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFF298CD8),
-                shadowElevation = 2.dp
-            ) {
-                Text(
-                    text = "ASK MILO",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                )
+                // 2. "ASK MILO" Text Pill Button (Click to Open Ask Milo)
+                Surface(
+                    onClick = { openAskMilo() },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isAskMiloActive) ButtonPrimary else ButtonSecondary,
+                    shadowElevation = 2.dp,
+                    interactionSource = textButtonInteractionSource,
+                    modifier = Modifier
+                        .testTag("nav_ask_milo_text_button")
+                ) {
+                    Text(
+                        text = "ASK MILO",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
     }
 
-    // Local Milo Assistant Bottom Sheet when tapped
+    // Fallback Local Milo Assistant Bottom Sheet if requested
     if (localShowMiloSheet) {
         MiloAiAssistantSheet(
             miloViewModel = miloViewModel,
@@ -270,7 +286,7 @@ fun AppBottomNavigationBar(
 }
 
 /**
- * Individual Navigation Item with 10X interactive spring scale bounce and tilt click animations.
+ * Individual Navigation Item with 10X interactive spring scale bounce, tilt, and lift-up hover animations.
  */
 @Composable
 private fun AnimatedNavItem(
@@ -280,15 +296,11 @@ private fun AnimatedNavItem(
 ) {
     val context = LocalContext.current
     val isSelected = item.isRouteMatching(currentRoute)
-    var isPressed by remember { mutableStateOf(false) }
+    val itemInteractionSource = remember { MutableInteractionSource() }
 
     // Spring scale bounce animation
     val scale by animateFloatAsState(
-        targetValue = when {
-            isPressed -> 0.82f
-            isSelected -> 1.18f
-            else -> 1.0f
-        },
+        targetValue = if (isSelected) 1.15f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
@@ -298,7 +310,7 @@ private fun AnimatedNavItem(
 
     // Slight rotation tilt animation on selection
     val rotation by animateFloatAsState(
-        targetValue = if (isSelected) -6f else 0f,
+        targetValue = if (isSelected) -4f else 0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "ItemRotation"
     )
@@ -312,7 +324,7 @@ private fun AnimatedNavItem(
     Box(
         modifier = Modifier
             .testTag(item.testTag)
-            .liftOnPress(elevationLift = 6.dp, translateY = (-4).dp)
+            .liftOnPress(elevationLift = 6.dp, translateY = (-4).dp, scaleLift = 1.04f, interactionSource = itemInteractionSource)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -321,7 +333,7 @@ private fun AnimatedNavItem(
             .clip(RoundedCornerShape(18.dp))
             .background(backgroundColor)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = itemInteractionSource,
                 indication = ripple(bounded = true, color = item.activeColor.copy(alpha = 0.25f))
             ) {
                 MiloHaptics.performButtonClick(context)
@@ -336,11 +348,34 @@ private fun AnimatedNavItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Image(
-                painter = painterResource(id = item.drawableRes),
-                contentDescription = item.title,
-                modifier = Modifier.size(25.dp)
-            )
+            BadgedBox(
+                badge = {
+                    if (item.badgeCount > 0) {
+                        Badge(
+                            containerColor = when (item.title) {
+                                "CRM" -> Color(0xFFDC2626) // Vivid Red for pending CRM issues/leads
+                                "Task", "Tasks" -> Color(0xFFD97706) // Amber for pending tasks
+                                "Attendance" -> Color(0xFFDC2626) // Red for pending attendance action
+                                "Team Chat" -> Color(0xFF059669) // Emerald green for unread chats
+                                else -> ButtonPrimary
+                            },
+                            contentColor = Color.White
+                        ) {
+                            Text(
+                                text = if (item.badgeCount > 99) "99+" else "${item.badgeCount}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                }
+            ) {
+                Image(
+                    painter = painterResource(id = item.drawableRes),
+                    contentDescription = item.title,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(2.dp))
 
@@ -355,12 +390,16 @@ private fun AnimatedNavItem(
 }
 
 /**
- * Overloaded convenience composable taking [NavHostController] directly.
+ * Overloaded convenience composable taking [NavHostController] directly with live badge counts.
  */
 @Composable
 fun AppBottomNavigationBar(
     navController: NavHostController,
     onAskMiloClick: (() -> Unit)? = null,
+    crmBadgeCount: Int = 0,
+    taskBadgeCount: Int = 0,
+    attendanceBadgeCount: Int = 0,
+    chatBadgeCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -378,6 +417,10 @@ fun AppBottomNavigationBar(
             }
         },
         onAskMiloClick = onAskMiloClick,
+        crmBadgeCount = crmBadgeCount,
+        taskBadgeCount = taskBadgeCount,
+        attendanceBadgeCount = attendanceBadgeCount,
+        chatBadgeCount = chatBadgeCount,
         modifier = modifier
     )
 }

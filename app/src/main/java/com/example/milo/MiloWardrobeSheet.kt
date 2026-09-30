@@ -3,6 +3,7 @@ package com.example.milo
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -53,20 +54,25 @@ fun MiloWardrobeSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = SurfaceBg,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        dragHandle = {
-            BottomSheetDefaults.DragHandle(color = TextSecondary.copy(alpha = 0.4f))
-        }
+        containerColor = Color.Transparent,
+        scrimColor = Color.Black.copy(alpha = 0.50f),
+        dragHandle = null,
+        shape = RoundedCornerShape(28.dp)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
-                .imePadding()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 16.dp)
+                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(SurfaceBg)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.88f)
+                    .imePadding()
+                    .padding(16.dp)
+            ) {
             // Level Up Celebration Banner if active
             xpState.recentLevelUp?.let { newLevel ->
                 Surface(
@@ -225,6 +231,7 @@ fun MiloWardrobeSheet(
             }
         }
     }
+}
 }
 
 @Composable

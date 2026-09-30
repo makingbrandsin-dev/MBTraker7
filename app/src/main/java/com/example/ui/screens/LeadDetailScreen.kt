@@ -43,6 +43,7 @@ fun LeadDetailScreen(
     val tabs = listOf("Overview", "Activity", "Notes", "Files")
     var newNoteText by remember { mutableStateOf("") }
     var isAddingNote by remember { mutableStateOf(false) }
+    var showSendQuoteDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -173,8 +174,7 @@ fun LeadDetailScreen(
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(Color(0xFFF8FAFC))
                                         .clickable {
-                                            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${lead.phone.replace(" ", "")}"))
-                                            try { context.startActivity(dialIntent) } catch (_: Exception) {}
+                                            WhatsAppHelper.dialPhoneNumber(context, lead.phone)
                                         }
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -216,22 +216,21 @@ fun LeadDetailScreen(
                     }
                 }
 
-                // ── Card 2: Quick Action Grid (Call, WhatsApp, Email, Brochure) ───
+                // ── Card 2: Quick Action Grid (Call, WhatsApp, Send Quote, Brochure) ───
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // Call
                         LeadDetailActionButton(
                             icon = Icons.Default.Phone,
-                            label = "Direct Call",
+                            label = "Call",
                             bgColor = Color(0xFFDCFCE7),
                             tintColor = Color(0xFF15803D),
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${lead.phone.replace(" ", "")}"))
-                                try { context.startActivity(intent) } catch (_: Exception) {}
+                                WhatsAppHelper.dialPhoneNumber(context, lead.phone)
                                 viewModel.addCallLog(lead.name, lead.phone, "Outgoing", "Initiated")
                             }
                         )
@@ -241,20 +240,31 @@ fun LeadDetailScreen(
                             label = "WhatsApp",
                             bgColor = Color(0xFFD1FAE5),
                             tintColor = Color(0xFF059669),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1.1f),
                             onClick = {
                                 WhatsAppHelper.sendWhatsAppMessage(
                                     context = context,
                                     phoneNumber = lead.phone,
-                                    message = "Hello ${lead.name}, connecting with you from Making Brands.",
+                                    message = "Hello ${lead.name}, connecting with you from Making Brands regarding your project.",
                                     showSuccessToast = true
                                 )
+                            }
+                        )
+                        // Send Quotation
+                        LeadDetailActionButton(
+                            icon = Icons.Default.Description,
+                            label = "Send Quote",
+                            bgColor = Color(0xFFFAF5FF),
+                            tintColor = Color(0xFF9333EA),
+                            modifier = Modifier.weight(1.1f),
+                            onClick = {
+                                showSendQuoteDialog = true
                             }
                         )
                         // Send Brochure
                         LeadDetailActionButton(
                             icon = Icons.Default.Share,
-                            label = "Send Profile",
+                            label = "Profile",
                             bgColor = Color(0xFFEFF6FF),
                             tintColor = Color(0xFF2563EB),
                             modifier = Modifier.weight(1f),
@@ -481,6 +491,177 @@ fun LeadDetailScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        if (showSendQuoteDialog && lead != null) {
+            LeadSendQuotationDialog(
+                lead = lead,
+                onDismiss = { showSendQuoteDialog = false },
+                onSendWhatsAppQuote = { scope, amount, terms ->
+                    showSendQuoteDialog = false
+                    val quoteNo = "MB-QT-${System.currentTimeMillis().toString().takeLast(4)}"
+                    WhatsAppHelper.sendQuotationEstimate(
+                        context = context,
+                        phoneNumber = lead.phone,
+                        clientName = lead.name,
+                        quotationNumber = quoteNo,
+                        totalAmount = amount,
+                        scopeOfWork = scope
+                    )
+                    viewModel.addQuotation(
+                        clientName = lead.name,
+                        clientCompany = lead.company.ifBlank { lead.name },
+                        clientEmail = lead.email.ifBlank { "client@example.com" },
+                        clientPhone = lead.phone,
+                        validUntil = "30 Days from Issue",
+                        subtotal = amount,
+                        discountPercent = 0.0,
+                        taxPercent = 18.0,
+                        scopeOfWork = scope,
+                        termsAndConditions = terms
+                    )
+                    viewModel.addCallLog(lead.name, lead.phone, "Quotation Sent", "₹$amount ($quoteNo)")
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun LeadSendQuotationDialog(
+    lead: LeadEntity,
+    onDismiss: () -> Unit,
+    onSendWhatsAppQuote: (scope: String, amount: Double, terms: String) -> Unit
+) {
+    val initialAmount = remember(lead.potentialValue) {
+        val clean = lead.potentialValue.replace("₹", "").replace("$", "").replace(",", "").trim()
+        clean.toDoubleOrNull() ?: 50000.0
+    }
+    var scopeOfWork by remember {
+        mutableStateOf(lead.requirement.ifBlank { "Custom Web & Mobile App Development with Cloud Database & Automated CRM Suite" })
+    }
+    var amountStr by remember { mutableStateOf(initialAmount.toInt().toString()) }
+    var paymentTerms by remember { mutableStateOf("50% Advance on kickoff, 50% upon final milestone UAT sign-off.") }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            tonalElevation = 8.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFFAF5FF),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF9333EA), modifier = Modifier.size(20.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("Send Quotation", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF0F172A))
+                            Text(lead.name, fontSize = 12.sp, color = Color(0xFF64748B))
+                        }
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF64748B))
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFFF1F5F9))
+
+                OutlinedTextField(
+                    value = scopeOfWork,
+                    onValueChange = { scopeOfWork = it },
+                    label = { Text("Scope of Work / Deliverables") },
+                    maxLines = 3,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = amountStr,
+                    onValueChange = { amountStr = it },
+                    label = { Text("Quotation Amount (₹)") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = paymentTerms,
+                    onValueChange = { paymentTerms = it },
+                    label = { Text("Payment Terms") },
+                    maxLines = 2,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFF0FDF4),
+                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Chat, contentDescription = null, tint = Color(0xFF15803D), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Directly formatted and dispatched to ${lead.phone} via WhatsApp + saved to Invoices.",
+                            fontSize = 11.sp,
+                            color = Color(0xFF15803D),
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancel")
+                    }
+
+                    Button(
+                        onClick = {
+                            val parsed = amountStr.toDoubleOrNull() ?: 0.0
+                            if (parsed > 0 && scopeOfWork.isNotBlank()) {
+                                onSendWhatsAppQuote(scopeOfWork, parsed, paymentTerms)
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                        modifier = Modifier.weight(1.3f)
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Send Quote", fontWeight = FontWeight.Bold)
                     }
                 }
             }

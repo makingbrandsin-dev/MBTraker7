@@ -6,6 +6,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,10 +25,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.R
 import com.example.data.firebase.FirebaseRealtimeManager
 import com.example.data.firebase.NetworkSyncStatus
 import com.example.data.firebase.SyncState
@@ -185,32 +189,70 @@ fun AppHeader(
     isAiProcessing: Boolean = false,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    Surface(
-        color = Color.White,
-        shadowElevation = if (showBottomDivider) 2.dp else 0.dp,
-        modifier = Modifier.fillMaxWidth()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 6.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            TopAppBar(
-                title = {
-                    if (showBrandLogo) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = BrandBlue,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text("MB", color = Color.White, fontWeight = FontWeight.Black, fontSize = 16.sp)
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, BorderLight),
+            shadowElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TopAppBar(
+                    title = {
+                        if (showBrandLogo) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF0F172A), // bg-slate-900 container
+                                    border = BorderStroke(1.dp, Color(0xFF334155)),
+                                    shadowElevation = 4.dp,
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(3.dp) // clean padding
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.milo_final),
+                                            contentDescription = "Milo Brand Logo Emblem",
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Fit, // object-contain
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = title,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 20.sp,
+                                        color = BrandDarkBlue
+                                    )
+                                    if (subtitle != null) {
+                                        Text(
+                                            text = subtitle,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = TextSecondary
+                                        )
+                                    }
                                 }
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
+                        } else {
                             Column {
                                 Text(
                                     text = title,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 20.sp,
-                                    color = BrandDarkBlue
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
                                 )
                                 if (subtitle != null) {
                                     Text(
@@ -222,139 +264,116 @@ fun AppHeader(
                                 }
                             }
                         }
-                    } else {
-                        Column {
-                            Text(
-                                text = title,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            if (subtitle != null) {
-                                Text(
-                                    text = subtitle,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextSecondary
+                    },
+                    navigationIcon = {
+                        if (onBack != null) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = TextPrimary
                                 )
                             }
                         }
-                    }
-                },
-                navigationIcon = {
-                    if (onBack != null) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = TextPrimary
-                            )
+                    },
+                    actions = {
+                        actions()
+
+                        // 🔄 Realtime Cloud Sync Status Indicator
+                        if (showSyncIndicator) {
+                            SyncStatusIndicator(modifier = Modifier.padding(end = 4.dp))
                         }
-                    }
-                },
-                actions = {
-                    actions()
 
-                    // 🔄 Realtime Cloud Sync Status Indicator
-                    if (showSyncIndicator) {
-                        SyncStatusIndicator(modifier = Modifier.padding(end = 4.dp))
-                    }
-
-                    // 💬 Team Chat / Incoming Chat Alert Icon
-                    if (onOpenChat != null) {
-                        IconButton(onClick = onOpenChat) {
-                            BadgedBox(
-                                badge = {
-                                    if (unreadChatCount > 0) {
-                                        Badge(
-                                            containerColor = Color(0xFF25D366), // WhatsApp Green Badge
-                                            contentColor = Color.White
-                                        ) {
-                                            Text(if (unreadChatCount > 99) "99+" else "$unreadChatCount", fontWeight = FontWeight.Bold)
+                        // 💬 Team Chat / Incoming Chat Alert Icon (Full Chat Icon)
+                        if (onOpenChat != null) {
+                            IconButton(
+                                onClick = onOpenChat,
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                BadgedBox(
+                                    badge = {
+                                        if (unreadChatCount > 0) {
+                                            Badge(
+                                                containerColor = Color(0xFF4A7C59),
+                                                contentColor = Color.White
+                                            ) {
+                                                Text(if (unreadChatCount > 99) "99+" else "$unreadChatCount", fontWeight = FontWeight.Bold)
+                                            }
                                         }
                                     }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Chat,
+                                        contentDescription = "Team Chat",
+                                        tint = Color(0xFF4A7C59),
+                                        modifier = Modifier.size(24.dp)
+                                    )
                                 }
+                            }
+                        }
+
+                        // 🔔 Notifications Icon (Full Notification Icon)
+                        if (onNavigateToNotifications != null) {
+                            IconButton(
+                                onClick = onNavigateToNotifications,
+                                modifier = Modifier.size(42.dp)
                             ) {
+                                BadgedBox(
+                                    badge = {
+                                        if (unreadNotificationCount > 0) {
+                                            Badge(
+                                                containerColor = StatusRed,
+                                                contentColor = Color.White
+                                            ) {
+                                                Text(if (unreadNotificationCount > 99) "99+" else "$unreadNotificationCount", fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Notifications,
+                                        contentDescription = "Notifications",
+                                        tint = Color(0xFF705C30),
+                                        modifier = Modifier.size(25.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 👤 Profile Avatar Action
+                        if (onNavigateToProfile != null) {
+                            IconButton(onClick = onNavigateToProfile) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = Color(0xFF25D366).copy(alpha = 0.12f),
+                                    color = BrandBlue.copy(alpha = 0.12f),
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            imageVector = Icons.Default.ChatBubble,
-                                            contentDescription = "Team Chat",
-                                            tint = Color(0xFF128C7E),
-                                            modifier = Modifier.size(19.dp)
+                                            painter = androidx.compose.ui.res.painterResource(com.example.R.drawable.ic_nav_profile),
+                                            contentDescription = "Profile",
+                                            tint = BrandBlue,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 }
                             }
                         }
-                    }
-
-                    // 🔔 Notifications Icon
-                    if (onNavigateToNotifications != null) {
-                        IconButton(onClick = onNavigateToNotifications) {
-                            BadgedBox(
-                                badge = {
-                                    if (unreadNotificationCount > 0) {
-                                        Badge(
-                                            containerColor = StatusRed,
-                                            contentColor = Color.White
-                                        ) {
-                                            Text(if (unreadNotificationCount > 99) "99+" else "$unreadNotificationCount")
-                                        }
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Notifications,
-                                    contentDescription = "Notifications",
-                                    tint = TextPrimary
-                                )
-                            }
-                        }
-                    }
-
-                    // 👤 Profile Avatar Action
-                    if (onNavigateToProfile != null) {
-                        IconButton(onClick = onNavigateToProfile) {
-                            Surface(
-                                shape = CircleShape,
-                                color = BrandBlue.copy(alpha = 0.12f),
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        painter = androidx.compose.ui.res.painterResource(com.example.R.drawable.ic_nav_profile),
-                                        contentDescription = "Profile",
-                                        tint = BrandBlue,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.White
+                    )
                 )
-            )
-            // Visual Linear Progress Bar when AI Assistant is processing a query
-            if (isAiProcessing) {
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp),
-                    color = BrandAccent,
-                    trackColor = BrandBlue.copy(alpha = 0.15f)
-                )
-            } else if (showBottomDivider) {
-                HorizontalDivider(
-                    thickness = 0.8.dp,
-                    color = BorderLight.copy(alpha = 0.6f)
-                )
+                // Visual Linear Progress Bar when AI Assistant is processing a query
+                if (isAiProcessing) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp),
+                        color = BrandAccent,
+                        trackColor = BrandBlue.copy(alpha = 0.15f)
+                    )
+                }
             }
         }
     }
@@ -394,9 +413,9 @@ fun SyncStatusIndicator(
             val total = syncState.pendingSummary.totalPending
             val pendingText = if (total > 0) " ($total)" else ""
             SyncBadgeConfig(
-                bgColor = Color(0xFFEFF6FF),
-                borderColor = Color(0xFFBFDBFE),
-                contentColor = Color(0xFF1D4ED8),
+                bgColor = Color(0xFFC8E8D0),
+                borderColor = Color(0xFF4A7C59).copy(alpha = 0.4f),
+                contentColor = Color(0xFF4A7C59),
                 icon = Icons.Default.Sync,
                 label = "Syncing$pendingText"
             )

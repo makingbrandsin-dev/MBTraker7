@@ -161,14 +161,16 @@ fun MiloSmartAssistantSheet(
             )
         )
         inputText = ""
+        viewModel.miloViewModel.setState(MiloState.THINKING)
 
         scope.launch {
-            delay(350)
+            delay(400)
             val lower = query.lowercase()
 
             val responseText: String = when {
                 // 1. GREETING / BRIEFING
                 lower.contains("briefing") || lower.contains("good morning") || lower.contains("good afternoon") || lower.contains("good evening") || lower.contains("hello") || lower.contains("hi milo") -> {
+                    viewModel.miloViewModel.setState(MiloState.WELCOME)
                     val pendingCount = allTasks.count { !it.isCompleted }
                     val missedLeadsCount = allLeads.count {
                         val isWonOrLost = it.stage.equals("Won", true) || it.stage.equals("Lost", true)
@@ -189,6 +191,7 @@ fun MiloSmartAssistantSheet(
 
                 // 2. AUTO-ALIGN LEADS
                 lower.contains("auto-align") || lower.contains("auto align") || lower.contains("align leads") -> {
+                    viewModel.miloViewModel.setState(MiloState.WORKING)
                     activeTab = 1
                     val alignedCount = allLeads.size
                     "🦁 **Auto-Aligning Engine Activated!**\n\nAnalyzing $alignedCount leads based on lead score, requirement sentiment, and follow-up urgency.\nSwitching to the **Auto-Align Tab** so you can review and commit the alignment."
@@ -196,6 +199,7 @@ fun MiloSmartAssistantSheet(
 
                 // 3. LEADS FUNNEL
                 lower.contains("funnel") || lower.contains("conversion") || lower.contains("pipeline") -> {
+                    viewModel.miloViewModel.setState(MiloState.WORKING)
                     activeTab = 2
                     val newCount = allLeads.count { it.stage.equals("New", true) }
                     val contactedCount = allLeads.count { it.stage.equals("Contacted", true) }
@@ -218,6 +222,7 @@ fun MiloSmartAssistantSheet(
 
                 // 4. PENDING WORKS & MISSED LEADS
                 lower.contains("pending") || lower.contains("works") || lower.contains("missed") || lower.contains("overdue") -> {
+                    viewModel.miloViewModel.setState(MiloState.WARNING)
                     activeTab = 3
                     val pendingTasks = allTasks.filter { !it.isCompleted }
                     val urgentTasks = pendingTasks.filter { it.priority.equals("High", true) }
@@ -226,6 +231,7 @@ fun MiloSmartAssistantSheet(
 
                 // 5. DAILY SUMMARY
                 lower.contains("today") || lower.contains("daily") -> {
+                    viewModel.miloViewModel.setState(MiloState.WORKING)
                     activeTab = 4
                     val todayCalls = allCallLogs.size
                     val completedTasks = allTasks.count { it.isCompleted }
@@ -241,6 +247,7 @@ fun MiloSmartAssistantSheet(
 
                 // 6. MONTHLY SUMMARY
                 lower.contains("month") || lower.contains("monthly") -> {
+                    viewModel.miloViewModel.setState(MiloState.CELEBRATION)
                     activeTab = 4
                     val wonLeads = allLeads.filter { it.stage.equals("Won", true) }
                     val wonValue = wonLeads.sumOf { it.potentialValue.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: 0.0 }
@@ -253,6 +260,7 @@ fun MiloSmartAssistantSheet(
 
                 // 7. WHO TO CALL
                 lower.contains("call") && lower.contains("who") -> {
+                    viewModel.miloViewModel.setState(MiloState.FOLLOW_UP)
                     val topLead = allLeads.filter { !it.stage.equals("Won", true) && !it.stage.equals("Lost", true) }
                         .maxByOrNull { it.leadScore }
                     if (topLead != null) {
@@ -270,6 +278,7 @@ fun MiloSmartAssistantSheet(
 
                 // 8. ADD LEAD COMMAND
                 lower.startsWith("add lead") || lower.startsWith("new lead") || lower.startsWith("create lead") -> {
+                    viewModel.miloViewModel.setState(MiloState.NEW_LEAD)
                     val body = query.substringAfter("lead", "").removePrefix(":").trim()
                     val parts = body.split("|").map { it.trim() }
                     val name = parts.getOrNull(0)?.ifBlank { "New Client" } ?: "New Client"
@@ -298,6 +307,7 @@ fun MiloSmartAssistantSheet(
 
                 // 9. CREATE TASK COMMAND
                 lower.startsWith("create task") || lower.startsWith("add task") || lower.startsWith("remind me") -> {
+                    viewModel.miloViewModel.setState(MiloState.SUCCESS)
                     val taskTitle = when {
                         lower.startsWith("create task") -> query.substringAfter("create task").trim()
                         lower.startsWith("add task") -> query.substringAfter("add task").trim()
@@ -321,6 +331,7 @@ fun MiloSmartAssistantSheet(
 
                 // 10. DEFAULT SMART ASSISTANT RESPONSE
                 else -> {
+                    viewModel.miloViewModel.setState(MiloState.IDLE)
                     "🦁 **Milo AI Assistant Ready!**\n\nI parsed: \"$query\"\n\nHere are commands you can execute:\n" +
                             "• `Auto-align all leads`\n" +
                             "• `Check leads funnel`\n" +
@@ -346,20 +357,25 @@ fun MiloSmartAssistantSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = SurfaceBg,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        dragHandle = {
-            BottomSheetDefaults.DragHandle(color = TextSecondary.copy(alpha = 0.4f))
-        }
+        containerColor = Color.Transparent,
+        scrimColor = Color.Black.copy(alpha = 0.50f),
+        dragHandle = null,
+        shape = RoundedCornerShape(28.dp)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
-                .imePadding()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(SurfaceBg)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.88f)
+                    .imePadding()
+                    .padding(16.dp)
+            ) {
             // Header: Milo Avatar + Time-Based Greeting
             Surface(
                 shape = RoundedCornerShape(20.dp),
@@ -381,32 +397,32 @@ fun MiloSmartAssistantSheet(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = Color(0xFFEFF6FF),
-                            border = BorderStroke(2.dp, BrandBlue),
-                            modifier = Modifier.size(52.dp)
+                            color = ImportantCardBg,
+                            border = BorderStroke(2.dp, ButtonPrimary),
+                            modifier = Modifier.size(118.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 MiloCharacter(
                                     state = miloState,
-                                    size = 46.dp,
-                                    showStateBadge = false
+                                    size = 110.dp,
+                                    showStateBadge = true
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(
                                 text = greetingTitle,
-                                fontSize = 16.sp,
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = TextPrimary
                             )
                             Text(
                                 text = greetingSubtitle,
-                                fontSize = 12.sp,
-                                color = BrandBlue,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
+                                fontSize = 13.sp,
+                                color = ButtonPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -569,6 +585,7 @@ fun MiloSmartAssistantSheet(
         }
     }
 }
+}
 
 /**
  * Tab 0: Interactive Ask Milo Chat with Voice & Predefined Question Chips
@@ -710,7 +727,7 @@ private fun MiloChatBubble(msg: MiloAssistantMessage) {
     ) {
         if (!msg.isUser) {
             Surface(
-                shape = CircleShape,
+                shape = RoundedCornerShape(8.dp),
                 color = Color(0xFFEFF6FF),
                 border = BorderStroke(1.dp, BrandBlue),
                 modifier = Modifier
@@ -1246,7 +1263,7 @@ private fun ActionSummariesTab(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 "Milo Performance Rating: 20X Top Tier Executive! Leading the Pride in output.",
-                                fontSize = 12.sp,
+                                fontStyle = null,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF92400E)
                             )

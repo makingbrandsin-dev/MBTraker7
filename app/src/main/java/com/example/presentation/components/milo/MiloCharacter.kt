@@ -202,8 +202,7 @@ fun MiloCharacter(
 
                 Box(
                     modifier = Modifier
-                        .fillMaxSize(if (targetState == MiloState.THINKING) 0.98f else 0.92f)
-                        .clip(CircleShape),
+                        .fillMaxSize(if (targetState == MiloState.THINKING) 0.98f else 0.92f),
                     contentAlignment = Alignment.Center
                 ) {
                     if (videoUri != null) {
@@ -221,120 +220,7 @@ fun MiloCharacter(
                     }
                 }
 
-                // Contextual floating overlays
-                when (targetState) {
-                    MiloState.THINKING -> {
-                        // Floating Idea Lightbulb
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = (-size * 0.05f), y = (size * 0.02f))
-                                .size(size * 0.28f)
-                                .background(Color(0xFFFEF3C7).copy(alpha = glowPulse), CircleShape)
-                                .clip(CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("💡", fontSize = (size.value * 0.16f).sp)
-                        }
-                    }
-                    MiloState.LEAD_IMPORTED -> {
-                        // Badge: 12 Leads
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF2563EB),
-                            shadowElevation = 4.dp,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = 4.dp, y = (-2).dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("📥 12", fontSize = (size.value * 0.11f).sp, color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                    MiloState.NEW_LEAD -> {
-                        // Badge: New Lead Added!
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF7C3AED),
-                            shadowElevation = 4.dp,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = 4.dp, y = (-2).dp)
-                        ) {
-                            Text("✨ +1", fontSize = (size.value * 0.11f).sp, color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
-                        }
-                    }
-                    MiloState.FOLLOW_UP -> {
-                        // Calendar & Phone overlay
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = (-size * 0.02f), y = (size * 0.05f))
-                                .size(size * 0.26f)
-                                .background(Color(0xFFDBEAFE), RoundedCornerShape(6.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("📅", fontSize = (size.value * 0.14f).sp)
-                        }
-                    }
-                    MiloState.WARNING -> {
-                        // Warning triangle
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = (-size * 0.04f), y = (size * 0.04f))
-                                .size(size * 0.26f)
-                                .background(Color(0xFFFEE2E2), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("⚠️", fontSize = (size.value * 0.15f).sp)
-                        }
-                    }
-                    MiloState.ERROR -> {
-                        // Error Red Bubble
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = (-size * 0.04f), y = (size * 0.04f))
-                                .size(size * 0.26f)
-                                .background(Color(0xFFFEE2E2), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("❌", fontSize = (size.value * 0.14f).sp)
-                        }
-                    }
-                    MiloState.CONVERTED, MiloState.CELEBRATION -> {
-                        // Confetti sparkles
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .offset(y = (-4).dp)
-                        ) {
-                            Text("🎉", fontSize = (size.value * 0.2f).sp)
-                        }
-                    }
-                    else -> {}
-                }
-            }
-        }
-
-        // Optional status badge
-        if (showStateBadge) {
-            Surface(
-                shape = CircleShape,
-                color = state.primaryColor,
-                shadowElevation = 3.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(size * 0.26f)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(state.emoji, fontSize = (size.value * 0.13f).sp)
-                }
+                // Clean character without status overlays
             }
         }
 

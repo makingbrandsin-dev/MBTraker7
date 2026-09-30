@@ -40,8 +40,13 @@ import com.example.data.model.Department
 import com.example.data.model.EmployeeEntity
 import com.example.data.model.EmployeeStatus
 import com.example.data.model.PresenceStatus
+import com.example.data.model.CompanyProfile
+import com.example.data.model.HolidayItem
+import com.example.data.model.LeaveApplicationEntity
+import com.example.data.model.MiloKnowledgeItem
 import com.example.presentation.components.banner.AppOfferBanner
 import com.example.presentation.components.banner.OfferBannerCard
+import com.example.presentation.components.banner.OfferBannerSlider
 import com.example.ui.components.AppHeader
 import com.example.ui.components.MetricBadge
 import com.example.ui.components.StatusIndicatorBadge
@@ -66,7 +71,8 @@ fun ManagerDashboardScreen(
     onNavigateToVault: () -> Unit = {},
     onNavigateToCalls: () -> Unit = {},
     onNavigateToBannersAdmin: () -> Unit = {},
-    onNavigateToBroadcastAdmin: () -> Unit = {}
+    onNavigateToBroadcastAdmin: () -> Unit = {},
+    onNavigateToMiloAdmin: () -> Unit = {}
 ) {
     BackHandler {
         onBack()
@@ -122,6 +128,16 @@ fun ManagerDashboardScreen(
     val activeBanners by viewModel.activeBanners.collectAsState()
     val isFirestoreBannersConnected by viewModel.isFirestoreBannersConnected.collectAsState()
     val adminBroadcasts by viewModel.adminBroadcasts.collectAsState()
+    val holidays by viewModel.holidays.collectAsState()
+    val miloKnowledgeList by viewModel.miloKnowledgeList.collectAsState()
+    val companyProfile by viewModel.companyProfile.collectAsState()
+
+    var showLeaveManagementDialog by remember { mutableStateOf(false) }
+    var showHolidaysDialog by remember { mutableStateOf(false) }
+    var showAddHolidayDialog by remember { mutableStateOf(false) }
+    var showCompanyProfileDialog by remember { mutableStateOf(false) }
+    var showMiloKnowledgeDialog by remember { mutableStateOf(false) }
+    var showAddMiloKnowledgeDialog by remember { mutableStateOf(false) }
 
     val filteredEmployees = employees.filter { emp ->
         emp.name.contains(searchQuery, ignoreCase = true) ||
@@ -494,11 +510,13 @@ fun ManagerDashboardScreen(
         ) {
             Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .imePadding(),
-                color = SurfaceBg
+                    .fillMaxWidth(0.90f)
+                    .fillMaxHeight(0.88f)
+                    .padding(vertical = 16.dp)
+                    .clip(RoundedCornerShape(24.dp)),
+                color = SurfaceBg,
+                shape = RoundedCornerShape(24.dp),
+                tonalElevation = 8.dp
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     // Header
@@ -1269,9 +1287,10 @@ fun ManagerDashboardScreen(
         ) {
             Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 20.dp),
-                shape = RoundedCornerShape(20.dp),
+                    .fillMaxWidth(0.90f)
+                    .fillMaxHeight(0.88f)
+                    .padding(vertical = 16.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = Color.White
             ) {
                 Column(
@@ -1815,10 +1834,672 @@ fun ManagerDashboardScreen(
         )
     }
 
+    // 🌟 Leave Applications & Admin Approval Management Dialog
+    if (showLeaveManagementDialog) {
+        var leaveFilter by remember { mutableStateOf("All") }
+        val displayedLeaves = remember(leavesList, leaveFilter) {
+            when (leaveFilter) {
+                "Pending" -> leavesList.filter { it.status.equals("Pending", ignoreCase = true) }
+                "Approved" -> leavesList.filter { it.status.equals("Approved", ignoreCase = true) }
+                "Rejected" -> leavesList.filter { it.status.equals("Rejected", ignoreCase = true) }
+                else -> leavesList
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { showLeaveManagementDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.DateRange, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Leave Applications", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                    Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFEFF6FF)) {
+                        Text(
+                            "${leavesList.size} Total",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BrandBlue,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp)) {
+                    // Filter Chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("All", "Pending", "Approved", "Rejected").forEach { filter ->
+                            val isSel = leaveFilter == filter
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) BrandBlue else Color(0xFFF1F5F9),
+                                modifier = Modifier.clickable { leaveFilter = filter }
+                            ) {
+                                Text(
+                                    text = filter,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSel) Color.White else TextSecondary,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (displayedLeaves.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.EventAvailable, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(36.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("No $leaveFilter leave applications found", fontSize = 12.sp, color = TextSecondary)
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(displayedLeaves, key = { it.id }) { item ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(item.username, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = Color(0xFF0F172A))
+                                                Text(item.leaveType, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = BrandBlue)
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = when (item.status) {
+                                                    "Approved" -> Color(0xFFDCFCE7)
+                                                    "Rejected" -> Color(0xFFFEE2E2)
+                                                    else -> Color(0xFFFEF3C7)
+                                                }
+                                            ) {
+                                                Text(
+                                                    text = item.status,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = when (item.status) {
+                                                        "Approved" -> Color(0xFF15803D)
+                                                        "Rejected" -> Color(0xFFB91C1C)
+                                                        else -> Color(0xFFB45309)
+                                                    },
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            "📅 ${item.startDate} to ${item.endDate}",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF475569)
+                                        )
+                                        if (item.reason.isNotBlank()) {
+                                            Text(
+                                                "Reason: ${item.reason}",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            if (item.status != "Approved") {
+                                                Button(
+                                                    onClick = {
+                                                        viewModel.updateLeaveStatus(item.id, "Approved")
+                                                        Toast.makeText(context, "Leave approved for ${item.username}", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = StatusGreen),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    modifier = Modifier.weight(1f).height(34.dp),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Approve", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                }
+                                            }
+
+                                            if (item.status != "Rejected") {
+                                                Button(
+                                                    onClick = {
+                                                        viewModel.updateLeaveStatus(item.id, "Rejected")
+                                                        Toast.makeText(context, "Leave rejected for ${item.username}", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = StatusRed),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    modifier = Modifier.weight(1f).height(34.dp),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Reject", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                }
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.deleteLeave(item)
+                                                    Toast.makeText(context, "Leave record deleted", Toast.LENGTH_SHORT).show()
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.height(34.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = StatusRed, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLeaveManagementDialog = false }) {
+                    Text("Close", fontWeight = FontWeight.Bold, color = BrandBlue)
+                }
+            }
+        )
+    }
+
+    // 🗓️ Company Holidays Management Dialog
+    if (showHolidaysDialog) {
+        AlertDialog(
+            onDismissRequest = { showHolidaysDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Celebration, contentDescription = null, tint = StatusOrange, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Company Holidays", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                    FilledTonalButton(
+                        onClick = { showAddHolidayDialog = true },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFEFF6FF), contentColor = BrandBlue),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("Add", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                    Text(
+                        "Official company holiday calendar updated by Admin for all staff and Milo AI.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(holidays, key = { it.id }) { holiday ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(holiday.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+                                        Text("${holiday.date} (${holiday.day}) • ${holiday.type}", fontSize = 11.sp, color = BrandBlue)
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.deleteHoliday(holiday.id)
+                                            Toast.makeText(context, "Holiday removed", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = StatusRed, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showHolidaysDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Done", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        )
+    }
+
+    // ➕ Add New Holiday Dialog
+    if (showAddHolidayDialog) {
+        var holidayTitle by remember { mutableStateOf("") }
+        var holidayDate by remember { mutableStateOf("") }
+        var holidayDay by remember { mutableStateOf("Monday") }
+        var holidayType by remember { mutableStateOf("Gazetted Holiday") }
+
+        AlertDialog(
+            onDismissRequest = { showAddHolidayDialog = false },
+            title = { Text("Add Company Holiday", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = holidayTitle,
+                        onValueChange = { holidayTitle = it },
+                        label = { Text("Holiday Name / Occasion") },
+                        placeholder = { Text("e.g. Diwali / Republic Day") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = holidayDate,
+                        onValueChange = { holidayDate = it },
+                        label = { Text("Date") },
+                        placeholder = { Text("e.g. 15 Aug 2026") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = holidayDay,
+                        onValueChange = { holidayDay = it },
+                        label = { Text("Day of Week") },
+                        placeholder = { Text("e.g. Saturday / Monday") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = holidayType,
+                        onValueChange = { holidayType = it },
+                        label = { Text("Holiday Type") },
+                        placeholder = { Text("e.g. Gazetted Holiday / National Holiday") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (holidayTitle.isNotBlank() && holidayDate.isNotBlank()) {
+                            viewModel.addHoliday(holidayTitle.trim(), holidayDate.trim(), holidayDay.trim(), holidayType.trim())
+                            Toast.makeText(context, "Holiday '$holidayTitle' added", Toast.LENGTH_SHORT).show()
+                            showAddHolidayDialog = false
+                        } else {
+                            Toast.makeText(context, "Please enter holiday title and date", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                ) {
+                    Text("Save Holiday", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddHolidayDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    // 🏢 Company Profile Editor Dialog
+    if (showCompanyProfileDialog) {
+        var compName by remember { mutableStateOf(companyProfile.companyName) }
+        var compTagline by remember { mutableStateOf(companyProfile.tagline) }
+        var compIndustry by remember { mutableStateOf(companyProfile.industry) }
+        var compEmail by remember { mutableStateOf(companyProfile.email) }
+        var compPhone by remember { mutableStateOf(companyProfile.phone) }
+        var compWebsite by remember { mutableStateOf(companyProfile.website) }
+        var compAddress by remember { mutableStateOf(companyProfile.address) }
+        var compGst by remember { mutableStateOf(companyProfile.gstNumber) }
+        var compBrochure by remember { mutableStateOf(companyProfile.brochureUrl) }
+        var compOverview by remember { mutableStateOf(companyProfile.overview) }
+
+        AlertDialog(
+            onDismissRequest = { showCompanyProfileDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Business, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Company Profile & Details", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 450.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(value = compName, onValueChange = { compName = it }, label = { Text("Company Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = compTagline, onValueChange = { compTagline = it }, label = { Text("Tagline / Motto") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = compIndustry, onValueChange = { compIndustry = it }, label = { Text("Industry / Sector") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = compEmail, onValueChange = { compEmail = it }, label = { Text("Official Email") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = compPhone, onValueChange = { compPhone = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = compWebsite, onValueChange = { compWebsite = it }, label = { Text("Official Website") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = compAddress, onValueChange = { compAddress = it }, label = { Text("Corporate Address") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = compGst, onValueChange = { compGst = it }, label = { Text("GSTIN / Tax ID") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = compBrochure, onValueChange = { compBrochure = it }, label = { Text("PDF Brochure / Profile Link") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = compOverview, onValueChange = { compOverview = it }, label = { Text("Company Overview & Bio") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val updated = CompanyProfile(
+                            companyName = compName.trim().ifBlank { "Making Brands Pvt Ltd" },
+                            tagline = compTagline.trim(),
+                            industry = compIndustry.trim(),
+                            email = compEmail.trim(),
+                            phone = compPhone.trim(),
+                            website = compWebsite.trim(),
+                            address = compAddress.trim(),
+                            gstNumber = compGst.trim(),
+                            brochureUrl = compBrochure.trim(),
+                            overview = compOverview.trim()
+                        )
+                        viewModel.updateCompanyProfile(updated)
+                        Toast.makeText(context, "Company profile updated successfully!", Toast.LENGTH_SHORT).show()
+                        showCompanyProfileDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                ) {
+                    Text("Save Changes", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCompanyProfileDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    // 🧠 Milo AI Knowledge Base & Brain Training Dialog
+    if (showMiloKnowledgeDialog) {
+        var knowledgeQuery by remember { mutableStateOf("") }
+        val filteredKnowledge = remember(miloKnowledgeList, knowledgeQuery) {
+            if (knowledgeQuery.isBlank()) miloKnowledgeList
+            else miloKnowledgeList.filter {
+                it.title.contains(knowledgeQuery, ignoreCase = true) ||
+                it.category.contains(knowledgeQuery, ignoreCase = true) ||
+                it.content.contains(knowledgeQuery, ignoreCase = true)
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { showMiloKnowledgeDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Psychology, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Milo Knowledge Option", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                    FilledTonalButton(
+                        onClick = { showAddMiloKnowledgeDialog = true },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFEFF6FF), contentColor = BrandBlue),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("Add Topic", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp)) {
+                    Text(
+                        "Configure company knowledge, policies, and FAQs that Milo uses to intelligently answer employee questions.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = knowledgeQuery,
+                        onValueChange = { knowledgeQuery = it },
+                        placeholder = { Text("Search knowledge articles...", fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filteredKnowledge, key = { it.id }) { item ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(item.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFEFF6FF),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            ) {
+                                                Text(
+                                                    item.category,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = BrandBlue,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.deleteMiloKnowledge(item.id)
+                                                Toast.makeText(context, "Knowledge article deleted", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = StatusRed, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        item.content,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF475569),
+                                        lineHeight = 16.sp
+                                    )
+
+                                    if (item.tags.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            item.tags.forEach { tag ->
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = Color(0xFFF1F5F9)
+                                                ) {
+                                                    Text(
+                                                        "#$tag",
+                                                        fontSize = 9.sp,
+                                                        color = Color(0xFF64748B),
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showMiloKnowledgeDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Done", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        )
+    }
+
+    // ➕ Add Milo Knowledge Topic Dialog
+    if (showAddMiloKnowledgeDialog) {
+        var kTitle by remember { mutableStateOf("") }
+        var kCategory by remember { mutableStateOf("HR Policies") }
+        var kContent by remember { mutableStateOf("") }
+        var kTags by remember { mutableStateOf("") }
+
+        val categories = listOf("Company Profile", "HR Policies", "Sales & CRM", "Finance & Claims", "Tech SOPs", "Customer Support")
+
+        AlertDialog(
+            onDismissRequest = { showAddMiloKnowledgeDialog = false },
+            title = { Text("Add Milo Knowledge Topic", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = kTitle,
+                        onValueChange = { kTitle = it },
+                        label = { Text("Topic Title / Question") },
+                        placeholder = { Text("e.g. Leave Guidelines / Office Timings") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Text("Category:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        items(categories) { cat ->
+                            val isSel = kCategory == cat
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) BrandBlue else Color(0xFFF1F5F9),
+                                modifier = Modifier.clickable { kCategory = cat }
+                            ) {
+                                Text(
+                                    text = cat,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSel) Color.White else TextSecondary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = kContent,
+                        onValueChange = { kContent = it },
+                        label = { Text("Knowledge Information / Answer") },
+                        placeholder = { Text("Enter the policy, rule, FAQ answer, or company information...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
+
+                    OutlinedTextField(
+                        value = kTags,
+                        onValueChange = { kTags = it },
+                        label = { Text("Tags (comma separated)") },
+                        placeholder = { Text("e.g. Leave, Vacation, Policy") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (kTitle.isNotBlank() && kContent.isNotBlank()) {
+                            val tagList = kTags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            viewModel.addMiloKnowledge(kTitle.trim(), kCategory, kContent.trim(), tagList)
+                            Toast.makeText(context, "Knowledge topic added for Milo!", Toast.LENGTH_SHORT).show()
+                            showAddMiloKnowledgeDialog = false
+                        } else {
+                            Toast.makeText(context, "Please fill in title and knowledge content", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                ) {
+                    Text("Save Knowledge", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddMiloKnowledgeDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             AppHeader(
-                title = "MB Admin Portal",
+                title = "MB Admin",
                 subtitle = "Administrator Session",
                 onBack = onBack,
                 actions = {
@@ -1863,71 +2544,6 @@ fun ManagerDashboardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // MB Admin Banner with Logout Button
-            item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = BrandBlue,
-                                    modifier = Modifier.padding(bottom = 6.dp)
-                                ) {
-                                    Text(
-                                        "MB ADMIN ACCESS",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                            Text("Operations & Employee Telemetry", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("Real-time live monitoring of all ${employees.size} active personnel", fontSize = 12.sp, color = Color(0xFF94A3B8))
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Quick Logout Action Button inside Banner
-                            IconButton(
-                                onClick = { showLogoutConfirmationDialog = true },
-                                modifier = Modifier
-                                    .padding(end = 8.dp)
-                                    .size(40.dp)
-                                    .background(Color(0xFF1E293B), CircleShape)
-                            ) {
-                                Icon(
-                                    Icons.Default.Logout,
-                                    contentDescription = "Admin Logout",
-                                    tint = StatusRed,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFF1E293B),
-                                modifier = Modifier.size(50.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(28.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             // 🦁 MILO PROACTIVE TIME-OF-DAY GREETING & SMART ASSISTANT CARD
             item {
                 MiloGreetingCard(
@@ -1938,18 +2554,25 @@ fun ManagerDashboardScreen(
                 )
             }
 
-            // 🦁 MILO LIVE ASSISTANT COMPONENT FOR ADMIN
+            // 🎁 EXCLUSIVE APP OFFERS & PROMOTIONS SLIDER (Directly after Milo Greeting Card)
             item {
-                MiloDashboardWidget(
-                    miloViewModel = viewModel.miloViewModel,
-                    newLeadsCount = 12,
-                    followUpsCount = 8,
-                    onNavigateToLeads = onNavigateToLeads,
-                    onNavigateToFollowUps = {
-                        viewModel.miloViewModel.handleEvent(MiloEvent.FollowUpDue(8))
-                        onNavigateToLeads()
-                    },
-                    onOpenAiAssistant = { showMiloAssistant = true }
+                val liveBanners by viewModel.activeBanners.collectAsState()
+                OfferBannerSlider(
+                    banners = liveBanners,
+                    onBannerClick = { banner ->
+                        when (banner.routeAction) {
+                            "leads" -> onNavigateToLeads()
+                            "tasks" -> onNavigateToTasks()
+                            "projects" -> onNavigateToProjects()
+                            "chat" -> onNavigateToChat()
+                            "calls" -> onNavigateToCalls()
+                            "milo_ai" -> {
+                                showMiloAssistant = true
+                                viewModel.miloViewModel.handleEvent(MiloEvent.Thinking("Special Offers & CRM Deals"))
+                            }
+                            else -> onNavigateToLeads()
+                        }
+                    }
                 )
             }
             item {
@@ -2420,14 +3043,420 @@ fun ManagerDashboardScreen(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Button(
-                            onClick = { showMiloVideoConfigDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                            onClick = onNavigateToMiloAdmin,
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth().height(42.dp)
                         ) {
                             Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Configure / Upload Milo MP4 Video", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                            Text("Open Milo AI & MP4 Video Admin Panel", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+                    }
+                }
+            }
+
+            // 📋 4. Employee Leave Applications & Approvals Card (Admin Panel)
+            item {
+                val pendingLeavesCount = leavesList.count { it.status.equals("Pending", ignoreCase = true) }
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, if (pendingLeavesCount > 0) Color(0xFFFDE68A) else Color(0xFFE2E8F0)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = CircleShape, color = Color(0xFFFEF3C7), modifier = Modifier.size(36.dp)) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.EventBusy, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Employee Leave Approvals", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                                    Text("Review & approve staff leave applications", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (pendingLeavesCount > 0) Color(0xFFFEF3C7) else Color(0xFFDCFCE7)
+                            ) {
+                                Text(
+                                    if (pendingLeavesCount > 0) "$pendingLeavesCount PENDING" else "ALL CLEAR",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (pendingLeavesCount > 0) Color(0xFFB45309) else Color(0xFF15803D),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (leavesList.isEmpty()) {
+                            Text("No employee leave applications currently submitted.", fontSize = 12.sp, color = TextSecondary)
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                leavesList.take(3).forEach { leaveItem ->
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(leaveItem.username, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+                                                    Text("${leaveItem.leaveType} • ${leaveItem.startDate} to ${leaveItem.endDate}", fontSize = 11.sp, color = BrandBlue)
+                                                }
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = when (leaveItem.status) {
+                                                        "Approved" -> Color(0xFFDCFCE7)
+                                                        "Rejected" -> Color(0xFFFEE2E2)
+                                                        else -> Color(0xFFFEF3C7)
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        leaveItem.status,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = when (leaveItem.status) {
+                                                            "Approved" -> Color(0xFF15803D)
+                                                            "Rejected" -> Color(0xFFB91C1C)
+                                                            else -> Color(0xFFB45309)
+                                                        },
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            if (leaveItem.reason.isNotBlank()) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text("Reason: ${leaveItem.reason}", fontSize = 11.sp, color = Color(0xFF64748B))
+                                            }
+
+                                            if (leaveItem.status.equals("Pending", ignoreCase = true)) {
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                                    Button(
+                                                        onClick = {
+                                                            viewModel.updateLeaveStatus(leaveItem.id, "Approved")
+                                                            Toast.makeText(context, "Leave approved for ${leaveItem.username}", Toast.LENGTH_SHORT).show()
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = StatusGreen),
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        modifier = Modifier.weight(1f).height(32.dp),
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text("Approve", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                    }
+
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            viewModel.updateLeaveStatus(leaveItem.id, "Rejected")
+                                                            Toast.makeText(context, "Leave rejected for ${leaveItem.username}", Toast.LENGTH_SHORT).show()
+                                                        },
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        modifier = Modifier.weight(1f).height(32.dp),
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Close, contentDescription = null, tint = StatusRed, modifier = Modifier.size(14.dp))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text("Reject", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StatusRed)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = { showLeaveManagementDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = ButtonPrimary),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(42.dp)
+                        ) {
+                            Icon(Icons.Default.FactCheck, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Manage & Review All Leaves (${leavesList.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+                    }
+                }
+            }
+
+            // 🗓️ 5. Company Holidays Update Card (Admin Panel)
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = CircleShape, color = Color(0xFFFFF7ED), modifier = Modifier.size(36.dp)) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Celebration, contentDescription = null, tint = StatusOrange, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Company Holidays Update", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                                    Text("${holidays.size} Official Holidays Configured", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+
+                            FilledTonalButton(
+                                onClick = { showAddHolidayDialog = true },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFEFF6FF), contentColor = BrandBlue),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text("Add Holiday", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Next 3 Holidays Preview
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            holidays.take(3).forEach { h ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(h.title, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextPrimary)
+                                            Text("${h.date} (${h.day}) • ${h.type}", fontSize = 10.sp, color = TextSecondary)
+                                        }
+                                        Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFDCFCE7)) {
+                                            Text(
+                                                "OFFICIAL",
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF15803D),
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = { showHolidaysDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = StatusOrange),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(40.dp)
+                        ) {
+                            Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Update & Manage Holidays Calendar", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+                    }
+                }
+            }
+
+            // 🧠 6. Knowledge Option for MILO AI Card (Admin Panel)
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDDD6FE)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = CircleShape, color = Color(0xFFEDE9FE), modifier = Modifier.size(36.dp)) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Psychology, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Knowledge Option for MILO", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                                    Text("${miloKnowledgeList.size} AI Knowledge & FAQ entries", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+
+                            FilledTonalButton(
+                                onClick = { showAddMiloKnowledgeDialog = true },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFEDE9FE), contentColor = Color(0xFF7C3AED)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text("Add Topic", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            "Train Milo AI with company policies, SLAs, FAQs, and SOPs so it can intelligently guide your team members in Ask Milo.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF475569)
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Preview of recent 2 Knowledge entries
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            miloKnowledgeList.take(2).forEach { k ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(k.title, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextPrimary)
+                                            Text(k.category, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED))
+                                        }
+                                        Text(k.content, fontSize = 10.sp, color = TextSecondary, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = { showMiloKnowledgeDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(40.dp)
+                        ) {
+                            Icon(Icons.Default.AutoStories, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Open Milo AI Knowledge Base", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+                    }
+                }
+            }
+
+            // 🏢 7. Company Profile Card (Admin Panel)
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = CircleShape, color = Color(0xFFEFF6FF), modifier = Modifier.size(36.dp)) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Business, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Company Profile & Information", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                                    Text("Enterprise corporate details & brochure", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+
+                            Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFDCFCE7)) {
+                                Text(
+                                    "ACTIVE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF15803D),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(companyProfile.companyName, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = BrandBlue)
+                                if (companyProfile.tagline.isNotBlank()) {
+                                    Text("\"${companyProfile.tagline}\"", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFF64748B))
+                                }
+                                Text("🏢 ${companyProfile.industry}", fontSize = 11.sp, color = TextPrimary)
+                                Text("📞 ${companyProfile.phone}  •  ✉️ ${companyProfile.email}", fontSize = 11.sp, color = TextSecondary)
+                                Text("🌐 ${companyProfile.website}", fontSize = 11.sp, color = BrandBlue)
+                                if (companyProfile.address.isNotBlank()) {
+                                    Text("📍 ${companyProfile.address}", fontSize = 10.sp, color = Color(0xFF64748B))
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = { showCompanyProfileDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(40.dp)
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Edit & Update Company Profile", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
                         }
                     }
                 }
@@ -2531,18 +3560,18 @@ fun ManagerDashboardScreen(
                     item {
                         Button(
                             onClick = onNavigateToTracking,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                            colors = ButtonDefaults.buttonColors(containerColor = ButtonPrimary),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Live Field Map", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Live Field Map", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                     item {
                         Button(
                             onClick = onNavigateToTimesheets,
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                            colors = ButtonDefaults.buttonColors(containerColor = ButtonSecondary),
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.PunchClock, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -2553,7 +3582,7 @@ fun ManagerDashboardScreen(
                     item {
                         Button(
                             onClick = onNavigateToMeetings,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                            colors = ButtonDefaults.buttonColors(containerColor = ButtonSecondary),
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.Place, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -2564,7 +3593,7 @@ fun ManagerDashboardScreen(
                     item {
                         Button(
                             onClick = onNavigateToVault,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
+                            colors = ButtonDefaults.buttonColors(containerColor = ButtonPrimary),
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -2575,7 +3604,7 @@ fun ManagerDashboardScreen(
                     item {
                         Button(
                             onClick = onNavigateToCalls,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            colors = ButtonDefaults.buttonColors(containerColor = ButtonSecondary),
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.PhoneCallback, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))

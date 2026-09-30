@@ -7,7 +7,10 @@ import com.example.domain.milo.MiloState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -21,6 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,10 +61,46 @@ fun MiloDashboardWidget(
 
     var showStatePicker by remember { mutableStateOf(false) }
 
+    val cardInteractionSource = remember { MutableInteractionSource() }
+    val isCardHovered by cardInteractionSource.collectIsHoveredAsState()
+    var isPointerHovered by remember { mutableStateOf(false) }
+    val isHovered = isCardHovered || isPointerHovered
+
+    val infiniteTransition = rememberInfiniteTransition(label = "DashboardWidgetMiloPulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = if (isHovered) 1.04f else 0.98f,
+        targetValue = if (isHovered) 1.14f else 1.02f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = if (isHovered) 700 else 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "PulseScale"
+    )
+    val growScale by animateFloatAsState(
+        targetValue = if (isHovered) 1.08f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "GrowScale"
+    )
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp)),
+            .clip(RoundedCornerShape(20.dp))
+            .hoverable(cardInteractionSource)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        when (event.type) {
+                            PointerEventType.Enter, PointerEventType.Move -> isPointerHovered = true
+                            PointerEventType.Exit -> isPointerHovered = false
+                        }
+                    }
+                }
+            },
         colors = CardDefaults.cardColors(
             containerColor = Color.White
         ),
@@ -207,17 +249,25 @@ fun MiloDashboardWidget(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Animated Milo Mascot (Full body without green background)
-                MiloCharacter(
-                    state = state,
-                    size = 110.dp,
-                    showStateBadge = true,
-                    useFullBody = true,
-                    onClick = {
-                        com.example.util.MiloHaptics.performMiloMascotTap(context, hapticFeedback)
-                        onOpenAiAssistant()
+                // Animated Milo Mascot (Full body, bigger size with hover pulse/grow animation)
+                Box(
+                    modifier = Modifier.graphicsLayer {
+                        val total = growScale * pulseScale
+                        scaleX = total
+                        scaleY = total
                     }
-                )
+                ) {
+                    MiloCharacter(
+                        state = state,
+                        size = 140.dp,
+                        showStateBadge = false,
+                        useFullBody = true,
+                        onClick = {
+                            com.example.util.MiloHaptics.performMiloMascotTap(context, hapticFeedback)
+                            onOpenAiAssistant()
+                        }
+                    )
+                }
 
                 Spacer(modifier = Modifier.width(14.dp))
 

@@ -556,8 +556,8 @@ fun AttendanceScreen(
                                 Button(
                                     onClick = { showBreakDialog = true },
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ButtonPrimary),
+                                    shape = RoundedCornerShape(10.dp),
                                     contentPadding = PaddingValues(vertical = 12.dp),
                                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
                                 ) {

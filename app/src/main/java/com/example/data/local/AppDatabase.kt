@@ -208,7 +208,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "mb_traker_database"
                 )
                     .addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
-                    .addCallback(DatabaseCallback())
+                    .addCallback(DatabaseCallback(context.applicationContext))
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
@@ -216,12 +216,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private class DatabaseCallback : RoomDatabase.Callback() {
+        private class DatabaseCallback(private val appContext: Context) : RoomDatabase.Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 super.onCreate(db)
-                INSTANCE?.let { database ->
-                    CoroutineScope(Dispatchers.IO).launch {
-                        populateInitialData(database)
+                if (!com.example.util.AppPreferences.isDummyDataCleared(appContext)) {
+                    INSTANCE?.let { database ->
+                        CoroutineScope(Dispatchers.IO).launch {
+                            populateInitialData(database)
+                        }
                     }
                 }
             }
@@ -234,9 +236,11 @@ abstract class AppDatabase : RoomDatabase() {
 
             override fun onDestructiveMigration(db: SupportSQLiteDatabase) {
                 super.onDestructiveMigration(db)
-                INSTANCE?.let { database ->
-                    CoroutineScope(Dispatchers.IO).launch {
-                        populateInitialData(database)
+                if (!com.example.util.AppPreferences.isDummyDataCleared(appContext)) {
+                    INSTANCE?.let { database ->
+                        CoroutineScope(Dispatchers.IO).launch {
+                            populateInitialData(database)
+                        }
                     }
                 }
             }
@@ -245,13 +249,15 @@ abstract class AppDatabase : RoomDatabase() {
         suspend fun ensurePopulated(db: AppDatabase, context: Context? = null) {
             try {
                 if (context != null && com.example.util.AppPreferences.isDummyDataCleared(context)) {
+                    android.util.Log.d("AppDatabase", "User cleared dummy data - permanently skipping auto-populate")
                     return
                 }
                 val employeeCount = db.employeeDao().getEmployeeCountDirect()
                 val taskCount = db.taskDao().getTaskCount()
                 val chatCount = db.chatDao().getMessageCount()
                 val leadCount = db.leadDao().getLeadCount()
-                if (employeeCount == 0 || (taskCount == 0 && chatCount == 0 && leadCount == 0)) {
+                // Only populate initial template records if the database is totally empty and un-cleared
+                if (employeeCount == 0 && taskCount == 0 && chatCount == 0 && leadCount == 0) {
                     populateInitialData(db)
                 }
             } catch (_: Exception) {
@@ -800,47 +806,8 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
 
-            // Notifications
-            db.notificationDao().insertAll(
-                listOf(
-                    NotificationEntity(
-                        title = "Follow-up due",
-                        subtitle = "ABC Industries · 10 minutes ago",
-                        timeAgo = "10m ago",
-                        category = "followup"
-                    ),
-                    NotificationEntity(
-                        title = "Task assigned",
-                        subtitle = "Homepage redesign · 1 hour ago",
-                        timeAgo = "1h ago",
-                        category = "task"
-                    ),
-                    NotificationEntity(
-                        title = "New message",
-                        subtitle = "Rahul · 2 hours ago",
-                        timeAgo = "2h ago",
-                        category = "message"
-                    ),
-                    NotificationEntity(
-                        title = "Attendance reminder",
-                        subtitle = "You haven't checked out · 3 hours ago",
-                        timeAgo = "3h ago",
-                        category = "attendance"
-                    ),
-                    NotificationEntity(
-                        title = "Leave approved",
-                        subtitle = "Project update · 5 hours ago",
-                        timeAgo = "5h ago",
-                        category = "leave"
-                    ),
-                    NotificationEntity(
-                        title = "Project update",
-                        subtitle = "Website Revamp · 6 hours ago",
-                        timeAgo = "6h ago",
-                        category = "project"
-                    )
-                )
-            )
+            // Notifications - clean initial state (no dummy notifications)
+            // Real notifications will be inserted dynamically based on real user actions and live broadcasts
 
             val leaveDao = db.leaveDao()
             leaveDao.insert(

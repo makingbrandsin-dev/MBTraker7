@@ -455,4 +455,34 @@ data class AttendanceRegularizationEntity(
     val appliedAt: Long = System.currentTimeMillis()
 )
 
+data class HolidayItem(
+    val id: Long = System.currentTimeMillis(),
+    val title: String,
+    val date: String,
+    val day: String,
+    val type: String = "Gazetted Holiday"
+)
+
+data class MiloKnowledgeItem(
+    val id: Long = System.currentTimeMillis(),
+    val title: String,
+    val category: String = "Company FAQ",
+    val content: String,
+    val tags: List<String> = emptyList(),
+    val lastUpdated: String = "Today"
+)
+
+data class CompanyProfile(
+    val companyName: String = "Making Brands Pvt Ltd",
+    val tagline: String = "Track · Manage · Grow",
+    val industry: String = "Enterprise IT & Digital Marketing",
+    val email: String = "contact@makingbrands.in",
+    val phone: String = "+91 98765 43210",
+    val website: String = "https://makingbrands.in",
+    val address: String = "DLF Cyber City, Phase 2, Gurugram, Haryana 122002",
+    val gstNumber: String = "07AAAAA0000A1Z5",
+    val brochureUrl: String = "https://makingbrands.in/brochure.pdf",
+    val overview: String = "Making Brands provides end-to-end Enterprise CRM, Workforce Attendance & Tracking, Lead Automation, and AI-powered operations management."
+)
+
 

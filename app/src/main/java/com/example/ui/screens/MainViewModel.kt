@@ -24,6 +24,7 @@ import com.example.di.AppContainer
 import com.example.util.BiometricHelper
 import com.example.util.NotificationHelper
 import com.example.util.WhatsAppHelper
+import com.example.util.AppSoundHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -142,6 +143,7 @@ data class ThirtyDayTrendsState(
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+    private val appContext: Context = application.applicationContext
     private val container = (application as? MBTrakerApp)?.container ?: AppContainer(application)
     private val db = container.database
     private val employeeDao = container.employeeDao
@@ -267,7 +269,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     taskDao = taskDao,
                     attendanceDao = attendanceDao,
                     leadDao = leadDao,
-                    employeeDao = employeeDao
+                    employeeDao = employeeDao,
+                    projectDao = projectDao
                 )
                 // Smooth visual feedback for pull-to-refresh
                 delay(600)
@@ -526,12 +529,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         FirebaseRealtimeManager.syncNow(viewModelScope)
     }
 
-    private val _unreadChatCount = MutableStateFlow(3)
-    val unreadChatCount: StateFlow<Int> = _unreadChatCount.asStateFlow()
+    val unreadChatCount: StateFlow<Int> = chatDao.getTotalUnreadChatCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     fun openQuickChat() {
         _isQuickChatOpen.value = true
-        _unreadChatCount.value = 0
+        viewModelScope.launch {
+            chatDao.markChannelMessagesAsRead(_currentChannel.value, "User")
+        }
     }
 
     fun closeQuickChat() {
@@ -642,10 +647,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val pendingTaskCount: StateFlow<Int> = taskRepository.pendingTaskCount
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val completedTaskCount: StateFlow<Int> = taskRepository.completedTaskCount
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // 📊 Workload Visualizer Aggregations (Recharts / D3 Architecture)
     val projectWorkloadDistribution: StateFlow<List<ProjectWorkloadItem>> = combine(
@@ -893,6 +898,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val callLogs = callLogDao.getAllCallLogs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Pending counts for Navigation Badges (Real unread notifications & real pending items only - NO dummy counts)
+    private val _pendingCrmIssuesCount = MutableStateFlow(0)
+    val pendingCrmIssuesCount: StateFlow<Int> = _pendingCrmIssuesCount.asStateFlow()
+
+    fun updatePendingCrmIssues(count: Int) {
+        _pendingCrmIssuesCount.value = count.coerceAtLeast(0)
+    }
+
+    val pendingCrmCount: StateFlow<Int> = combine(notificationDao.getAllNotifications(), _pendingCrmIssuesCount) { notifs, issueCount ->
+        val unreadCrmNotifs = notifs.count { !it.isRead && (it.category.equals("crm", ignoreCase = true) || it.category.equals("lead", ignoreCase = true) || it.category.equals("followup", ignoreCase = true)) }
+        (unreadCrmNotifs + issueCount).coerceAtLeast(0)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val pendingAttendanceCount: StateFlow<Int> = notificationDao.getAllNotifications().map { notifs ->
+        notifs.count { !it.isRead && it.category.equals("attendance", ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     // Currency Preference ("INR" vs "USD") - Default INR ("₹")
     private val _currencyCode = MutableStateFlow("INR")
     val currencyCode: StateFlow<String> = _currencyCode.asStateFlow()
@@ -952,6 +974,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isRead = false
                 )
             )
+            com.example.util.AppSoundHelper.playGeneralNotificationSound(appContext)
         }
     }
 
@@ -972,12 +995,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             chatDao = chatDao,
             activityFeedDao = activityFeedDao,
             scope = viewModelScope,
-            notificationDao = notificationDao
+            notificationDao = notificationDao,
+            projectDao = projectDao
         )
         try {
             FcmBroadcastManager.getInstance(application)
         } catch (e: Exception) {
             Log.w("MainViewModel", "FcmBroadcastManager init warning: ${e.message}")
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                notificationDao.removeDummyNotifications()
+            } catch (_: Exception) {}
         }
 
         viewModelScope.launch {
@@ -1040,6 +1070,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val s2 = targetEmployeeName.trim().lowercase().replace(" ", "_")
         val sorted = listOf(s1, s2).sorted()
         return "dm_${sorted[0]}_${sorted[1]}"
+    }
+
+    // 📞 Auto Call Recording Persistent State (Option to toggle ON/OFF)
+    private val _isAutoCallRecordingEnabled = MutableStateFlow(
+        com.example.util.AppPreferences.isAutoCallRecordingEnabled(application.applicationContext)
+    )
+    val isAutoCallRecordingEnabled: StateFlow<Boolean> = _isAutoCallRecordingEnabled.asStateFlow()
+
+    fun setAutoCallRecordingEnabled(enabled: Boolean) {
+        _isAutoCallRecordingEnabled.value = enabled
+        com.example.util.AppPreferences.setAutoCallRecordingEnabled(getApplication(), enabled)
     }
 
     // First time onboarding / first check-in popup state
@@ -1149,6 +1190,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             userProfileDao.insertOrUpdateProfile(profile)
             FirebaseRealtimeManager.syncProfileToFirebase(profile)
 
+            val parsedDept = try {
+                Department.valueOf(department.trim().uppercase())
+            } catch (_: Exception) {
+                Department.ENGINEERING
+            }
+            val skillsList = skills.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+
             val emp = employeeDao.getEmployeeById(1L).first()
             if (emp != null) {
                 employeeDao.update(
@@ -1157,6 +1205,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         designation = trimmedRole,
                         email = email.trim(),
                         phone = phone.trim(),
+                        department = parsedDept,
+                        skills = if (skillsList.isNotEmpty()) skillsList else emp.skills,
                         emergencyContact = emergencyContact.trim()
                     )
                 )
@@ -1274,9 +1324,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 👑 Admin: Delete / Clear All Enterprise Data & Fields
+     * 👑 Complete Enterprise & Application Data Wipe: Permanently deletes all data across all tables and modules
      */
-    fun clearAllEnterpriseFields() {
+    fun deleteAllEnterpriseData(onComplete: (() -> Unit)? = null) {
         viewModelScope.launch {
             taskDao.clearAll()
             attendanceDao.clearAll()
@@ -1288,26 +1338,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             chatDao.clearAll()
             clientMeetingDao.clearAll()
             expenseClaimDao.clearAll()
+            projectDao.clearAll()
             projectMilestoneDao.clearAll()
             vaultDocumentDao.clearAll()
             notificationDao.clearAll()
             invoiceDao.clearAll()
             quotationDao.clearAll()
             callRecordingDao.clearAll()
+            socialReviewDao.clearAll()
+            employeeDao.clearAll()
+            userProfileDao.clearProfileFields()
 
-            // Persistently flag dummy data as cleared so it is not re-seeded
+            // Persistently flag dummy data as cleared so it is never re-seeded
             com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
 
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "⚠️ All Enterprise Fields Cleared",
-                    subtitle = "Administrator performed a complete reset of all operational fields and data records.",
-                    timeAgo = "Just now",
-                    category = "project",
-                    isRead = false
-                )
-            )
+            onComplete?.invoke()
         }
+    }
+
+    /**
+     * 👑 Admin: Delete / Clear All Enterprise Data & Fields
+     */
+    fun clearAllEnterpriseFields() {
+        deleteAllEnterpriseData()
     }
 
     /**
@@ -1315,31 +1368,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun clearEmployeeData() {
         viewModelScope.launch {
-            val name = currentEmployeeName.value.ifBlank { "Employee" }
             taskDao.clearAll()
+            projectDao.clearAll()
+            projectMilestoneDao.clearAll()
+            leadDao.clearAll()
+            followUpDao.clearAll()
             chatDao.clearAll()
             attendanceDao.clearAll()
+            attendanceRegularizationDao.clearAll()
             leaveDao.clearAll()
             notificationDao.clearAll()
             callLogDao.clearAll()
+            callRecordingDao.clearAll()
+            clientMeetingDao.clearAll()
+            expenseClaimDao.clearAll()
             com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
-
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "🧹 Employee Data Cleared",
-                    subtitle = "All local data, tasks, chats, and records cleared for $name.",
-                    timeAgo = "Just now",
-                    category = "attendance",
-                    isRead = false
-                )
-            )
         }
     }
 
     fun clearAllTasks() {
         viewModelScope.launch {
             taskDao.clearAll()
-            notificationDao.insert(NotificationEntity(title = "🗑️ All Tasks Cleared", subtitle = "All enterprise tasks have been deleted.", timeAgo = "Just now", category = "task", isRead = false))
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
+        }
+    }
+
+    fun clearAllProjects() {
+        viewModelScope.launch {
+            projectDao.clearAll()
+            projectMilestoneDao.clearAll()
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
         }
     }
 
@@ -1347,7 +1405,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             attendanceDao.clearAll()
             attendanceRegularizationDao.clearAll()
-            notificationDao.insert(NotificationEntity(title = "🗑️ All Attendance Cleared", subtitle = "All punch-in, break, and regularization records deleted.", timeAgo = "Just now", category = "attendance", isRead = false))
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
         }
     }
 
@@ -1356,49 +1414,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             leadDao.clearAll()
             followUpDao.clearAll()
             callLogDao.clearAll()
-            notificationDao.insert(NotificationEntity(title = "🗑️ All Leads & Pipeline Cleared", subtitle = "All CRM leads, follow-ups, and call logs deleted.", timeAgo = "Just now", category = "followup", isRead = false))
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
+        }
+    }
+
+    fun clearAllCallLogs() {
+        viewModelScope.launch {
+            callLogDao.clearAll()
+            callRecordingDao.clearAll()
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
         }
     }
 
     fun clearAllLeaves() {
         viewModelScope.launch {
             leaveDao.clearAll()
-            notificationDao.insert(NotificationEntity(title = "🗑️ All Leaves Cleared", subtitle = "All leave requests have been deleted.", timeAgo = "Just now", category = "leave", isRead = false))
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
         }
     }
 
     fun clearAllChat() {
         viewModelScope.launch {
             chatDao.clearAll()
-            notificationDao.insert(NotificationEntity(title = "🗑️ All Chat Cleared", subtitle = "All channels message history deleted.", timeAgo = "Just now", category = "message", isRead = false))
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
         }
     }
 
     fun clearAllExpenses() {
         viewModelScope.launch {
             expenseClaimDao.clearAll()
-            notificationDao.insert(NotificationEntity(title = "🗑️ All Expenses Cleared", subtitle = "All reimbursement claims deleted.", timeAgo = "Just now", category = "project", isRead = false))
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
         }
     }
 
     fun clearAllEmployees() {
         viewModelScope.launch {
             employeeDao.clearAll()
-            notificationDao.insert(NotificationEntity(title = "🗑️ All Employees Cleared", subtitle = "All employee directory records deleted.", timeAgo = "Just now", category = "project", isRead = false))
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
         }
     }
 
     fun clearAllMeetings() {
         viewModelScope.launch {
             clientMeetingDao.clearAll()
-            notificationDao.insert(NotificationEntity(title = "🗑️ All Meetings Cleared", subtitle = "All client meeting logs deleted.", timeAgo = "Just now", category = "project", isRead = false))
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
         }
     }
 
     fun clearAllDocuments() {
         viewModelScope.launch {
             vaultDocumentDao.clearAll()
-            notificationDao.insert(NotificationEntity(title = "🗑️ All Documents Cleared", subtitle = "All vault documents deleted.", timeAgo = "Just now", category = "project", isRead = false))
+            com.example.util.AppPreferences.setDummyDataCleared(getApplication(), true)
         }
     }
 
@@ -1447,7 +1513,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun isUserLoggedIn(): Boolean {
-        return BiometricHelper.isUserLoggedIn(getApplication())
+        val isFirebaseSignedIn = FirebaseAuthHelper.isUserSignedIn()
+        val isLocalLoggedIn = BiometricHelper.isUserLoggedIn(getApplication())
+        return isFirebaseSignedIn || isLocalLoggedIn
     }
 
     fun requestWhatsAppOtp(
@@ -2179,7 +2247,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         // Ensure Room database is seeded with rich initial team, leads, tasks, and chat data
         viewModelScope.launch(Dispatchers.IO) {
-            AppDatabase.ensurePopulated(db)
+            AppDatabase.ensurePopulated(db, getApplication())
         }
 
         // Initialize Firebase Auth & Google Sign-In helper
@@ -2194,7 +2262,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             leadDao,
             chatDao,
             activityFeedDao,
-            viewModelScope
+            viewModelScope,
+            projectDao = projectDao
         )
 
         // Initialize Firestore Auth Provider to check and sync authoritative user roles from Firestore
@@ -2714,6 +2783,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             FirebaseRealtimeManager.syncTaskToFirebase(updated)
             if (updated.isCompleted) {
                 miloViewModel.handleEvent(MiloEvent.TaskCompleted(task.title))
+                com.example.util.AppSoundHelper.playTaskCompletedSound(appContext)
             }
             notificationDao.insert(
                 NotificationEntity(
@@ -2730,6 +2800,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTaskStatus(task: TaskEntity, newStatus: String) {
         viewModelScope.launch {
             val isComp = newStatus.equals("Completed", ignoreCase = true)
+            if (isComp) {
+                com.example.util.AppSoundHelper.playTaskCompletedSound(appContext)
+            }
             val updated = task.copy(status = newStatus, isCompleted = isComp)
             taskDao.update(updated)
             FirebaseRealtimeManager.syncTaskToFirebase(updated)
@@ -2850,7 +2923,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         value: String = "₹ 2,00,000",
         stage: String = "New",
         score: Int = (70..95).random(),
-        source: String = "Website"
+        source: String = "Website",
+        triggerWhatsAppDispatch: Boolean = true
     ) {
         viewModelScope.launch {
             val newLead = LeadEntity(
@@ -2867,6 +2941,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 source = source
             )
             val id = leadDao.insert(newLead)
+            com.example.util.AppSoundHelper.playLeadAddedSound(appContext)
             FirebaseRealtimeManager.syncLeadToFirebase(newLead.copy(id = id))
             miloViewModel.handleEvent(MiloEvent.LeadCreated(name))
             NotificationHelper.showLeadAlert(
@@ -2887,7 +2962,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // Automated Company Profile PDF Brochure dispatch
             val brochureCfg = autoBrochureConfig.value
-            if (brochureCfg != null && brochureCfg.isAutoSendEnabled) {
+            if (brochureCfg != null && brochureCfg.isAutoSendEnabled && triggerWhatsAppDispatch) {
                 val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
                 val nowStr = "Today, " + timeFormat.format(Date())
                 autoBrochureDao.incrementSentCount(nowStr)
@@ -3177,28 +3252,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         budget: Double? = 200000.0
     ) {
         viewModelScope.launch {
-            projectDao.insert(
-                ProjectEntity(
-                    name = name,
-                    clientName = clientName,
-                    totalTasks = totalTasks,
-                    completedTasks = 0,
-                    progressPercent = 0,
-                    status = "Active",
-                    priority = priority,
-                    deadline = deadline,
-                    teamSize = teamSize,
-                    tags = tags,
-                    assignedEmployeeIds = assignedEmployeeIds,
-                    budget = budget
-                )
+            val project = ProjectEntity(
+                name = name,
+                clientName = clientName,
+                totalTasks = totalTasks,
+                completedTasks = 0,
+                progressPercent = 0,
+                status = "Active",
+                priority = priority,
+                deadline = deadline,
+                teamSize = teamSize,
+                tags = tags,
+                assignedEmployeeIds = assignedEmployeeIds,
+                budget = budget
             )
+            val generatedId = projectDao.insert(project)
+            FirebaseRealtimeManager.syncProjectToFirebase(project.copy(id = generatedId))
         }
     }
 
     fun deleteProject(project: ProjectEntity) {
         viewModelScope.launch {
             projectDao.delete(project)
+            FirebaseRealtimeManager.deleteProjectFromFirebase(project.id)
+        }
+    }
+
+    fun completeProject(project: ProjectEntity) {
+        viewModelScope.launch {
+            val updated = project.copy(status = "Completed", progressPercent = 100, completedTasks = project.totalTasks)
+            projectDao.update(updated)
+            FirebaseRealtimeManager.syncProjectToFirebase(updated)
+            com.example.util.AppSoundHelper.playProjectDoneSound(appContext)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "Project Completed! 🏆",
+                    subtitle = "'${project.name}' successfully completed",
+                    timeAgo = "Just now",
+                    category = "project",
+                    isRead = false
+                )
+            )
         }
     }
 
@@ -3241,6 +3335,101 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             leaveDao.delete(leave)
         }
+    }
+
+    fun updateLeaveStatus(leaveId: Long, newStatus: String) {
+        viewModelScope.launch {
+            val all = leaves.value
+            val target = all.find { it.id == leaveId } ?: return@launch
+            val updated = target.copy(status = newStatus)
+            leaveDao.update(updated)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = if (newStatus == "Approved") "✅ Leave Approved" else "❌ Leave Rejected",
+                    subtitle = "${target.leaveType} for ${target.username} (${target.startDate} - ${target.endDate}) marked as $newStatus",
+                    timeAgo = "Just now",
+                    category = "leave"
+                )
+            )
+        }
+    }
+
+    // 🗓️ Company Holidays Management (Admin Editable)
+    private val _holidays = MutableStateFlow(
+        listOf(
+            HolidayItem(1L, "New Year's Day", "01 Jan 2026", "Thursday", "Public Holiday"),
+            HolidayItem(2L, "Republic Day", "26 Jan 2026", "Monday", "National Holiday"),
+            HolidayItem(3L, "Holi", "04 Mar 2026", "Wednesday", "Gazetted Holiday"),
+            HolidayItem(4L, "Eid-ul-Fitr", "20 Mar 2026", "Friday", "Gazetted Holiday"),
+            HolidayItem(5L, "Independence Day", "15 Aug 2026", "Saturday", "National Holiday"),
+            HolidayItem(6L, "Gandhi Jayanti", "02 Oct 2026", "Friday", "National Holiday"),
+            HolidayItem(7L, "Dussehra", "20 Oct 2026", "Tuesday", "Gazetted Holiday"),
+            HolidayItem(8L, "Diwali", "08 Nov 2026", "Sunday", "Gazetted Holiday"),
+            HolidayItem(9L, "Guru Nanak Jayanti", "24 Nov 2026", "Tuesday", "Gazetted Holiday"),
+            HolidayItem(10L, "Christmas", "25 Dec 2026", "Friday", "Gazetted Holiday")
+        )
+    )
+    val holidays: StateFlow<List<HolidayItem>> = _holidays.asStateFlow()
+
+    fun addHoliday(title: String, date: String, day: String, type: String = "Gazetted Holiday") {
+        val newHoliday = HolidayItem(id = System.currentTimeMillis(), title = title, date = date, day = day, type = type)
+        _holidays.value = _holidays.value + newHoliday
+    }
+
+    fun deleteHoliday(id: Long) {
+        _holidays.value = _holidays.value.filter { it.id != id }
+    }
+
+    fun updateHoliday(id: Long, title: String, date: String, day: String, type: String) {
+        _holidays.value = _holidays.value.map {
+            if (it.id == id) it.copy(title = title, date = date, day = day, type = type) else it
+        }
+    }
+
+    // 🧠 Milo AI Knowledge Base & Brain Training State
+    private val _miloKnowledgeList = MutableStateFlow(
+        listOf(
+            MiloKnowledgeItem(1L, "About Making Brands", "Company Profile", "Making Brands is a premier IT consulting and digital marketing powerhouse delivering CRM, enterprise software, and growth strategies.", listOf("Overview", "Company", "About")),
+            MiloKnowledgeItem(2L, "Working Hours & Shift Policy", "HR Policies", "Standard company shifts run from 9:30 AM to 6:30 PM with a 45-minute lunch break. Biometric check-in is mandatory on the mobile app.", listOf("Shift", "Timing", "Attendance")),
+            MiloKnowledgeItem(3L, "Leave & Vacation Guidelines", "HR Policies", "Employees are entitled to 18 Paid Leaves, 12 Casual Leaves, and 10 Sick Leaves per annum. Prior manager approval required.", listOf("Leave", "Holiday", "Sick Leave")),
+            MiloKnowledgeItem(4L, "Lead Follow-up SLA", "Sales & CRM", "Inbound leads must be contacted within 15 minutes of capture. Automated WhatsApp brochure is dispatched instantly upon new lead creation.", listOf("Sales", "Leads", "WhatsApp")),
+            MiloKnowledgeItem(5L, "Reimbursement & Expense Claims", "Finance", "Travel, meal, and client meeting expense bills must be submitted before the 25th of every month with valid receipts.", listOf("Expense", "Finance", "Claims"))
+        )
+    )
+    val miloKnowledgeList: StateFlow<List<MiloKnowledgeItem>> = _miloKnowledgeList.asStateFlow()
+
+    fun addMiloKnowledge(title: String, category: String, content: String, tags: List<String>) {
+        val todayStr = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date())
+        val item = MiloKnowledgeItem(
+            id = System.currentTimeMillis(),
+            title = title,
+            category = category,
+            content = content,
+            tags = tags,
+            lastUpdated = todayStr
+        )
+        _miloKnowledgeList.value = listOf(item) + _miloKnowledgeList.value
+    }
+
+    fun deleteMiloKnowledge(id: Long) {
+        _miloKnowledgeList.value = _miloKnowledgeList.value.filter { it.id != id }
+    }
+
+    // 🏢 Company Profile State (Admin Manageable)
+    private val _companyProfile = MutableStateFlow(CompanyProfile())
+    val companyProfile: StateFlow<CompanyProfile> = _companyProfile.asStateFlow()
+
+    fun updateCompanyProfile(profile: CompanyProfile) {
+        _companyProfile.value = profile
+        updateAutoBrochureConfig(
+            AutoBrochureConfigEntity(
+                id = 1L,
+                isAutoSendEnabled = true,
+                brochureFileName = "${profile.companyName.replace(" ", "_")}_Profile.pdf",
+                emailSubject = "Welcome to ${profile.companyName} — Corporate Profile",
+                customMessage = "Hello {NAME}, thank you for contacting ${profile.companyName}! ${profile.overview}"
+            )
+        )
     }
 
     // --- Call Recorder Operations (SIM & WhatsApp calls saved to local DB) ---

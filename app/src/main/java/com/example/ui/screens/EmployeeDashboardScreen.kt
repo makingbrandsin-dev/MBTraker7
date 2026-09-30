@@ -16,10 +16,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.R
 import com.example.data.model.AutoBrochureConfigEntity
 import com.example.data.model.CallRecordingEntity
 import com.example.data.model.SocialReviewConfigEntity
@@ -49,6 +52,7 @@ import com.example.ui.components.BiometricSecurityGate
 import com.example.util.BiometricHelper
 import com.example.ui.components.DailyTaskManagementSection
 import com.example.ui.components.DynamicActivityFeedSection
+import com.example.ui.components.OngoingProjectsTasksOverviewCard
 import com.example.ui.components.TeamWorkloadChartCard
 import com.example.ui.components.RechartsTrendDashboardWidget
 import com.example.ui.components.StatusTag
@@ -88,6 +92,9 @@ fun EmployeeDashboardScreen(
     val liveSeconds by viewModel.liveActiveDurationSeconds.collectAsState()
     val pendingTasks by viewModel.pendingTaskCount.collectAsState()
     val completedTasks by viewModel.completedTaskCount.collectAsState()
+    val projectsList by viewModel.projects.collectAsState()
+    val leadsList by viewModel.leads.collectAsState()
+    val callLogsList by viewModel.callLogs.collectAsState()
     val employeeName by viewModel.currentEmployeeName.collectAsState()
     val employeeRole by viewModel.currentEmployeeRole.collectAsState()
     val unreadNotifications by viewModel.unreadNotificationCount.collectAsState()
@@ -117,20 +124,6 @@ fun EmployeeDashboardScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val isDashboardUnlocked by viewModel.isDashboardBiometricUnlocked.collectAsState()
-    val isBiometricDashboardEnabled = remember { BiometricHelper.isBiometricForDashboardEnabled(context) }
-    val effectivelyUnlocked = !isBiometricDashboardEnabled || isDashboardUnlocked
-
-    BiometricSecurityGate(
-        isUnlocked = effectivelyUnlocked,
-        featureTitle = "Employee Dashboard",
-        featureSubtitle = "Attendance Trends, Analytics & Operations",
-        securityDescription = "Confidential daily attendance trends, 30-day productivity rates, live shift hours, and sensitive operational records are encrypted under biometric security.",
-        icon = Icons.Default.Fingerprint,
-        onUnlockSuccess = {
-            viewModel.unlockDashboardBiometric()
-        },
-        onBack = null
-    ) {
 
     var currentDeviceTime by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -160,6 +153,23 @@ fun EmployeeDashboardScreen(
         snackbarMsg?.let { msg ->
             snackbarHostState.showSnackbar(msg)
             viewModel.clearAttendanceSnackbarMessage()
+        }
+    }
+
+    // 🎙️ Milo Real-Time Voice Briefing upon opening the app
+    var hasSpokenDailyBriefing by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!hasSpokenDailyBriefing) {
+            hasSpokenDailyBriefing = true
+            kotlinx.coroutines.delay(1200L)
+            com.example.milo.MiloVoiceHelper.speakDailyBriefing(
+                context = context,
+                employeeName = employeeName,
+                pendingTasksCount = pendingTasks,
+                activeProjectsCount = projectsList.count { !it.status.equals("Completed", ignoreCase = true) },
+                leadsCount = leadsList.size,
+                callLogsCount = callLogsList.size
+            )
         }
     }
 
@@ -225,71 +235,223 @@ fun EmployeeDashboardScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-        // Greeting & Live Work Badge
+        // 1. 🌅 Good Morning Greeting Card with Box Border on all sides, Live Clock, Weather, & Milo Reaction
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, BorderLight),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("dashboard_greeting_card")
             ) {
-                Column {
-                    Text(greetingText, fontSize = 13.sp, color = TextSecondary)
-                    Text(employeeName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text(employeeRole, fontSize = 12.sp, color = TextMuted)
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatusTag(
-                        text = if (isWorking) "Working" else "Off-Clock",
-                        isGreen = isWorking
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFFF1F5F9),
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clickable {
-                                MiloHaptics.performReactionTick(context, hapticFeedback)
-                                viewModel.lockDashboardBiometric()
-                            }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    // Top row: Greeting + Live Clock & Weather Widget (No Lock Icon)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Lock,
-                                contentDescription = "Lock Dashboard with Biometrics",
-                                tint = BrandDarkBlue,
-                                modifier = Modifier.size(16.dp)
-                            )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(greetingText, fontSize = 13.sp, color = TextSecondary)
+                            Text(employeeName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text(employeeRole, fontSize = 12.sp, color = TextMuted)
+                        }
+
+                        // Live Digital Clock & Weather Status Pills
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Live Clock Pill (Live ticking seconds)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                shadowElevation = 1.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Schedule,
+                                        contentDescription = "Live Clock",
+                                        tint = BrandBlue,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = deviceTimeString,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                }
+                            }
+
+                            // Weather Status Pill
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFFFFBEB),
+                                border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                shadowElevation = 1.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.WbSunny,
+                                        contentDescription = "Weather",
+                                        tint = Color(0xFFF59E0B),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = "31°C Sunny",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF92400E)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 🦁 MILO PROACTIVE TIME-OF-DAY GREETING & SMART ASSISTANT CARD
+        // 2. 🦁 MILO ASSISTANT CARD (Home Screen Executive AI Copilot Card with MP4 playback)
         item {
-            MiloGreetingCard(
-                viewModel = viewModel,
-                onOpenAskMilo = { showMiloAssistant = true },
-                onNavigateToTasks = onNavigateToTasks,
-                onNavigateToLeads = onNavigateToLeads
+            MiloAssistantCard(
+                isWorking = isWorking,
+                onOpenAssistant = {
+                    MiloHaptics.performButtonTap(context)
+                    showMiloAssistant = true
+                },
+                onQuickPrompt = { prompt ->
+                    showMiloAssistant = true
+                    viewModel.miloViewModel.handleEvent(MiloEvent.Thinking(prompt))
+                }
             )
         }
 
-        // 🦁 MILO LIVE ASSISTANT COMPONENT
+        // 3. 🎁 EXCLUSIVE OFFERS & PROMOTIONS SLIDER (Directly following Milo Assistant & Greeting)
         item {
-            MiloDashboardWidget(
-                miloViewModel = viewModel.miloViewModel,
-                newLeadsCount = 12,
-                followUpsCount = 8,
-                onNavigateToLeads = onNavigateToLeads,
-                onNavigateToFollowUps = {
-                    viewModel.miloViewModel.handleEvent(MiloEvent.FollowUpDue(8))
-                    onNavigateToLeads()
-                },
-                onOpenAiAssistant = { showMiloAssistant = true }
+            val liveBanners by viewModel.activeBanners.collectAsState()
+            OfferBannerSlider(
+                banners = liveBanners,
+                onBannerClick = { banner ->
+                    when (banner.routeAction) {
+                        "leads" -> onNavigateToLeads()
+                        "tasks" -> onNavigateToTasks()
+                        "invoices" -> onNavigateToInvoices()
+                        "attendance" -> onNavigateToAttendance()
+                        "projects" -> onNavigateToProjects()
+                        "chat" -> onNavigateToChat()
+                        "calls" -> onNavigateToCalls()
+                        "milo_ai" -> {
+                            showMiloAssistant = true
+                            viewModel.miloViewModel.handleEvent(MiloEvent.Thinking("Special Offers & CRM Deals"))
+                        }
+                        else -> onNavigateToLeads()
+                    }
+                }
             )
+        }
+
+        // 3. ⏱️ Attendance On-Clock / Off-Clock Toggle Section
+        item {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, BorderLight),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("attendance_toggle_card")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .background(if (isWorking) StatusGreen else StatusRed, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = if (isWorking) "⚡ On-Clock (Active Shift)" else "🛑 Off-Clock (Shift Paused)",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isWorking) StatusGreen else Color(0xFF991B1B)
+                            )
+                            val liveFormattedTime = remember(liveSeconds) {
+                                val hrs = liveSeconds / 3600
+                                val mins = (liveSeconds % 3600) / 60
+                                val secs = liveSeconds % 60
+                                String.format("%02dh %02dm %02ds", hrs, mins, secs)
+                            }
+                            Text(
+                                text = if (isWorking) "Shift Duration: $liveFormattedTime" else "Toggle right to start shift tracking",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+
+                    // Interactive Attendance Toggle Switch Button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isWorking) StatusGreen.copy(alpha = 0.12f) else Color(0xFFF1F5F9)
+                        ) {
+                            Text(
+                                text = if (isWorking) "ON" else "OFF",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isWorking) StatusGreen else TextMuted,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            )
+                        }
+
+                        Switch(
+                            checked = isWorking,
+                            onCheckedChange = { checked ->
+                                MiloHaptics.performButtonTap(context)
+                                if (checked) {
+                                    viewModel.checkInUser(context)
+                                } else {
+                                    viewModel.checkOutUser(context)
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = StatusGreen,
+                                uncheckedThumbColor = Color.White,
+                                uncheckedTrackColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier.testTag("attendance_toggle_switch")
+                        )
+                    }
+                }
+            }
         }
 
         // 🚀 Quick Actions & Tools Section (Placed right after Milo Section)
@@ -418,8 +580,8 @@ fun EmployeeDashboardScreen(
                         QuickActionItem(
                             icon = Icons.Default.People,
                             label = "Team",
-                            bgColor = Color(0xFFE0F2FE),
-                            tintColor = Color(0xFF0284C7),
+                            bgColor = AccentSage.copy(alpha = 0.4f),
+                            tintColor = ButtonSecondary,
                             onClick = onNavigateToEmployees
                         )
                         QuickActionItem(
@@ -432,29 +594,6 @@ fun EmployeeDashboardScreen(
                     }
                 }
             }
-        }
-
-        // 🎁 EXCLUSIVE APP OFFERS & PROMOTIONS SLIDER
-        item {
-            val liveBanners by viewModel.activeBanners.collectAsState()
-            OfferBannerSlider(
-                banners = liveBanners,
-                onBannerClick = { banner ->
-                    when (banner.routeAction) {
-                        "leads" -> onNavigateToLeads()
-                        "tasks" -> onNavigateToTasks()
-                        "invoices" -> onNavigateToInvoices()
-                        "attendance" -> onNavigateToAttendance()
-                        "projects" -> onNavigateToProjects()
-                        "chat" -> onNavigateToChat()
-                        "milo_ai" -> {
-                            showMiloAssistant = true
-                            viewModel.miloViewModel.handleEvent(MiloEvent.Thinking("Special Offers & CRM Deals"))
-                        }
-                        else -> onNavigateToLeads()
-                    }
-                }
-            )
         }
 
         // 📰 DYNAMIC ACTIVITY & LIVE COLLABORATIVE FEED (User-Generated Content & WebSocket Updates)
@@ -488,34 +627,13 @@ fun EmployeeDashboardScreen(
             )
         }
 
-        // Active Projects Card preview
+        // 🚀 Ongoing Projects & Active Tasks Overview Component
         item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToProjects() }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Active Projects", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextPrimary)
-                        Text("Website Revamp · 82% Complete", color = TextSecondary, fontSize = 13.sp)
-                    }
-
-                    Icon(
-                        Icons.Default.ChevronRight,
-                        contentDescription = "View Projects",
-                        tint = TextMuted
-                    )
-                }
-            }
+            OngoingProjectsTasksOverviewCard(
+                viewModel = viewModel,
+                onNavigateToProjects = onNavigateToProjects,
+                onNavigateToTasks = onNavigateToTasks
+            )
         }
             }
         }
@@ -554,7 +672,6 @@ fun EmployeeDashboardScreen(
             onNavigateToTasks = onNavigateToTasks,
             onNavigateToCalls = onNavigateToCalls
         )
-    }
     }
 }
 
@@ -1377,15 +1494,17 @@ fun SocialReviewsAndQrDialog(
                                         }
                                     }
 
-                                    // Center Brand Logo Pill
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = BrandBlue,
+                                    // Center Brand Logo (Clean, no black background)
+                                    Box(
+                                        contentAlignment = Alignment.Center,
                                         modifier = Modifier.size(32.dp)
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text("MB", color = Color.White, fontWeight = FontWeight.Black, fontSize = 11.sp)
-                                        }
+                                        Image(
+                                            painter = painterResource(id = R.drawable.milo_final),
+                                            contentDescription = "Milo Logo",
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
                                     }
                                 }
                             }
@@ -1569,7 +1688,57 @@ fun CallRecorderAudioDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                // Auto Call Recording Status Banner
+                var autoRecordEnabled by remember { mutableStateOf(true) }
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (autoRecordEnabled) Color(0xFFF0FDF4) else Color(0xFFF1F5F9),
+                    border = BorderStroke(1.dp, if (autoRecordEnabled) Color(0xFFBBF7D0) else Color(0xFFCBD5E1)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .background(if (autoRecordEnabled) Color(0xFF16A34A) else Color(0xFF94A3B8), CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = if (autoRecordEnabled) "Auto Call Recording: Active" else "Auto Call Recording: Paused",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (autoRecordEnabled) Color(0xFF166534) else Color(0xFF475569)
+                                )
+                                Text(
+                                    text = "Auto-captures incoming & outgoing calls with CRM client profiles",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = autoRecordEnabled,
+                            onCheckedChange = { autoRecordEnabled = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF16A34A)
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Filter Chips
                 Row(
@@ -2061,7 +2230,7 @@ fun InlineLiveTeamChatCard(
                                             "A" -> Color(0xFF8B5CF6)
                                             "P" -> Color(0xFFEC4899)
                                             "V" -> Color(0xFF06B6D4)
-                                            else -> Color(0xFF3B82F6)
+                                            else -> ButtonPrimary
                                         },
                                         modifier = Modifier.size(22.dp)
                                     ) {

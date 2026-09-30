@@ -159,14 +159,7 @@ fun MiloCharacter(
             ),
         contentAlignment = Alignment.Center
     ) {
-        // Subtle aura ring behind Milo based on current state color
-        Surface(
-            shape = CircleShape,
-            color = state.primaryColor.copy(alpha = 0.12f),
-            modifier = Modifier
-                .fillMaxSize()
-                .scale(breathingScale)
-        ) {}
+        // Clean transparent background behind Milo (no circle shape)
 
         // Smooth crossfade animation with gentle scale easing for seamless Milo state changes
         AnimatedContent(
@@ -214,11 +207,10 @@ fun MiloCharacter(
                         )
                     }
 
-                    if (size > 64.dp && hasMp4 && videoUri != null) {
+                    if (hasMp4 && videoUri != null) {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape),
+                                .fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
                             MiloVideoSurface(
@@ -231,26 +223,12 @@ fun MiloCharacter(
             }
         }
 
-        // Optional State Emoji Badge at bottom-right
-        if (showStateBadge) {
-            Surface(
-                shape = CircleShape,
-                color = Color.White,
-                shadowElevation = 3.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(24.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(state.emoji, fontSize = 12.sp)
-                }
-            }
-        }
+        // State emoji badges removed per user instruction to keep Milo clean without status/hand icons
 
-        // Equipped Milo Accessory Theme Badge at top-right
+        // Equipped Milo Accessory Theme Badge at top-right (Rounded corner, not circle)
         if (xpState.equippedTheme != MiloThemeAccessory.CLASSIC) {
             Surface(
-                shape = CircleShape,
+                shape = RoundedCornerShape(6.dp),
                 color = Color(xpState.equippedTheme.primaryColorHex),
                 shadowElevation = 4.dp,
                 modifier = Modifier
@@ -513,139 +491,37 @@ private fun MiloIdleOverlay() {
 
 @Composable
 private fun MiloWelcomeOverlay(waveRot: Float) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        Surface(
-            shape = CircleShape,
-            color = Color.White,
-            shadowElevation = 2.dp,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 4.dp, top = 14.dp)
-                .rotate(waveRot)
-                .size(24.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text("👋", fontSize = 13.sp)
-            }
-        }
-    }
+    // Clean - no hand or status icons on top of Milo
 }
 
 @Composable
 private fun MiloWorkingOverlay(waveRot: Float) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        Surface(
-            shape = RoundedCornerShape(6.dp),
-            color = Color(0xFF1E293B),
-            shadowElevation = 3.dp,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 2.dp)
-                .width(42.dp)
-                .height(20.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text("MB", color = Color(0xFF38BDF8), fontWeight = FontWeight.Black, fontSize = 9.sp)
-            }
-        }
-    }
+    // Clean - no status badges on top of Milo
 }
 
 @Composable
 private fun MiloThinkingOverlay(pulseAlpha: Float) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        Surface(
-            shape = CircleShape,
-            color = Color(0xFFFEF3C7).copy(alpha = pulseAlpha),
-            shadowElevation = 4.dp,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 2.dp, end = 2.dp)
-                .size(26.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Lightbulb, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(16.dp))
-            }
-        }
-    }
+    // Clean - no status icons on top of Milo
 }
 
 @Composable
 private fun MiloLeadImportedOverlay() {
-    Box(modifier = Modifier.fillMaxSize()) {
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = Color(0xFF2563EB),
-            shadowElevation = 4.dp,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("+12", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 9.sp)
-            }
-        }
-    }
+    // Clean - no status icons on top of Milo
 }
 
 @Composable
 private fun MiloNewLeadOverlay() {
-    Box(modifier = Modifier.fillMaxSize()) {
-        Surface(
-            shape = CircleShape,
-            color = Color(0xFF7C3AED),
-            shadowElevation = 3.dp,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 4.dp, start = 4.dp)
-                .size(20.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Star, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
-            }
-        }
-    }
+    // Clean - no status icons on top of Milo
 }
 
 @Composable
 private fun MiloFollowUpOverlay() {
-    Box(modifier = Modifier.fillMaxSize()) {
-        Surface(
-            shape = CircleShape,
-            color = Color(0xFF059669),
-            shadowElevation = 3.dp,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 8.dp, end = 2.dp)
-                .size(24.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.PhoneInTalk, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-            }
-        }
-    }
+    // Clean - no status icons on top of Milo
 }
 
 @Composable
 private fun MiloSuccessOverlay() {
-    Box(modifier = Modifier.fillMaxSize()) {
-        Surface(
-            shape = CircleShape,
-            color = Color(0xFF10B981),
-            shadowElevation = 4.dp,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(bottom = 8.dp, end = 2.dp)
-                .size(26.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.ThumbUp, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-            }
-        }
-    }
+    // Clean - no status icons on top of Milo
 }
 
 @Composable
@@ -657,7 +533,7 @@ private fun MiloConvertedOverlay(confetti: List<MiloConfettiParticle>, pulseAlph
                 modifier = Modifier
                     .offset(x = (p.xOffset * 0.4f).dp, y = (p.yOffset * 0.4f).dp)
                     .size(p.size.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(2.dp))
                     .background(p.color)
                     .align(Alignment.Center)
             )
@@ -665,7 +541,7 @@ private fun MiloConvertedOverlay(confetti: List<MiloConfettiParticle>, pulseAlph
 
         // Crown on Top of Mane
         Surface(
-            shape = CircleShape,
+            shape = RoundedCornerShape(6.dp),
             color = Color(0xFFF59E0B),
             shadowElevation = 3.dp,
             modifier = Modifier

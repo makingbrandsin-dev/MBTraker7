@@ -11,49 +11,49 @@ enum class MiloState(
     val description: String,
     val emoji: String,
     val defaultSpeech: String,
-    val primaryColor: Color = Color(0xFF1976D2)
+    val primaryColor: Color = Color(0xFF705C30)
 ) {
     IDLE(
         title = "Idle",
         description = "Breathing, blinking, small tail movement",
         emoji = "🦁",
         defaultSpeech = "Ready when you are! Let's make today productive.",
-        primaryColor = Color(0xFF1976D2)
+        primaryColor = Color(0xFF705C30)
     ),
     WELCOME(
         title = "Welcome",
         description = "Waves and smiles when you open the app",
         emoji = "👋",
         defaultSpeech = "Good morning! Let's grow today!",
-        primaryColor = Color(0xFF2563EB)
+        primaryColor = Color(0xFF705C30)
     ),
     WORKING(
         title = "Working",
         description = "Typing and focused on tasks with MB laptop",
         emoji = "💻",
         defaultSpeech = "Syncing records and optimizing workflows...",
-        primaryColor = Color(0xFF0284C7)
+        primaryColor = Color(0xFF4A7C59)
     ),
     THINKING(
         title = "Thinking",
         description = "Hand on chin with floating idea animation",
         emoji = "💡",
         defaultSpeech = "Analyzing your pipeline and team activity...",
-        primaryColor = Color(0xFFD97706)
+        primaryColor = Color(0xFF705C30)
     ),
     LEAD_IMPORTED(
         title = "Lead Imported",
         description = "Excited expression, points to new leads",
         emoji = "📥",
         defaultSpeech = "New leads just arrived! Check your inbox.",
-        primaryColor = Color(0xFF2563EB)
+        primaryColor = Color(0xFF4A7C59)
     ),
     NEW_LEAD(
         title = "New Lead",
         description = "Celebrates new lead creation",
         emoji = "✨",
         defaultSpeech = "Awesome! New lead recorded in the CRM.",
-        primaryColor = Color(0xFF7C3AED)
+        primaryColor = Color(0xFF705C30)
     ),
     FOLLOW_UP(
         title = "Follow Up",

@@ -5,21 +5,52 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import com.example.data.model.AutoBrochureConfigEntity
-import java.net.URLEncoder
 
 object WhatsAppHelper {
 
     /**
-     * Sanitizes raw phone numbers for WhatsApp API.
-     * Removes spaces, dashes, parentheses, plus signs.
+     * Sanitizes raw phone numbers for WhatsApp API and direct intents.
+     * Removes spaces, dashes, parentheses, dots.
      * If 10 digits (standard Indian mobile format without country code), prepends 91.
+     * If starts with 0 and length 11, strips 0 and prepends 91.
      */
     fun sanitizePhoneNumber(rawPhone: String): String {
-        val digitsOnly = rawPhone.replace(Regex("[^0-9]"), "")
+        val trimmed = rawPhone.trim()
+        val digitsOnly = trimmed.replace(Regex("[^0-9]"), "")
         return when {
             digitsOnly.length == 10 -> "91$digitsOnly"
             digitsOnly.startsWith("0") && digitsOnly.length == 11 -> "91" + digitsOnly.substring(1)
+            digitsOnly.startsWith("91") && digitsOnly.length == 12 -> digitsOnly
             else -> digitsOnly
+        }
+    }
+
+    /**
+     * Cleans phone number for native dialer intent (preserves leading + if provided).
+     */
+    fun sanitizeForDialer(rawPhone: String): String {
+        val trimmed = rawPhone.trim()
+        return trimmed.replace(Regex("[^0-9+]"), "")
+    }
+
+    /**
+     * Launches native phone dialer for the target number.
+     */
+    fun dialPhoneNumber(context: Context, rawPhone: String): Boolean {
+        val cleanNumber = sanitizeForDialer(rawPhone)
+        if (cleanNumber.isBlank()) {
+            Toast.makeText(context, "No valid phone number to call", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        return try {
+            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanNumber")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(dialIntent)
+            true
+        } catch (e: Exception) {
+            Toast.makeText(context, "Unable to launch phone dialer: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            false
         }
     }
 
@@ -60,7 +91,7 @@ Best regards,
     }
 
     /**
-     * Opens WhatsApp or browser to send the message directly to the target recipient.
+     * Opens WhatsApp or browser to send the message directly to the exact target recipient number.
      */
     fun sendWhatsAppMessage(
         context: Context,
@@ -74,64 +105,52 @@ Best regards,
             return false
         }
 
-        val encodedMessage = try {
-            URLEncoder.encode(message, "UTF-8")
-        } catch (e: Exception) {
-            Uri.encode(message)
-        }
+        val encodedMessage = Uri.encode(message)
+        val waUrl = "https://api.whatsapp.com/send?phone=$cleanPhone&text=$encodedMessage"
+        val waMeUrl = "https://wa.me/$cleanPhone?text=$encodedMessage"
 
-        // Try direct whatsapp:// protocol first (best compatibility with native app)
-        val waUri = Uri.parse("whatsapp://send?phone=$cleanPhone&text=$encodedMessage")
-        val directIntent = Intent(Intent.ACTION_VIEW, waUri).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-
-        // Check if official WhatsApp or Business is installed
         val packageManager = context.packageManager
         val waPackages = listOf("com.whatsapp", "com.whatsapp.w4b")
+        var launched = false
+
         for (pkg in waPackages) {
             try {
-                packageManager.getPackageInfo(pkg, 0)
-                directIntent.setPackage(pkg)
+                val directIntent = Intent(Intent.ACTION_VIEW, Uri.parse(waUrl)).apply {
+                    setPackage(pkg)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
                 context.startActivity(directIntent)
                 if (showSuccessToast) {
                     Toast.makeText(context, "Opening WhatsApp for +$cleanPhone...", Toast.LENGTH_SHORT).show()
                 }
-                return true
+                launched = true
+                break
             } catch (_: Exception) {
-                // Continue to next package or web fallback
+                // Try next package or browser fallback
             }
         }
 
-        // Fallback to https://api.whatsapp.com web intent
-        try {
-            val webUrl = "https://api.whatsapp.com/send?phone=$cleanPhone&text=$encodedMessage"
-            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(webUrl)).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            context.startActivity(webIntent)
-            if (showSuccessToast) {
-                Toast.makeText(context, "Opening WhatsApp web dispatch for +$cleanPhone...", Toast.LENGTH_SHORT).show()
-            }
-            return true
-        } catch (e: Exception) {
-            // Ultimate fallback to wa.me URL
+        if (!launched) {
             try {
-                val waMeUrl = "https://wa.me/$cleanPhone?text=$encodedMessage"
-                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(waMeUrl)).apply {
+                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(waMeUrl)).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
-                context.startActivity(fallbackIntent)
-                return true
+                context.startActivity(browserIntent)
+                if (showSuccessToast) {
+                    Toast.makeText(context, "Opening WhatsApp web dispatch for +$cleanPhone...", Toast.LENGTH_SHORT).show()
+                }
+                launched = true
             } catch (ex: Exception) {
                 Toast.makeText(context, "Unable to open WhatsApp: ${ex.localizedMessage}", Toast.LENGTH_SHORT).show()
                 return false
             }
         }
+
+        return launched
     }
 
     /**
-     * Helper to send company profile directly to a lead.
+     * Helper to send company profile directly to a lead using the lead's exact phone number.
      */
     fun sendCompanyProfileToLead(
         context: Context,

@@ -525,8 +525,7 @@ private fun EmployeeCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     IconButton(
                         onClick = {
-                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${employee.phone}"))
-                            context.startActivity(intent)
+                            com.example.util.WhatsAppHelper.dialPhoneNumber(context, employee.phone)
                         },
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -635,11 +634,13 @@ private fun AddEmployeeDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .imePadding(),
-            color = SurfaceBg
+                .fillMaxWidth(0.90f)
+                .fillMaxHeight(0.88f)
+                .padding(vertical = 16.dp)
+                .clip(RoundedCornerShape(24.dp)),
+            color = SurfaceBg,
+            shape = RoundedCornerShape(24.dp),
+            tonalElevation = 8.dp
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Top Header

@@ -29,6 +29,7 @@ fun FollowUpsScreen(
     onBack: () -> Unit
 ) {
     val followUps by viewModel.followUps.collectAsState()
+    val leads by viewModel.leads.collectAsState()
     var selectedFilterIndex by remember { mutableIntStateOf(0) }
     var showAddDialog by remember { mutableStateOf(false) }
     val filters = listOf("Today", "Upcoming", "Completed")
@@ -113,8 +114,14 @@ fun FollowUpsScreen(
                 }
             } else {
                 items(filteredFollowUps) { item ->
+                    val matchingLead = leads.firstOrNull { it.id == item.leadId } ?: leads.firstOrNull { it.name.equals(item.clientName, ignoreCase = true) }
+                    val clientPhone = matchingLead?.phone ?: "+91 98765 43210"
+                    val clientEmail = matchingLead?.email?.ifBlank { "client@makingbrands.in" } ?: "client@makingbrands.in"
+
                     FollowUpCardItem(
                         item = item,
+                        clientPhone = clientPhone,
+                        clientEmail = clientEmail,
                         onComplete = { viewModel.toggleFollowUpCompletion(item) }
                     )
                 }
@@ -205,6 +212,8 @@ fun FollowUpsScreen(
 @Composable
 fun FollowUpCardItem(
     item: FollowUpEntity,
+    clientPhone: String = "+91 98765 43210",
+    clientEmail: String = "client@makingbrands.in",
     onComplete: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -256,22 +265,23 @@ fun FollowUpCardItem(
                         onClick = {
                             when (item.actionType.lowercase()) {
                                 "call" -> {
-                                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:9876543210"))
-                                    context.startActivity(dialIntent)
+                                    com.example.util.WhatsAppHelper.dialPhoneNumber(context, clientPhone)
                                 }
                                 "whatsapp" -> {
                                     com.example.util.WhatsAppHelper.sendWhatsAppMessage(
                                         context = context,
-                                        phoneNumber = "9876543210",
+                                        phoneNumber = clientPhone,
                                         message = "Hello ${item.clientName}, following up regarding: ${item.taskDescription}"
                                     )
                                 }
                                 "email" -> {
-                                    val emailIntent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:client@example.com")).apply {
+                                    val emailIntent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$clientEmail")).apply {
                                         putExtra(Intent.EXTRA_SUBJECT, "Follow-up: ${item.clientName}")
                                         putExtra(Intent.EXTRA_TEXT, "Hello ${item.clientName},\n\nFollowing up regarding ${item.taskDescription}.\n\nBest regards,\nMaking Brands Team")
                                     }
-                                    context.startActivity(emailIntent)
+                                    try {
+                                        context.startActivity(emailIntent)
+                                    } catch (_: Exception) {}
                                 }
                                 else -> onComplete()
                             }

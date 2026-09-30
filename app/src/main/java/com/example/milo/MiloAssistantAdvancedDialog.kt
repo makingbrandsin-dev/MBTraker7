@@ -3,6 +3,7 @@ package com.example.milo
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -77,20 +78,25 @@ fun MiloAssistantAdvancedDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = SurfaceBg,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        dragHandle = {
-            BottomSheetDefaults.DragHandle(color = TextSecondary.copy(alpha = 0.4f))
-        }
+        containerColor = Color.Transparent,
+        scrimColor = Color.Black.copy(alpha = 0.50f),
+        dragHandle = null,
+        shape = RoundedCornerShape(28.dp)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f)
-                .imePadding()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 16.dp)
+                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(SurfaceBg)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.88f)
+                    .imePadding()
+                    .padding(16.dp)
+            ) {
             // Header: Milo Avatar & Live Status
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -100,10 +106,10 @@ fun MiloAssistantAdvancedDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     MiloCharacter(
                         state = macroResult?.miloState ?: miloState,
-                        size = 56.dp,
+                        size = 100.dp,
                         showStateBadge = true
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
                             text = "MILO 20X AI Assistant",
@@ -114,7 +120,8 @@ fun MiloAssistantAdvancedDialog(
                         Text(
                             text = macroResult?.miloSpeech ?: "🦁 \"Ready for 20X field efficiency!\"",
                             fontSize = 12.sp,
-                            color = BrandBlue,
+                            color = ButtonPrimary,
+                            fontWeight = FontWeight.SemiBold,
                             maxLines = 2
                         )
                     }
@@ -208,6 +215,7 @@ fun MiloAssistantAdvancedDialog(
             }
         }
     }
+}
 }
 
 @Composable

@@ -153,6 +153,8 @@ object BiometricHelper {
             .apply()
     }
 
+    private var lastAuthPromptTime = 0L
+
     /**
      * Shows the BiometricPrompt dialog using the androidx.biometric library.
      * If hardware is available and enrolled, displays native biometric prompt with fingerprint/face scan.
@@ -170,6 +172,12 @@ object BiometricHelper {
         onCancel: () -> Unit = {},
         onFailed: () -> Unit = {}
     ) {
+        val now = System.currentTimeMillis()
+        if (now - lastAuthPromptTime < 1200L) {
+            return // Guard against rapid duplicate prompts
+        }
+        lastAuthPromptTime = now
+
         val availability = checkBiometricAvailability(activity)
 
         if (availability == BiometricAvailability.AVAILABLE) {

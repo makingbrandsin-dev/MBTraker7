@@ -51,10 +51,10 @@ fun getCategoryConfig(category: String): TaskCategoryConfig {
         "work" -> TaskCategoryConfig(
             name = "Work",
             icon = Icons.Default.Work,
-            tagBgColor = Color(0xFFEFF6FF), // Soft Blue
-            tagTextColor = Color(0xFF1D4ED8),
-            leftAccentColor = Color(0xFF2563EB),
-            cardBorderColor = Color(0xFFBFDBFE)
+            tagBgColor = Color(0xFFC8E8D0), // Soft Mint Sage
+            tagTextColor = Color(0xFF4A7C59), // Deep Emerald Green
+            leftAccentColor = Color(0xFF705C30), // Warm Luxury Bronze
+            cardBorderColor = Color(0xFFE8DEC8)
         )
         "personal" -> TaskCategoryConfig(
             name = "Personal",
@@ -194,7 +194,7 @@ fun DailyTaskManagementSection(
                                     Icon(
                                         imageVector = Icons.Default.CloudSync,
                                         contentDescription = null,
-                                        tint = Color(0xFF2563EB),
+                                        tint = Color(0xFF4A7C59),
                                         modifier = Modifier.size(11.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
@@ -202,7 +202,7 @@ fun DailyTaskManagementSection(
                                         "Firestore",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1D4ED8)
+                                        color = Color(0xFF705C30)
                                     )
                                 }
                             }

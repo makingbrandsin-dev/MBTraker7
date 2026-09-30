@@ -188,6 +188,7 @@ object NotificationHelper {
             val notificationManager = NotificationManagerCompat.from(context)
             val notificationId = (System.currentTimeMillis() % 10000).toInt() + 1000
             notificationManager.notify(notificationId, notificationBuilder.build())
+            AppSoundHelper.playChatNotificationSound(context)
         } catch (_: SecurityException) {
         }
     }
