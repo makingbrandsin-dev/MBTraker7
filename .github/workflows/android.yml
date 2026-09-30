@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'Build Target'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - debug
+          - release
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,9 +23,9 @@ concurrency:
 
 jobs:
   build:
-    name: Build, Test & Package Android App
+    name: Build & Package Android APKs
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout Repository
@@ -46,19 +56,28 @@ jobs:
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest --continue || true
 
-      - name: Build Debug & Release APKs
-        run: ./gradlew assembleDebug assembleRelease --stacktrace --no-daemon
+      - name: Build Debug APK
+        if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'debug' || github.event.inputs.build_target == null }}
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
 
-      - name: Upload Debug APK Artifact
+      - name: Build Release APK
+        if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'release' || github.event.inputs.build_target == null }}
+        run: ./gradlew assembleRelease --stacktrace --no-daemon
+
+      - name: Organize APK Artifacts
+        run: |
+          mkdir -p output-apks
+          if [ -d "app/build/outputs/apk/debug" ]; then
+            cp -v app/build/outputs/apk/debug/*.apk output-apks/MB-Taker-debug.apk || cp -v app/build/outputs/apk/debug/*.apk output-apks/ || true
+          fi
+          if [ -d "app/build/outputs/apk/release" ]; then
+            cp -v app/build/outputs/apk/release/*.apk output-apks/MB-Taker-release.apk || cp -v app/build/outputs/apk/release/*.apk output-apks/ || true
+          fi
+          ls -la output-apks/
+
+      - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
-
-      - name: Upload Release APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release-apk
-          path: app/build/outputs/apk/release/*.apk
-          if-no-files-found: warn
+          name: MB-Taker-APKs
+          path: output-apks/*
+          if-no-files-found: error
