@@ -249,6 +249,25 @@ fun MainAppNavHost(viewModel: MainViewModel) {
         Screen.MiloOnboarding.route
     )
 
+    LaunchedEffect(currentRoute) {
+        currentRoute?.let { route ->
+            when {
+                route == Screen.Crm.route || route == Screen.Leads.route -> {
+                    viewModel.markNotificationsAsReadByCategory("followup")
+                }
+                route == Screen.Tasks.route -> {
+                    viewModel.markNotificationsAsReadByCategory("task")
+                }
+                route == Screen.Attendance.route -> {
+                    viewModel.markNotificationsAsReadByCategory("attendance")
+                }
+                route == Screen.Chat.route || route.startsWith("chat_room/") -> {
+                    viewModel.markNotificationsAsReadByCategory("message")
+                }
+            }
+        }
+    }
+
     val showBottomBar = currentRoute != null && currentRoute !in nonFooterRoutes
     var showGlobalMiloAssistant by remember { mutableStateOf(false) }
 

@@ -220,7 +220,7 @@ fun AppBottomNavigationBar(
                 ) {
                     openAskMilo()
                 }
-                .liftOnPress(elevationLift = 12.dp, translateY = (-5).dp, scaleLift = 1.05f, interactionSource = centerInteractionSource),
+                .liftOnPress(elevationLift = 0.dp, translateY = (-5).dp, scaleLift = 1.05f, interactionSource = centerInteractionSource),
             contentAlignment = Alignment.TopCenter
         ) {
             Column(
@@ -242,7 +242,8 @@ fun AppBottomNavigationBar(
                         state = if (isAskMiloActive) MiloState.THINKING else currentMiloState,
                         size = 60.dp,
                         showStateBadge = false,
-                        onClick = { openAskMilo() }
+                        customVideoUri = askButtonVideoUri,
+                        onClick = null
                     )
                 }
 

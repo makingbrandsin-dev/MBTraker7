@@ -39,7 +39,7 @@ import java.util.Date
         AttendanceRegularizationEntity::class,
         ActivityFeedItemEntity::class
     ],
-    version = 17,
+    version = 20,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -200,6 +200,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `call_logs` ADD COLUMN `transcription` TEXT")
+                db.execSQL("ALTER TABLE `call_logs` ADD COLUMN `aiInsights` TEXT")
+                db.execSQL("ALTER TABLE `call_logs` ADD COLUMN `leadUpdated` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -207,7 +215,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mb_traker_database"
                 )
-                    .addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_19_20)
                     .addCallback(DatabaseCallback(context.applicationContext))
                     .fallbackToDestructiveMigration()
                     .build()

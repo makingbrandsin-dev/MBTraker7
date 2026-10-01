@@ -30,15 +30,104 @@ class MiloVoiceHelper(
         private var isTtsInitialized = false
         private var pendingTextToSpeak: String? = null
 
+        fun isMuted(context: Context): Boolean {
+            return context.getSharedPreferences("mb_traker_app_prefs", Context.MODE_PRIVATE)
+                .getBoolean("milo_voice_muted", false)
+        }
+
+        fun setMuted(context: Context, muted: Boolean) {
+            context.getSharedPreferences("mb_traker_app_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("milo_voice_muted", muted)
+                .apply()
+        }
+
+        fun getVoiceOption(context: Context): String {
+            return context.getSharedPreferences("mb_traker_app_prefs", Context.MODE_PRIVATE)
+                .getString("milo_voice_option", "INDIAN_MALE") ?: "INDIAN_MALE"
+        }
+
+        fun setVoiceOption(context: Context, option: String) {
+            context.getSharedPreferences("mb_traker_app_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putString("milo_voice_option", option)
+                .apply()
+            // Reset TTS so that on next initialization, the new voice is loaded
+            try {
+                tts?.shutdown()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error shutting down TTS during voice switch", e)
+            }
+            tts = null
+            isTtsInitialized = false
+        }
+
         fun initTts(context: Context, onReady: (() -> Unit)? = null) {
             if (tts == null) {
                 tts = TextToSpeech(context.applicationContext) { status ->
                     if (status == TextToSpeech.SUCCESS) {
-                        tts?.language = Locale.ENGLISH
-                        tts?.setPitch(1.08f)
+                        val voiceOpt = getVoiceOption(context)
+                        val targetLocale = when (voiceOpt) {
+                            "INDIAN_FEMALE", "INDIAN_MALE" -> Locale("en", "IN")
+                            "UK_ACCENT" -> Locale.UK
+                            "US_ACCENT" -> Locale.US
+                            else -> Locale.getDefault()
+                        }
+                        
+                        tts?.language = targetLocale
+                        
+                        try {
+                            val voices = tts?.voices
+                            if (!voices.isNullOrEmpty()) {
+                                val selectedVoice = when (voiceOpt) {
+                                    "INDIAN_MALE" -> {
+                                        voices.firstOrNull { voice ->
+                                            voice.locale.language == "en" && 
+                                            voice.locale.country == "IN" && 
+                                            (voice.name.lowercase().contains("male") || voice.name.lowercase().contains("m-") || voice.name.lowercase().contains("ind"))
+                                        } ?: voices.firstOrNull { voice ->
+                                            voice.locale.language == "en" && voice.locale.country == "IN"
+                                        }
+                                    }
+                                    "INDIAN_FEMALE" -> {
+                                        voices.firstOrNull { voice ->
+                                            voice.locale.language == "en" && 
+                                            voice.locale.country == "IN" && 
+                                            (voice.name.lowercase().contains("female") || voice.name.lowercase().contains("f-") || voice.name.lowercase().contains("girl") || voice.name.lowercase().contains("lady"))
+                                        } ?: voices.firstOrNull { voice ->
+                                            voice.locale.language == "en" && voice.locale.country == "IN"
+                                        }
+                                    }
+                                    "UK_ACCENT" -> {
+                                        voices.firstOrNull { voice ->
+                                            voice.locale.language == "en" && voice.locale.country == "GB"
+                                        }
+                                    }
+                                    "US_ACCENT" -> {
+                                        voices.firstOrNull { voice ->
+                                            voice.locale.language == "en" && voice.locale.country == "US"
+                                        }
+                                    }
+                                    else -> null
+                                }
+                                
+                                if (selectedVoice != null) {
+                                    tts?.voice = selectedVoice
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Error setting voice option $voiceOpt: ${e.message}")
+                        }
+                        
+                        // Set pitch and rate
+                        if (voiceOpt == "INDIAN_MALE") {
+                            tts?.setPitch(0.98f) // masculine/warm
+                        } else {
+                            tts?.setPitch(1.0f)
+                        }
                         tts?.setSpeechRate(1.02f)
                         isTtsInitialized = true
-                        Log.d(TAG, "Milo TextToSpeech initialized successfully")
+                        Log.d(TAG, "Milo TextToSpeech ($voiceOpt) initialized successfully")
                         pendingTextToSpeak?.let { text ->
                             speakText(context, text)
                             pendingTextToSpeak = null
@@ -86,23 +175,27 @@ class MiloVoiceHelper(
             speakText(context, briefingMessage)
         }
 
-        fun speakText(context: Context, text: String) {
-            if (tts == null || !isTtsInitialized) {
-                pendingTextToSpeak = text
-                initTts(context) {
-                    try {
-                        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error speaking text", e)
-                    }
-                }
-            } else {
-                try {
-                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error invoking tts.speak", e)
-                }
-            }
+         fun speakText(context: Context, text: String) {
+             if (isMuted(context)) {
+                 Log.d(TAG, "Milo voice is muted, skipping speakText: $text")
+                 return
+             }
+             if (tts == null || !isTtsInitialized) {
+                 pendingTextToSpeak = text
+                 initTts(context) {
+                     try {
+                         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
+                     } catch (e: Exception) {
+                         Log.e(TAG, "Error speaking text", e)
+                     }
+                 }
+             } else {
+                 try {
+                     tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
+                 } catch (e: Exception) {
+                     Log.e(TAG, "Error invoking tts.speak", e)
+                 }
+             }
         }
 
         fun stopSpeaking() {

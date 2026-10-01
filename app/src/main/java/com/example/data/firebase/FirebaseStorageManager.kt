@@ -3,6 +3,8 @@ package com.example.data.firebase
 import android.net.Uri
 import android.util.Log
 import com.google.firebase.FirebaseApp
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.UploadTask
@@ -196,5 +198,107 @@ object FirebaseStorageManager {
         } catch (e: Exception) {
             Result.success(imageUri.toString())
         }
+    }
+
+    /**
+     * Uploads an Admin custom App Logo image to Firebase Storage under `app_branding/app_logo_{timestamp}.png`,
+     * updates the persistent branding configuration document in Firestore (`app_config/branding`),
+     * and syncs local preferences so all app views update in real-time.
+     */
+    suspend fun uploadAppLogoImage(
+        context: android.content.Context,
+        imageUri: Uri,
+        bgHexColor: String = "#0F172A",
+        onProgress: ((Float) -> Unit)? = null
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val storage = getStorage()
+        val fileName = "app_logo_${System.currentTimeMillis()}.png"
+        var finalLogoUrl: String? = null
+
+        if (storage != null) {
+            try {
+                val storageRef = storage.reference.child("app_branding/$fileName")
+                val metadata = StorageMetadata.Builder()
+                    .setContentType("image/png")
+                    .setCustomMetadata("uploadedAt", System.currentTimeMillis().toString())
+                    .setCustomMetadata("type", "app_logo")
+                    .build()
+
+                val uploadTask = storageRef.putFile(imageUri, metadata)
+
+                if (onProgress != null) {
+                    uploadTask.addOnProgressListener { taskSnapshot ->
+                        val total = taskSnapshot.totalByteCount
+                        val transferred = taskSnapshot.bytesTransferred
+                        if (total > 0) {
+                            val progress = transferred.toFloat() / total.toFloat()
+                            onProgress(progress.coerceIn(0f, 1f))
+                        }
+                    }
+                }
+
+                suspendCancellableCoroutine<Unit> { continuation ->
+                    uploadTask.addOnSuccessListener {
+                        if (continuation.isActive) continuation.resume(Unit)
+                    }.addOnFailureListener { error ->
+                        if (continuation.isActive) continuation.resumeWithException(error)
+                    }.addOnCanceledListener {
+                        if (continuation.isActive) continuation.cancel()
+                    }
+                    continuation.invokeOnCancellation {
+                        if (!uploadTask.isComplete) uploadTask.cancel()
+                    }
+                }
+
+                val downloadUrl = suspendCancellableCoroutine<Uri> { continuation ->
+                    storageRef.downloadUrl.addOnSuccessListener { uri ->
+                        if (continuation.isActive) continuation.resume(uri)
+                    }.addOnFailureListener { error ->
+                        if (continuation.isActive) continuation.resumeWithException(error)
+                    }
+                }
+
+                finalLogoUrl = downloadUrl.toString()
+                Log.d(TAG, "Custom App Logo uploaded to Firebase Storage: $finalLogoUrl")
+            } catch (e: Exception) {
+                Log.w(TAG, "Firebase Storage logo upload error, saving locally: ${e.message}")
+            }
+        }
+
+        // Fallback local save if offline or storage unavailable
+        if (finalLogoUrl == null) {
+            val localPath = com.example.util.AppIconHelper.saveCustomLogoFromUri(context, imageUri)
+            finalLogoUrl = localPath ?: imageUri.toString()
+        } else {
+            com.example.util.AppPreferences.saveCustomAppLogoUri(context, finalLogoUrl)
+        }
+
+        com.example.util.AppPreferences.saveAppIconBgColor(context, bgHexColor)
+
+        // Sync persistent branding configuration to Firestore (`app_config/branding`)
+        try {
+            val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            val brandingConfig = hashMapOf<String, Any>(
+                "appLogoUrl" to finalLogoUrl,
+                "appLogoUri" to finalLogoUrl,
+                "bgHexColor" to bgHexColor,
+                "updatedAt" to System.currentTimeMillis(),
+                "updatedBy" to "MB Admin"
+            )
+
+            firestore.collection("app_config")
+                .document("branding")
+                .set(brandingConfig, SetOptions.merge())
+
+            firestore.collection("system_settings")
+                .document("branding")
+                .set(brandingConfig, SetOptions.merge())
+
+            Log.d(TAG, "Branding configuration updated in Firestore successfully")
+        } catch (e: Exception) {
+            Log.w(TAG, "Firestore branding config sync warning: ${e.message}")
+        }
+
+        Result.success(finalLogoUrl)
     }
 }

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -287,8 +288,10 @@ fun TasksScreen(
                 items(filteredTasks) { task ->
                     TaskCardItem(
                         task = task,
+                        employees = employees,
                         onToggle = { viewModel.toggleTaskCompletion(task) },
                         onStatusChange = { newStatus -> viewModel.updateTaskStatus(task, newStatus) },
+                        onReassign = { newAssignee -> viewModel.reassignTask(task, newAssignee) },
                         onDelete = { viewModel.deleteTask(task) }
                     )
                 }
@@ -667,13 +670,17 @@ fun TasksScreen(
 @Composable
 fun TaskCardItem(
     task: TaskEntity,
+    employees: List<com.example.data.model.EmployeeEntity>,
     onToggle: () -> Unit,
     onStatusChange: (String) -> Unit = {},
+    onReassign: (String) -> Unit = {},
     onDelete: () -> Unit = {}
 ) {
     var showStatusMenu by remember { mutableStateOf(false) }
+    var showReassignDialog by remember { mutableStateOf(false) }
     val availableStatuses = listOf("Backlog", "In Progress", "In Review", "Completed")
     val categoryConfig = getCategoryConfig(task.category)
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -685,23 +692,31 @@ fun TaskCardItem(
         Row(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
-                    .width(4.dp)
+                    .width(5.dp)
                     .fillMaxHeight()
                     .background(if (task.isCompleted) Color(0xFFCBD5E1) else categoryConfig.leftAccentColor)
             )
+
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(14.dp)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    Checkbox(
+                        checked = task.isCompleted,
+                        onCheckedChange = { onToggle() },
+                        colors = CheckboxDefaults.colors(checkedColor = BrandBlue, uncheckedColor = Color(0xFF64748B)),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = task.title,
                             fontWeight = FontWeight.Bold,
@@ -709,231 +724,325 @@ fun TaskCardItem(
                             color = if (task.isCompleted) TextMuted else Color(0xFF0F172A),
                             textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (task.isCompleted) Color(0xFFF1F5F9) else categoryConfig.tagBgColor,
-                                border = BorderStroke(1.dp, if (task.isCompleted) Color(0xFFE2E8F0) else categoryConfig.cardBorderColor)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Icon(
-                                        categoryConfig.icon,
-                                        contentDescription = null,
-                                        tint = if (task.isCompleted) Color(0xFF94A3B8) else categoryConfig.tagTextColor,
-                                        modifier = Modifier.size(10.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        categoryConfig.name,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (task.isCompleted) Color(0xFF94A3B8) else categoryConfig.tagTextColor
-                                    )
-                                }
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = task.projectName,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF475569)
-                                )
-                                Text("•", fontSize = 11.sp, color = Color(0xFF94A3B8))
-                                Icon(
-                                    Icons.Default.AccessTime,
-                                    contentDescription = null,
-                                    tint = if (task.isCompleted) Color(0xFF94A3B8) else Color(0xFFD97706),
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Text(
-                                    text = task.dueDate,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (task.isCompleted) Color(0xFF94A3B8) else Color(0xFFB45309)
-                                )
-                                if (task.assignee.isNotBlank()) {
-                                    Text("•", fontSize = 11.sp, color = Color(0xFF94A3B8))
-                                    Icon(
-                                        Icons.Default.Person,
-                                        contentDescription = null,
-                                        tint = ElectricBlue,
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Text(
-                                        text = task.assignee,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ElectricBlue
-                                    )
-                                }
-                            }
-                        }
-
-                        if (!task.dependsOnTaskTitle.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFFFEF3C7),
-                                border = BorderStroke(0.5.dp, Color(0xFFFDE68A))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Default.Link,
-                                        contentDescription = null,
-                                        tint = Color(0xFFB45309),
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        "Depends on: ${task.dependsOnTaskTitle}",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF92400E)
-                                    )
-                                }
-                            }
-                        }
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        PriorityBadge(priority = task.priority)
+                    Spacer(modifier = Modifier.width(6.dp))
 
+                    PriorityBadge(priority = task.priority)
+
+                    Box {
                         IconButton(
-                            onClick = onDelete,
+                            onClick = { showStatusMenu = true },
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Delete task",
-                                tint = StatusRed,
-                                modifier = Modifier.size(18.dp)
+                                Icons.Default.MoreVert,
+                                contentDescription = "Task options",
+                                tint = Color(0xFF0F172A),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
-                        Box {
-                            IconButton(
-                                onClick = { showStatusMenu = true },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.MoreVert,
-                                    contentDescription = "Task options",
-                                    tint = Color(0xFF0F172A),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            DropdownMenu(
-                                expanded = showStatusMenu,
-                                onDismissRequest = { showStatusMenu = false },
-                                modifier = Modifier.background(Color.White)
-                            ) {
-                                Text(
-                                    "Update Status:",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextMuted,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
-                                availableStatuses.forEach { statusOption ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                statusOption,
-                                                fontWeight = if (task.status.equals(statusOption, ignoreCase = true)) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (task.status.equals(statusOption, ignoreCase = true)) BrandBlue else Color(0xFF0F172A)
-                                            )
-                                        },
-                                        onClick = {
-                                            onStatusChange(statusOption)
-                                            showStatusMenu = false
-                                        },
-                                        leadingIcon = {
-                                            val iconVector = when (statusOption) {
-                                                "Completed" -> Icons.Default.CheckCircle
-                                                "In Progress" -> Icons.Default.Pending
-                                                "In Review" -> Icons.Default.FindInPage
-                                                else -> Icons.Default.Inventory
-                                            }
-                                            Icon(
-                                                iconVector,
-                                                contentDescription = null,
-                                                tint = if (task.status.equals(statusOption, ignoreCase = true)) BrandBlue else Color(0xFF64748B),
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    )
+                        DropdownMenu(
+                            expanded = showStatusMenu,
+                            onDismissRequest = { showStatusMenu = false },
+                            modifier = Modifier.background(Color.White)
+                        ) {
+                            Text(
+                                "Quick Actions",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMuted,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Reassign Employee", fontWeight = FontWeight.SemiBold) },
+                                leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                onClick = {
+                                    showReassignDialog = true
+                                    showStatusMenu = false
                                 }
-                                Divider(color = BorderLight, thickness = 1.dp)
-                                DropdownMenuItem(
-                                    text = {
-                                        Text("Delete Task", fontWeight = FontWeight.Bold, color = StatusRed)
-                                    },
-                                    onClick = {
-                                        onDelete()
-                                        showStatusMenu = false
-                                    },
-                                    leadingIcon = {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = "Delete Task",
-                                        tint = StatusRed,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                            )
+                            Divider(color = BorderLight, thickness = 1.dp)
+                            DropdownMenuItem(
+                                text = { Text("Delete Task", fontWeight = FontWeight.Bold, color = StatusRed) },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = StatusRed, modifier = Modifier.size(18.dp)) },
+                                onClick = {
+                                    onDelete()
+                                    showStatusMenu = false
                                 }
                             )
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Quick Status Selector Chips
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Status:",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0F172A)
-                )
-
-                availableStatuses.forEach { statusOption ->
-                    val isSelected = task.status.equals(statusOption, ignoreCase = true)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (isSelected) BrandBlue else Color(0xFFE2E8F0),
-                        modifier = Modifier.clickable { onStatusChange(statusOption) }
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFF1F5F9),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                     ) {
-                        Text(
-                            text = statusOption,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isSelected) Color.White else Color(0xFF0F172A),
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(task.projectName, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFF475569))
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (task.isCompleted) Color(0xFFF1F5F9) else categoryConfig.tagBgColor,
+                        border = BorderStroke(1.dp, if (task.isCompleted) Color(0xFFE2E8F0) else categoryConfig.cardBorderColor)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                categoryConfig.icon,
+                                contentDescription = null,
+                                tint = if (task.isCompleted) Color(0xFF94A3B8) else categoryConfig.tagTextColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                categoryConfig.name,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (task.isCompleted) Color(0xFF94A3B8) else categoryConfig.tagTextColor
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFEF3C7),
+                        border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Due: ${task.dueDate}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.AccessTime, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Est: ${task.estimatedTimeNeeded}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BrandBlue)
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF8FAFC), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            tint = ElectricBlue,
+                            modifier = Modifier.size(16.dp)
                         )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text("ASSIGNED TO EMPLOYEE:", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                            Text(
+                                text = if (task.assignee.isNotBlank()) task.assignee else "Unassigned",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ElectricBlue
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = { showReassignDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlueBg, contentColor = ElectricBlue),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Icon(Icons.Default.SyncAlt, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Reassign", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (!task.dependsOnTaskTitle.isNullOrBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFEF3C7),
+                        border = BorderStroke(0.5.dp, Color(0xFFFDE68A)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Link,
+                                contentDescription = null,
+                                tint = Color(0xFFB45309),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Depends on: ${task.dependsOnTaskTitle}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF92400E)
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = BorderLight, thickness = 1.dp)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Status:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A)
+                    )
+
+                    availableStatuses.forEach { statusOption ->
+                        val isSelected = task.status.equals(statusOption, ignoreCase = true)
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isSelected) BrandBlue else Color(0xFFE2E8F0),
+                            modifier = Modifier.clickable { onStatusChange(statusOption) }
+                        ) {
+                            Text(
+                                text = statusOption,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
+
+    if (showReassignDialog) {
+        var searchQuery by remember { mutableStateOf("") }
+        val filteredEmployees = employees.filter { 
+            it.name.contains(searchQuery, ignoreCase = true) || 
+            it.designation.contains(searchQuery, ignoreCase = true) 
+        }
+        AlertDialog(
+            onDismissRequest = { showReassignDialog = false },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.PersonSearch, contentDescription = null, tint = BrandBlue)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Reassign Task", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextPrimary)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Select a team member to assign this task to. The reassignment will immediately sync to their device and Firestore.",
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                    
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search by name or role...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    Box(modifier = Modifier.heightIn(max = 240.dp)) {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(filteredEmployees) { emp ->
+                                val isCurrent = emp.name.equals(task.assignee, ignoreCase = true)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isCurrent) ElectricBlueBg else Color(0xFFF8FAFC),
+                                    border = BorderStroke(1.dp, if (isCurrent) ElectricBlue else Color(0xFFE2E8F0)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onReassign(emp.name)
+                                            showReassignDialog = false
+                                            Toast.makeText(context, "Task reassigned to ${emp.name}!", Toast.LENGTH_SHORT).show()
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (emp.status == com.example.data.model.EmployeeStatus.ACTIVE) Color(0xFF22C55E) else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(6.dp)
+                                        ) {}
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(emp.name, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0F172A))
+                                            Text(emp.designation, fontSize = 10.sp, color = Color(0xFF64748B))
+                                        }
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        if (isCurrent) {
+                                            Text("Current", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ElectricBlue)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showReassignDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
 }

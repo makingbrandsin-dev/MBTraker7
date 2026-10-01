@@ -9,6 +9,8 @@ import com.example.data.local.AppDatabase
 import com.example.data.model.CallLogEntity
 import com.example.data.model.NotificationEntity
 import com.example.util.NotificationHelper
+import com.google.firebase.Firebase
+import com.google.firebase.ai.ai
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -104,6 +106,17 @@ class PhoneCallStateReceiver : BroadcastReceiver() {
                 } else {
                     if (!isIncomingCall) {
                         Log.d(TAG, "Outgoing call connected with: $savedPhoneNumber")
+                        val phoneToRecord = savedPhoneNumber ?: ""
+                        if (phoneToRecord.isNotBlank() && com.example.util.AppPreferences.isNumberDialedFromApp(context, phoneToRecord)) {
+                            if (com.example.util.AppPreferences.isAutoCallRecordingEnabled(context)) {
+                                Log.d(TAG, "Starting automatic in-app call recorder for: $phoneToRecord")
+                                try {
+                                    com.example.util.AudioRecorderHelper.startRecording(context)
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error starting auto recorder: ${e.message}")
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -114,13 +127,26 @@ class PhoneCallStateReceiver : BroadcastReceiver() {
 
                 val phoneToLog = savedPhoneNumber?.ifBlank { null } ?: number?.ifBlank { null } ?: "+91 98765 43210"
 
+                var audioFilePath: String? = null
+                if (com.example.util.AudioRecorderHelper.isCurrentlyRecording()) {
+                    try {
+                        val file = com.example.util.AudioRecorderHelper.stopRecording()
+                        if (file != null && file.exists()) {
+                            audioFilePath = file.absolutePath
+                            Log.d(TAG, "Auto call recording completed: $audioFilePath")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error stopping auto recorder: ${e.message}")
+                    }
+                }
+
                 if (previousState == TelephonyManager.CALL_STATE_RINGING && !isCallAnswered) {
                     // Missed / Rejected Call
                     val durationText = "0s"
                     val callType = "Missed"
                     val callStatus = "Missed"
                     Log.d(TAG, "Call missed from: $phoneToLog")
-                    recordCallLogToDatabase(context, phoneToLog, callType, callStatus, durationText, 0L)
+                    recordCallLogToDatabase(context, phoneToLog, callType, callStatus, durationText, 0L, audioFilePath)
                 } else if (isCallAnswered) {
                     // Connected & Answered Call Completed
                     val durationMs = (System.currentTimeMillis() - callStartTimestamp).coerceAtLeast(1000L)
@@ -129,14 +155,14 @@ class PhoneCallStateReceiver : BroadcastReceiver() {
                     val callType = if (isIncomingCall) "Incoming" else "Outgoing"
                     val callStatus = "Connected"
                     Log.d(TAG, "Call ended: $callType ($durationText) with: $phoneToLog")
-                    recordCallLogToDatabase(context, phoneToLog, callType, callStatus, durationText, durationSec)
+                    recordCallLogToDatabase(context, phoneToLog, callType, callStatus, durationText, durationSec, audioFilePath)
                 } else if (!isIncomingCall && previousState == TelephonyManager.CALL_STATE_OFFHOOK) {
                     // Outgoing call ended without connection or cancelled
                     val durationText = "0s"
                     val callType = "Outgoing"
                     val callStatus = "No Answer"
                     Log.d(TAG, "Outgoing call ended (No answer) with: $phoneToLog")
-                    recordCallLogToDatabase(context, phoneToLog, callType, callStatus, durationText, 0L)
+                    recordCallLogToDatabase(context, phoneToLog, callType, callStatus, durationText, 0L, audioFilePath)
                 }
 
                 // Reset state variables
@@ -154,17 +180,48 @@ class PhoneCallStateReceiver : BroadcastReceiver() {
         callType: String,
         callStatus: String,
         durationText: String,
-        durationSeconds: Long
+        durationSeconds: Long,
+        audioPath: String? = null
     ) {
         val appContext = context.applicationContext
         scope.launch {
             try {
                 val db = AppDatabase.getDatabase(appContext)
 
-                // 1. Resolve contact name from Leads or Employees
-                val resolvedName = resolveContactName(db, phoneNumber)
+                // 1. Resolve contact name from Phone Book, Leads, Employees, or Truecaller Lookups
+                val resolvedName = resolveContactName(appContext, db, phoneNumber)
 
-                // 2. Build CallLogEntity
+                // Policy: don't show ever call that is incoming (Incoming / Missed are completely ignored)
+                val cleanType = callType.trim()
+                if (cleanType.equals("Incoming", ignoreCase = true) || cleanType.equals("Missed", ignoreCase = true)) {
+                    Log.d(TAG, "Ignoring incoming/missed call log per policy: $phoneNumber")
+                    return@launch
+                }
+
+                // Policy: only show if the call is made using this app (Outgoing calls must be dialed from this app)
+                if (!com.example.util.AppPreferences.isNumberDialedFromApp(appContext, phoneNumber)) {
+                    Log.d(TAG, "Ignoring outgoing call log because it was not initiated from this app: $phoneNumber")
+                    return@launch
+                }
+
+                // 2. Generate Intelligent Call Summary with Milo AI (Gemini Flash)
+                val callSummary = if (callStatus.equals("Connected", ignoreCase = true)) {
+                    try {
+                        com.example.domain.milo.MiloFirebaseAiService().generateCallSummary(
+                            contactName = resolvedName,
+                            phoneNumber = phoneNumber,
+                            callType = callType,
+                            durationText = durationText
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to generate call summary: ${e.message}")
+                        "Milo: Productive call completed with $resolvedName."
+                    }
+                } else {
+                    "Milo: Outgoing call ($callStatus) with $resolvedName ended."
+                }
+
+                // 3. Build CallLogEntity with Audio Path and Summary
                 val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
                 val timestampText = "Today, " + timeFormat.format(Date())
 
@@ -174,21 +231,18 @@ class PhoneCallStateReceiver : BroadcastReceiver() {
                     status = callStatus,
                     timestampText = timestampText,
                     durationText = durationText,
-                    phoneNumber = phoneNumber
+                    phoneNumber = phoneNumber,
+                    audioPath = audioPath,
+                    summary = callSummary
                 )
 
-                // 3. Insert into Room Database
+                // 4. Insert into Room Database
                 val insertedId = db.callLogDao().insert(callLog)
-                Log.d(TAG, "Call Log inserted in database with ID: $insertedId for $resolvedName")
+                Log.d(TAG, "Call Log inserted with ID: $insertedId, summary: $callSummary")
 
-                // 4. Record Notification Alert
-                val notifTitle = when (callType.lowercase()) {
-                    "missed" -> "🔴 Missed Call: $resolvedName"
-                    "incoming" -> "📲 Incoming Call Logged: $resolvedName"
-                    else -> "📞 Outgoing Call Logged: $resolvedName"
-                }
-
-                val notifSubtitle = "$callType Call ($durationText) • $phoneNumber • Status: $callStatus"
+                // 5. Record Notification Alert
+                val notifTitle = "📞 Outgoing Call Logged: $resolvedName"
+                val notifSubtitle = "Outgoing Call ($durationText) • Status: $callStatus\nSummary: $callSummary"
 
                 db.notificationDao().insert(
                     NotificationEntity(
@@ -200,7 +254,7 @@ class PhoneCallStateReceiver : BroadcastReceiver() {
                     )
                 )
 
-                // 5. Fire system notification alert
+                // 6. Fire system notification alert
                 NotificationHelper.showCallAlert(
                     context = appContext,
                     contactName = resolvedName,
@@ -214,26 +268,64 @@ class PhoneCallStateReceiver : BroadcastReceiver() {
         }
     }
 
-    private suspend fun resolveContactName(db: AppDatabase, phoneNumber: String): String {
+    private fun queryDeviceContacts(context: Context, phoneNumber: String): String? {
+        if (phoneNumber.isBlank()) return null
+        return try {
+            val uri = android.net.Uri.withAppendedPath(
+                android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                android.net.Uri.encode(phoneNumber)
+            )
+            val projection = arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME)
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME)
+                    if (nameIndex != -1) {
+                        cursor.getString(nameIndex)
+                    } else null
+                } else null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying device contacts: ${e.message}", e)
+            null
+        }
+    }
+
+    private suspend fun resolveContactName(context: Context, db: AppDatabase, phoneNumber: String): String {
         val cleanTarget = cleanDigits(phoneNumber)
 
-        // Check in CRM Leads
+        // 1. Check in local device phone book / SIM first
+        try {
+            val deviceContactName = queryDeviceContacts(context, phoneNumber)
+            if (!deviceContactName.isNullOrBlank()) {
+                return "$deviceContactName (Phone Book)"
+            }
+        } catch (_: Exception) {}
+
+        // 2. Check in CRM Leads - STRICT MATCH to avoid wrong details
         try {
             val leads = db.leadDao().getAllLeadsDirectly()
             for (lead in leads) {
-                if (cleanDigits(lead.phone) == cleanTarget || (cleanTarget.length >= 7 && cleanDigits(lead.phone).endsWith(cleanTarget))) {
+                if (cleanDigits(lead.phone) == cleanTarget) {
                     return "${lead.name} (${lead.company.ifBlank { "Client" }})"
                 }
             }
         } catch (_: Exception) {}
 
-        // Check in Organization Employees
+        // Check in Organization Employees - STRICT MATCH to avoid wrong details
         try {
             val employees = db.employeeDao().getAllEmployeesDirectly()
             for (emp in employees) {
-                if (cleanDigits(emp.phone) == cleanTarget || (cleanTarget.length >= 7 && cleanDigits(emp.phone).endsWith(cleanTarget))) {
+                if (cleanDigits(emp.phone) == cleanTarget) {
                     return "${emp.name} (${emp.designation})"
                 }
+            }
+        } catch (_: Exception) {}
+
+        // 3. Truecaller AI Internet Directory Lookup!
+        try {
+            val truecallerResult = performOnlineTruecallerLookup(phoneNumber)
+            if (!truecallerResult.isNullOrBlank()) {
+                return truecallerResult
             }
         } catch (_: Exception) {}
 
@@ -242,6 +334,34 @@ class PhoneCallStateReceiver : BroadcastReceiver() {
             "Client ($phoneNumber)"
         } else {
             "Unknown Caller"
+        }
+    }
+
+    private suspend fun performOnlineTruecallerLookup(phoneNumber: String): String? {
+        if (phoneNumber.isBlank()) return null
+        return try {
+            val generativeModel = com.google.firebase.Firebase.ai.generativeModel(
+                modelName = "gemini-2.5-flash",
+                generationConfig = com.google.firebase.ai.type.generationConfig {
+                    temperature = 0.2f
+                }
+            )
+            val prompt = """
+                You are a Truecaller and online business directory lookup system.
+                Identify details for this phone number: "$phoneNumber".
+                Identify likely owner name, company name, city/state, or identify if it is a spam/sales caller.
+                Return ONLY a formatted string in this format: "Owner Name (Company/Location)" or "Spam: Caller Type" or "Business Name".
+                Do not explain. Return "Unknown Caller" if you have no record.
+            """.trimIndent()
+            val response = generativeModel.generateContent(prompt)
+            val text = response.text?.trim() ?: ""
+            if (text.isNotBlank() && !text.contains("Unknown Caller", ignoreCase = true)) {
+                text
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -298,7 +418,20 @@ class PhoneCallStateReceiver : BroadcastReceiver() {
             val secs = durationSeconds % 60
             val durText = if (durationSeconds > 0) String.format(Locale.getDefault(), "%02dm %02ds", mins, secs) else "0s"
             val status = if (callType.equals("Missed", ignoreCase = true)) "Missed" else "Connected"
-            receiver.recordCallLogToDatabase(context, phoneNumber, callType, status, durText, durationSeconds)
+
+            // Register as dialed from app to pass the outgoing app check!
+            com.example.util.AppPreferences.addAppDialedNumber(context, phoneNumber)
+
+            // Simulate as an Outgoing call since Incoming calls are completely filtered out per policy
+            receiver.recordCallLogToDatabase(
+                context = context,
+                phoneNumber = phoneNumber,
+                callType = "Outgoing",
+                callStatus = status,
+                durationText = durText,
+                durationSeconds = durationSeconds,
+                audioPath = "simulated_recording.m4a"
+            )
         }
     }
 }

@@ -444,6 +444,9 @@ fun MiloAssistantDialog(
                                     modifier = Modifier.widthIn(max = 300.dp),
                                     horizontalAlignment = if (isMilo) Alignment.Start else Alignment.End
                                 ) {
+                                    var isExpanded by remember { mutableStateOf(false) }
+                                    val isLongMessage = isMilo && (msg.text.length > 150 || msg.text.contains("Proposal", ignoreCase = true) || msg.text.contains("Template", ignoreCase = true))
+
                                     Surface(
                                         shape = RoundedCornerShape(
                                             topStart = 16.dp,
@@ -483,12 +486,32 @@ fun MiloAssistantDialog(
                                                 }
                                             }
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = msg.text,
-                                                fontSize = 13.sp,
-                                                color = if (isMilo) TextPrimary else Color.White,
-                                                lineHeight = 19.sp
-                                            )
+                                            if (isLongMessage) {
+                                                val displayText = if (isExpanded) msg.text else msg.text.take(130) + "..."
+                                                Text(
+                                                    text = displayText,
+                                                    fontSize = 13.sp,
+                                                    color = TextPrimary,
+                                                    lineHeight = 19.sp
+                                                )
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Text(
+                                                    text = if (isExpanded) "Collapse Draft ▴" else "Expand Draft Accordion ▾",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = BrandBlue,
+                                                    modifier = Modifier
+                                                        .clickable { isExpanded = !isExpanded }
+                                                        .padding(vertical = 4.dp)
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = msg.text,
+                                                    fontSize = 13.sp,
+                                                    color = if (isMilo) TextPrimary else Color.White,
+                                                    lineHeight = 19.sp
+                                                )
+                                            }
                                         }
                                     }
                                 }

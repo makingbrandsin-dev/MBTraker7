@@ -42,6 +42,8 @@ object WhatsAppHelper {
             Toast.makeText(context, "No valid phone number to call", Toast.LENGTH_SHORT).show()
             return false
         }
+        // Save the number to AppPreferences as app-dialed to allow logging and auto-recording
+        com.example.util.AppPreferences.addAppDialedNumber(context, rawPhone)
         return try {
             val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanNumber")).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK

@@ -50,12 +50,15 @@ fun CallTrackerScreen(
     val rawCallLogs by viewModel.callLogs.collectAsState()
 
     // Database items sorted by ID/date descending (newest calls at the top)
+    // Enforce Policy: only show if the call is made using this app and is Outgoing
     val callLogs = remember(rawCallLogs) {
-        rawCallLogs.sortedByDescending { it.id }
+        rawCallLogs
+            .filter { it.callType.equals("Outgoing", ignoreCase = true) && com.example.util.AppPreferences.isNumberDialedFromApp(context, it.phoneNumber) }
+            .sortedByDescending { it.id }
     }
 
     var selectedFilter by remember { mutableStateOf("All") }
-    val filters = listOf("All", "Incoming", "Outgoing", "Missed")
+    val filters = listOf("All")
 
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
@@ -431,17 +434,26 @@ fun CallTrackerScreen(
                                 currentlyPlayingLogId = null
                             } else {
                                 com.example.util.AudioRecorderHelper.stopPlaying()
-                                currentlyPlayingLogId = log.id
-                                Toast.makeText(context, "Playing call recording for ${log.contactName}", Toast.LENGTH_SHORT).show()
+                                val audioSource = log.audioPath
+                                if (!audioSource.isNullOrBlank()) {
+                                    currentlyPlayingLogId = log.id
+                                    Toast.makeText(context, "Playing call recording for ${log.contactName}", Toast.LENGTH_SHORT).show()
+                                    com.example.util.AudioRecorderHelper.playAudio(
+                                        filePathOrUrl = audioSource,
+                                        onPrepared = {},
+                                        onCompletion = {
+                                            if (currentlyPlayingLogId == log.id) {
+                                                currentlyPlayingLogId = null
+                                            }
+                                        }
+                                    )
+                                } else {
+                                    Toast.makeText(context, "No audio recording file associated with this call log", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         },
                         onCallClick = {
-                            try {
-                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${log.phoneNumber}"))
-                                context.startActivity(dialIntent)
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Unable to initiate call: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
+                            WhatsAppHelper.dialPhoneNumber(context, log.phoneNumber)
                         },
                         onWhatsAppClick = {
                             WhatsAppHelper.openWhatsAppDirectChat(
@@ -591,35 +603,27 @@ private fun CallMetricsOverviewSection(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         MetricMiniCard(
-            title = "Total Calls",
+            title = "App Outgoing",
             count = total.toString(),
-            color = BrandBlue,
-            bgColor = Color(0xFFEFF6FF),
-            icon = Icons.Default.Phone,
-            modifier = Modifier.weight(1f)
-        )
-        MetricMiniCard(
-            title = "Incoming",
-            count = incoming.toString(),
-            color = StatusGreen,
-            bgColor = StatusGreenBg,
-            icon = Icons.AutoMirrored.Filled.CallReceived,
-            modifier = Modifier.weight(1f)
-        )
-        MetricMiniCard(
-            title = "Outgoing",
-            count = outgoing.toString(),
             color = Color(0xFF2563EB),
             bgColor = Color(0xFFEEF2FF),
             icon = Icons.AutoMirrored.Filled.CallMade,
             modifier = Modifier.weight(1f)
         )
         MetricMiniCard(
-            title = "Missed",
-            count = missed.toString(),
-            color = StatusRed,
-            bgColor = StatusRedBg,
-            icon = Icons.Default.PhoneMissed,
+            title = "Connected",
+            count = total.toString(),
+            color = StatusGreen,
+            bgColor = StatusGreenBg,
+            icon = Icons.Default.Phone,
+            modifier = Modifier.weight(1f)
+        )
+        MetricMiniCard(
+            title = "Recorded",
+            count = total.toString(),
+            color = BrandBlue,
+            bgColor = Color(0xFFEFF6FF),
+            icon = Icons.Default.Mic,
             modifier = Modifier.weight(1f)
         )
     }
@@ -664,6 +668,7 @@ fun CallLogItemCard(
     onPlayAudio: () -> Unit = {},
     onCallClick: () -> Unit,
     onWhatsAppClick: () -> Unit,
+    onAnalyzeCall: () -> Unit = {},
     onDeleteClick: () -> Unit
 ) {
     val isIncoming = log.callType.equals("Incoming", ignoreCase = true)
@@ -754,6 +759,105 @@ fun CallLogItemCard(
             HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
             Spacer(modifier = Modifier.height(10.dp))
 
+            // AI Call Summary Card section if present
+            if (!log.summary.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFFFBEB), // Soft golden-amber background for Milo's insights
+                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = "🦁",
+                            fontSize = 20.sp,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "Milo's Call Summary",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFB45309)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = log.summary,
+                                fontSize = 12.sp,
+                                color = Color(0xFF78350F),
+                                lineHeight = 16.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // Audio Player Controls if recording is present
+            if (!log.audioPath.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = onPlayAudio,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(if (isAudioPlaying) StatusRed else BrandBlue, CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = if (isAudioPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                    contentDescription = if (isAudioPlaying) "Stop Recording" else "Play Recording",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = if (isAudioPlaying) "Playing Call Recording..." else "Call Recording Available",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(1.dp))
+                                Text(
+                                    text = if (log.audioPath == "simulated_recording.m4a") "Simulated HD Audio (.m4a)" else "Recorded via MIC Source",
+                                    fontSize = 10.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                        
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = null,
+                            tint = if (isAudioPlaying) StatusRed else TextMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             // Metadata row & 1-tap Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -818,6 +922,18 @@ fun CallLogItemCard(
                         modifier = Modifier.size(34.dp)
                     ) {
                         Icon(Icons.Default.Chat, contentDescription = "WhatsApp", modifier = Modifier.size(16.dp))
+                    }
+                    
+                    // AI Analyze
+                    FilledTonalIconButton(
+                        onClick = onAnalyzeCall,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = Color(0xFFF3E8FF),
+                            contentColor = Color(0xFF7E22CE)
+                        ),
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = "Analyze", modifier = Modifier.size(16.dp))
                     }
 
                     // Delete Log

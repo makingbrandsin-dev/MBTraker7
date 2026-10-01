@@ -330,6 +330,7 @@ fun EmployeeDashboardScreen(
         item {
             MiloAssistantCard(
                 isWorking = isWorking,
+                viewModel = viewModel,
                 onOpenAssistant = {
                     MiloHaptics.performButtonTap(context)
                     showMiloAssistant = true

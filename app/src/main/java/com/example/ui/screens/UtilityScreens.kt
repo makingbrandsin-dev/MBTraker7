@@ -55,18 +55,19 @@ fun ProfileScreen(
 
     val context = LocalContext.current
     val firebaseUser by viewModel.firebaseUserRecord.collectAsState()
-    val empName by viewModel.currentEmployeeName.collectAsState()
-    val empRole by viewModel.currentEmployeeRole.collectAsState()
+    val userSession by viewModel.userSession.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
 
-    val email = userProfile?.email ?: "makingbrands.in@gmail.com"
-    val phone = userProfile?.phone ?: "+91 98765 43210"
-    val department = userProfile?.department ?: "Engineering"
-    val joiningDate = userProfile?.joiningDate ?: "15 Jan 2024"
-    val emergencyContact = userProfile?.emergencyContact ?: "+91 91234 56789"
-    val address = userProfile?.address ?: "Connaught Place, New Delhi"
-    val skills = userProfile?.skills ?: "Kotlin, Jetpack Compose, Android, Cloud, UI/UX"
-    val bio = userProfile?.bio ?: "Building enterprise mobile experiences for Making Brands"
+    val empName = userProfile?.name?.ifBlank { userSession.effectiveDisplayName } ?: userSession.effectiveDisplayName
+    val empRole = userProfile?.role?.ifBlank { userSession.effectiveRole } ?: userSession.effectiveRole
+    val email = userProfile?.email?.ifBlank { userSession.effectiveEmail } ?: userSession.effectiveEmail
+    val phone = userProfile?.phone?.ifBlank { userSession.effectivePhone } ?: userSession.effectivePhone
+    val department = userProfile?.department?.ifBlank { userSession.effectiveDepartment } ?: userSession.effectiveDepartment
+    val joiningDate = userProfile?.joiningDate?.ifBlank { userSession.effectiveJoiningDate } ?: userSession.effectiveJoiningDate
+    val emergencyContact = userProfile?.emergencyContact?.ifBlank { userSession.effectiveEmergencyContact } ?: userSession.effectiveEmergencyContact
+    val address = userProfile?.address?.ifBlank { userSession.effectiveAddress } ?: userSession.effectiveAddress
+    val skills = userProfile?.skills?.ifBlank { userSession.effectiveSkills } ?: userSession.effectiveSkills
+    val bio = userProfile?.bio?.ifBlank { userSession.effectiveBio } ?: userSession.effectiveBio
 
     var showDeleteAllEnterpriseDataDialog by remember { mutableStateOf(false) }
 
@@ -87,16 +88,16 @@ fun ProfileScreen(
                     .fillMaxWidth(0.90f)
                     .fillMaxHeight(0.90f)
             ) {
-                var editName by remember(showEditProfileDialog) { mutableStateOf(userProfile?.name?.ifBlank { empName } ?: empName) }
-                var editRole by remember(showEditProfileDialog) { mutableStateOf(userProfile?.role?.ifBlank { empRole } ?: empRole) }
-                var editEmail by remember(showEditProfileDialog) { mutableStateOf(userProfile?.email ?: email) }
-                var editPhone by remember(showEditProfileDialog) { mutableStateOf(userProfile?.phone ?: phone) }
-                var editDepartment by remember(showEditProfileDialog) { mutableStateOf(userProfile?.department ?: department) }
-                var editJoiningDate by remember(showEditProfileDialog) { mutableStateOf(userProfile?.joiningDate ?: joiningDate) }
-                var editEmergencyContact by remember(showEditProfileDialog) { mutableStateOf(userProfile?.emergencyContact ?: emergencyContact) }
-                var editAddress by remember(showEditProfileDialog) { mutableStateOf(userProfile?.address ?: address) }
-                var editSkills by remember(showEditProfileDialog) { mutableStateOf(userProfile?.skills ?: skills) }
-                var editBio by remember(showEditProfileDialog) { mutableStateOf(userProfile?.bio ?: bio) }
+                var editName by remember(showEditProfileDialog) { mutableStateOf(empName) }
+                var editRole by remember(showEditProfileDialog) { mutableStateOf(empRole) }
+                var editEmail by remember(showEditProfileDialog) { mutableStateOf(email) }
+                var editPhone by remember(showEditProfileDialog) { mutableStateOf(phone) }
+                var editDepartment by remember(showEditProfileDialog) { mutableStateOf(department) }
+                var editJoiningDate by remember(showEditProfileDialog) { mutableStateOf(joiningDate) }
+                var editEmergencyContact by remember(showEditProfileDialog) { mutableStateOf(emergencyContact) }
+                var editAddress by remember(showEditProfileDialog) { mutableStateOf(address) }
+                var editSkills by remember(showEditProfileDialog) { mutableStateOf(skills) }
+                var editBio by remember(showEditProfileDialog) { mutableStateOf(bio) }
 
                 Column(
                     modifier = Modifier
@@ -2464,7 +2465,6 @@ fun SettingsScreen(
                                     onSuccess = {
                                         biometricEnabled = true
                                         com.example.util.BiometricHelper.setBiometricSettingEnabled(context, true)
-                                        toastMessage = "Biometric security activated successfully!"
                                     },
                                     onError = { err ->
                                         toastMessage = "Biometric setup: $err"
@@ -2523,7 +2523,7 @@ fun SettingsScreen(
                                         title = "Biometric Sensor Test",
                                         subtitle = "Testing sensor response using androidx.biometric",
                                         onSuccess = {
-                                            toastMessage = "✅ Biometric sensor verified successfully!"
+                                            // Sensor responsive test succeeded, no success note shown per policy
                                         },
                                         onError = { err ->
                                             toastMessage = "Biometric test: $err"

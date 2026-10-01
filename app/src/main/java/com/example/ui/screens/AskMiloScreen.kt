@@ -217,8 +217,8 @@ fun AskMiloScreen(
                             "Switched to the **Pending & Missed Tab** for instant 1-tap action!"
                 }
 
-                // 5. DAILY SUMMARY
-                lower.contains("today") || lower.contains("daily") -> {
+                // 5. DAILY SUMMARY & SUMMARIZE
+                lower.contains("today") || lower.contains("daily") || lower.contains("summarize") || lower.contains("summary") -> {
                     viewModel.miloViewModel.setState(MiloState.WORKING)
                     activeTab = 4
                     val todayCalls = allCallLogs.size
@@ -232,6 +232,16 @@ fun AskMiloScreen(
                             "✅ **Tasks Completed:** $completedTasks tasks\n" +
                             "⏱️ **Attendance Hours:** $workDuration\n\n" +
                             "Full live daily breakdown opened in the **Summaries Tab**!"
+                }
+
+                // 5b. DRAFT PROPOSAL
+                lower.contains("draft") || lower.contains("proposal") -> {
+                    viewModel.miloViewModel.setState(MiloState.CELEBRATION)
+                    val draftName = allLeads.firstOrNull { !it.stage.equals("Won", true) && !it.stage.equals("Lost", true) }?.name ?: "Valued Customer"
+                    "🦁 **Milo Drafted WhatsApp Proposal**:\n\n" +
+                            "*Proposal for $draftName*:\n" +
+                            "\"Hello $draftName, thank you for connecting with Making Brands! We are excited to submit our customized proposal covering Mobile App, CRM Integrations, and Digital Strategy. Let's grow your brand 20X together!\"\n\n" +
+                            "💡 *Prompt:* Say \"Who to call\" or use WhatsApp Dispatcher in CRM to send this instantly!"
                 }
 
                 // 6. MONTHLY SUMMARY

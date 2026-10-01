@@ -190,23 +190,6 @@ fun MiloCharacter(
                         .scale(breathingScale),
                     contentAlignment = Alignment.Center
                 ) {
-                    val imageRes = if (targetState == MiloState.THINKING) {
-                        R.drawable.milo_thinking
-                    } else {
-                        R.drawable.milo_final
-                    }
-                    Crossfade(
-                        targetState = imageRes,
-                        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
-                        label = "MiloImageCrossfade"
-                    ) { targetImage ->
-                        Image(
-                            painter = painterResource(id = targetImage),
-                            contentDescription = "Milo Lion - ${targetState.title}: ${targetState.description}",
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-
                     if (hasMp4 && videoUri != null) {
                         Box(
                             modifier = Modifier
@@ -215,6 +198,23 @@ fun MiloCharacter(
                         ) {
                             MiloVideoSurface(
                                 videoUri = videoUri,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        val imageRes = if (targetState == MiloState.THINKING) {
+                            R.drawable.milo_thinking
+                        } else {
+                            R.drawable.milo_final
+                        }
+                        Crossfade(
+                            targetState = imageRes,
+                            animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+                            label = "MiloImageCrossfade"
+                        ) { targetImage ->
+                            Image(
+                                painter = painterResource(id = targetImage),
+                                contentDescription = "Milo Lion - ${targetState.title}: ${targetState.description}",
                                 modifier = Modifier.fillMaxSize()
                             )
                         }

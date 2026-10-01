@@ -3462,6 +3462,11 @@ fun ManagerDashboardScreen(
                 }
             }
 
+            // 🎨 8. App Logo & Launcher Icon Customizer Card (Admin Panel)
+            item {
+                AdminAppLogoManagerCard()
+            }
+
             // Admin Master Data Reset & Delete All Fields Card
             item {
                 Card(
@@ -3926,6 +3931,272 @@ fun AdminDataTile(
             Column {
                 Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                 Text(value, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF0F172A))
+            }
+        }
+    }
+}
+
+@Composable
+fun AdminAppLogoManagerCard() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var refreshKey by remember { mutableStateOf(0) }
+    var isUploading by remember { mutableStateOf(false) }
+    var uploadProgress by remember { mutableStateOf(0f) }
+    var currentLogoUri by remember(refreshKey) { mutableStateOf(com.example.util.AppPreferences.getCustomAppLogoUri(context)) }
+    var currentBgHex by remember(refreshKey) { mutableStateOf(com.example.util.AppPreferences.getAppIconBgColor(context)) }
+    var currentPreset by remember(refreshKey) { mutableStateOf(com.example.util.AppPreferences.getAppLogoPreset(context)) }
+
+    // Secure Document/Content File Picker for PNG/Image files
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            isUploading = true
+            uploadProgress = 0.1f
+            Toast.makeText(context, "Uploading PNG branding image to Firebase Storage...", Toast.LENGTH_SHORT).show()
+
+            coroutineScope.launch {
+                val result = com.example.data.firebase.FirebaseStorageManager.uploadAppLogoImage(
+                    context = context,
+                    imageUri = uri,
+                    bgHexColor = currentBgHex,
+                    onProgress = { p -> uploadProgress = p }
+                )
+
+                isUploading = false
+                if (result.isSuccess) {
+                    refreshKey++
+                    Toast.makeText(context, "✅ PNG Logo uploaded to Firebase Storage & persisted in Firestore!", Toast.LENGTH_LONG).show()
+                } else {
+                    val fallbackPath = com.example.util.AppIconHelper.saveCustomLogoFromUri(context, uri)
+                    if (fallbackPath != null) {
+                        refreshKey++
+                        Toast.makeText(context, "✅ PNG Logo saved to App Preferences!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Failed to upload or save PNG logo image.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    // Android Visual Media Photo Picker
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            isUploading = true
+            uploadProgress = 0.1f
+            Toast.makeText(context, "Uploading custom logo to Firebase Storage...", Toast.LENGTH_SHORT).show()
+
+            coroutineScope.launch {
+                val result = com.example.data.firebase.FirebaseStorageManager.uploadAppLogoImage(
+                    context = context,
+                    imageUri = uri,
+                    bgHexColor = currentBgHex,
+                    onProgress = { p -> uploadProgress = p }
+                )
+
+                isUploading = false
+                if (result.isSuccess) {
+                    refreshKey++
+                    Toast.makeText(context, "✅ App Logo uploaded to Firebase Storage & saved to Firestore!", Toast.LENGTH_LONG).show()
+                } else {
+                    val fallbackPath = com.example.util.AppIconHelper.saveCustomLogoFromUri(context, uri)
+                    if (fallbackPath != null) {
+                        refreshKey++
+                        Toast.makeText(context, "✅ Logo saved locally to App Preferences!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Failed to upload or save logo image.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Card Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFFEFF6FF),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Palette, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("App Logo & Launcher Icon", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                        Text("Upload custom app logo image or select brand emblem", fontSize = 11.sp, color = TextSecondary)
+                    }
+                }
+
+                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFDBEAFE)) {
+                    Text(
+                        "APP ICON",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandBlue,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Current App Logo & Icon Live Preview Box
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFF8FAFC),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Active App Logo & Launcher Icon", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF334155))
+                            Text(
+                                if (currentLogoUri != null) "Custom Image Upload Active (Firebase Storage)" else "Preset: $currentPreset",
+                                fontSize = 11.sp,
+                                color = BrandBlue,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Applies to app headers, login, splash & app launcher icon", fontSize = 10.sp, color = Color(0xFF64748B))
+                        }
+
+                        // Live Logo Emblem
+                        key(refreshKey) {
+                            com.example.ui.components.MBAppLogo(size = 52.dp, showText = false)
+                        }
+                    }
+
+                    if (isUploading) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        LinearProgressIndicator(
+                            progress = { uploadProgress },
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                            color = BrandBlue,
+                            trackColor = Color(0xFFDBEAFE)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Uploading to Firebase Storage & updating Firestore config...",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BrandBlue
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Action Buttons: Secure File Picker (PNG) & Photo Gallery & Reset
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Button 1: Secure PNG Document File Picker
+                Button(
+                    onClick = { filePickerLauncher.launch("image/*") },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).height(42.dp)
+                ) {
+                    Icon(Icons.Default.UploadFile, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Select PNG File", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                }
+
+                // Button 2: Photo Gallery Picker
+                OutlinedButton(
+                    onClick = {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.height(42.dp)
+                ) {
+                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Gallery", fontSize = 12.sp, color = BrandBlue, fontWeight = FontWeight.Bold)
+                }
+
+                if (currentLogoUri != null || currentPreset != "MILO_LION") {
+                    OutlinedButton(
+                        onClick = {
+                            com.example.util.AppIconHelper.resetToDefaultLogo(context)
+                            refreshKey++
+                            Toast.makeText(context, "Reset to Default Mascot Logo!", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.height(42.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // App Icon Container Background Color Tint Picker
+            Text("App Icon Background Color Tint", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF334155))
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf(
+                    "#0F172A" to "Slate Dark",
+                    "#1E3A8A" to "Royal Blue",
+                    "#000000" to "Midnight Black",
+                    "#059669" to "Emerald Green",
+                    "#B45309" to "Amber Gold"
+                ).forEach { (hex, label) ->
+                    val colorObj = try { Color(android.graphics.Color.parseColor(hex)) } catch (_: Exception) { Color.DarkGray }
+                    val isSelected = currentBgHex.equals(hex, ignoreCase = true)
+
+                    Surface(
+                        shape = CircleShape,
+                        color = colorObj,
+                        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.5.dp, BrandBlue) else androidx.compose.foundation.BorderStroke(1.dp, Color.White),
+                        shadowElevation = if (isSelected) 4.dp else 1.dp,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clickable {
+                                com.example.util.AppPreferences.saveAppIconBgColor(context, hex)
+                                refreshKey++
+                                Toast.makeText(context, "Icon background tint: $label", Toast.LENGTH_SHORT).show()
+                            }
+                    ) {
+                        if (isSelected) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
             }
         }
     }

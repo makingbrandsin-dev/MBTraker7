@@ -33,6 +33,9 @@ interface AttendanceDao {
     @Query("UPDATE attendance_records SET isSynced = 1")
     suspend fun markAllAttendanceAsSynced()
 
+    @Query("SELECT * FROM attendance_records WHERE id = :id LIMIT 1")
+    suspend fun getAttendanceRecordByIdDirect(id: Long): AttendanceRecord?
+
     @Query("DELETE FROM attendance_records")
     suspend fun clearAll()
 }
@@ -96,6 +99,9 @@ interface ProjectDao {
     @Query("SELECT * FROM projects WHERE id = :id")
     fun getProjectById(id: Long): Flow<ProjectEntity?>
 
+    @Query("SELECT * FROM projects WHERE id = :id LIMIT 1")
+    suspend fun getProjectByIdDirect(id: Long): ProjectEntity?
+
     @Query("SELECT * FROM projects WHERE status = :status ORDER BY id ASC")
     fun getProjectsByStatus(status: String): Flow<List<ProjectEntity>>
 
@@ -150,6 +156,9 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE id = :id")
     fun getTaskById(id: Long): Flow<TaskEntity?>
 
+    @Query("SELECT * FROM tasks WHERE id = :id LIMIT 1")
+    suspend fun getTaskByIdDirect(id: Long): TaskEntity?
+
     @Query("DELETE FROM tasks WHERE id = :id")
     suspend fun deleteById(id: Long)
 
@@ -170,6 +179,9 @@ interface LeadDao {
 
     @Query("SELECT * FROM leads WHERE id = :id")
     fun getLeadById(id: Long): Flow<LeadEntity?>
+
+    @Query("SELECT * FROM leads WHERE id = :id")
+    suspend fun getLeadByIdDirect(id: Long): LeadEntity?
 
     @Query("SELECT * FROM leads WHERE source = :source ORDER BY id DESC, createdAt DESC")
     fun getLeadsBySource(source: String): Flow<List<LeadEntity>>
@@ -237,7 +249,7 @@ interface FollowUpDao {
 
 @Dao
 interface CallLogDao {
-    @Query("SELECT * FROM call_logs ORDER BY id DESC")
+    @Query("SELECT * FROM call_logs WHERE callType != 'Incoming' AND callType != 'Missed' ORDER BY id DESC")
     fun getAllCallLogs(): Flow<List<CallLogEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -376,6 +388,12 @@ interface NotificationDao {
     @Query("UPDATE notifications SET isRead = 1 WHERE id = :id")
     suspend fun markAsRead(id: Long)
 
+    @Query("SELECT * FROM notifications WHERE id = :id LIMIT 1")
+    suspend fun getNotificationById(id: Long): NotificationEntity?
+
+    @Query("SELECT * FROM notifications WHERE isRead = 0")
+    suspend fun getUnreadNotificationsDirect(): List<NotificationEntity>
+
     @Query("DELETE FROM notifications")
     suspend fun clearAll()
 
@@ -411,6 +429,9 @@ interface LeaveDao {
 
     @Query("SELECT * FROM leave_applications WHERE username = :username ORDER BY id DESC")
     fun getLeavesForUser(username: String): Flow<List<LeaveApplicationEntity>>
+
+    @Query("SELECT * FROM leave_applications WHERE id = :id")
+    suspend fun getLeaveByIdDirect(id: Long): LeaveApplicationEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(leave: LeaveApplicationEntity): Long

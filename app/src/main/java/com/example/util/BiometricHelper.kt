@@ -200,7 +200,6 @@ object BiometricHelper {
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                         super.onAuthenticationSucceeded(result)
-                        Toast.makeText(activity, "Biometric authentication verified!", Toast.LENGTH_SHORT).show()
                         onSuccess()
                     }
 
@@ -228,11 +227,6 @@ object BiometricHelper {
             }
         } else {
             // Virtualized emulator / sensor ready fallback for rapid testing
-            Toast.makeText(
-                activity,
-                "Biometric Verified (Fingerprint / Face ID Ready)",
-                Toast.LENGTH_SHORT
-            ).show()
             onSuccess()
         }
     }

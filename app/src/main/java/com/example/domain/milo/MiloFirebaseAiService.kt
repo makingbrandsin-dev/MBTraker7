@@ -204,4 +204,33 @@ class MiloFirebaseAiService {
     }
 
     private data class Quadruple(val first: MiloState, val second: String, val third: String, val fourth: String?)
+
+    /**
+     * Generates an intelligent call summary using Gemini AI.
+     */
+    suspend fun generateCallSummary(
+        contactName: String,
+        phoneNumber: String,
+        callType: String,
+        durationText: String
+    ): String = withContext(Dispatchers.IO) {
+        try {
+            val generativeModel = Firebase.ai.generativeModel(
+                modelName = "gemini-2.5-flash",
+                generationConfig = generationConfig {
+                    temperature = 0.5f
+                }
+            )
+            val prompt = """
+                Generate a concise, professional 1-2 sentence business/sales summary of a $durationText phone conversation with $contactName ($phoneNumber). 
+                The call type was $callType.
+                Include a logical business next step (e.g. follow-up proposal, WhatsApp dispatch, scheduled callback) based on standard CRM sales practices.
+                Ensure the response is extremely concise and friendly.
+            """.trimIndent()
+            val response = generativeModel.generateContent(prompt)
+            response.text?.trim() ?: "Productive call completed with $contactName."
+        } catch (e: Exception) {
+            "$callType call completed with $contactName ($durationText). Recommended: Send follow-up WhatsApp message."
+        }
+    }
 }

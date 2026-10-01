@@ -501,7 +501,6 @@ fun LoginScreen(
                                         selectedRoleHint = "Employee"
                                     ) { isAdmin, _ ->
                                         viewModel.unlockAllBiometrics()
-                                        Toast.makeText(context, "Biometric verified! Opening Employee Workspace", Toast.LENGTH_SHORT).show()
                                         onLoginSuccess(isAdmin)
                                     }
                                 },
@@ -637,7 +636,6 @@ fun LoginScreen(
                                                 selectedRoleHint = "MB Admin"
                                             ) { isAdmin, _ ->
                                                 isAdminAuthenticating = false
-                                                Toast.makeText(context, "Admin Biometrics Verified! Opening Admin Dashboard", Toast.LENGTH_SHORT).show()
                                                 onLoginSuccess(true)
                                             }
                                         },
@@ -652,7 +650,6 @@ fun LoginScreen(
                                         selectedRoleHint = "MB Admin"
                                     ) { isAdmin, _ ->
                                         isAdminAuthenticating = false
-                                        Toast.makeText(context, "Admin Biometrics Verified! Opening Admin Dashboard", Toast.LENGTH_SHORT).show()
                                         onLoginSuccess(true)
                                     }
                                 }

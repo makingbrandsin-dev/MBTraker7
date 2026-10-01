@@ -239,6 +239,96 @@ fun AdminMiloScreen(
                 }
             }
 
+            // 🎙️ Custom Voice Options Selection (Indian Male, Female, UK, US, etc.)
+            item {
+                var currentVoice by remember(refreshKey) { mutableStateOf(com.example.milo.MiloVoiceHelper.getVoiceOption(context)) }
+                var showVoiceDropdown by remember { mutableStateOf(false) }
+
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFFEF3C7),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.RecordVoiceOver,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD97706),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Milo Voice Customization", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                Text("Choose accents & gender settings for Milo", fontSize = 11.sp, color = TextSecondary)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text("SELECT ACTIVE VOICE / ACCENT:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        val voiceOptions = listOf(
+                            "INDIAN_MALE" to "🇮🇳 Indian Accent (Male Voice)",
+                            "INDIAN_FEMALE" to "🇮🇳 Indian Accent (Female Voice)",
+                            "UK_ACCENT" to "🇬🇧 British Accent (UK English)",
+                            "US_ACCENT" to "🇺🇸 American Accent (US English)",
+                            "SYSTEM_DEFAULT" to "⚙️ System Default Voice"
+                        )
+
+                        ExposedDropdownMenuBox(
+                            expanded = showVoiceDropdown,
+                            onExpandedChange = { showVoiceDropdown = it }
+                        ) {
+                            val displayText = voiceOptions.firstOrNull { it.first == currentVoice }?.second ?: "⚙️ System Default Voice"
+                            OutlinedTextField(
+                                value = displayText,
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showVoiceDropdown) },
+                                colors = appTextFieldColors(),
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            ExposedDropdownMenu(
+                                expanded = showVoiceDropdown,
+                                onDismissRequest = { showVoiceDropdown = false }
+                            ) {
+                                voiceOptions.forEach { opt ->
+                                    DropdownMenuItem(
+                                        text = { Text(opt.second, fontSize = 13.sp) },
+                                        onClick = {
+                                            currentVoice = opt.first
+                                            com.example.milo.MiloVoiceHelper.setVoiceOption(context, opt.first)
+                                            showVoiceDropdown = false
+                                            refreshKey++
+                                            Toast.makeText(context, "🎙️ Voice changed to ${opt.second}!", Toast.LENGTH_SHORT).show()
+                                            // Instantly test say something in the chosen voice!
+                                            com.example.milo.MiloVoiceHelper.speakText(context, "Milo voice customized successfully!")
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 1. 🦁 Milo Smart Assistant - Per-Status MP4 Video Uploads
             item {
                 Card(

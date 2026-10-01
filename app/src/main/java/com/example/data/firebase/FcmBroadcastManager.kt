@@ -311,6 +311,11 @@ class FcmBroadcastManager private constructor(private val context: Context) {
     private fun triggerIncomingBroadcastAlert(broadcast: FcmBroadcastLog) {
         scope.launch {
             try {
+                if (!com.example.util.AppPreferences.isNotificationEnabled(context, "broadcast")) {
+                    Log.d(TAG, "Push broadcast skipped because admin broadcast notifications are disabled in preferences.")
+                    return@launch
+                }
+
                 val db = AppDatabase.getDatabase(context)
                 db.notificationDao().insert(
                     NotificationEntity(
@@ -329,6 +334,8 @@ class FcmBroadcastManager private constructor(private val context: Context) {
                     audience = broadcast.audience,
                     priority = broadcast.priority
                 )
+
+                com.example.util.AppSoundHelper.playGeneralNotificationSound(context)
             } catch (e: Exception) {
                 Log.w(TAG, "Error handling incoming broadcast alert: ${e.message}")
             }

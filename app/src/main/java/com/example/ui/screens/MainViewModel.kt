@@ -39,6 +39,7 @@ import com.example.milo.MiloViewModel
 import com.example.data.banner.BannerManager
 import com.example.data.firebase.FcmBroadcastManager
 import com.example.data.firebase.FcmBroadcastLog
+import com.example.domain.ai.CallInsightsHelper
 import com.example.presentation.components.banner.AppOfferBanner
 import com.example.util.BatterySaverManager
 import com.example.util.BatterySaverMode
@@ -948,12 +949,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun markAllNotificationsAsRead() {
         viewModelScope.launch {
             notificationDao.markAllAsRead()
+            // Sync all unread notifications status to Firebase
+            val list = notificationDao.getUnreadNotificationsDirect()
+            for (n in list) {
+                FirebaseRealtimeManager.syncNotificationToFirebase(n.copy(isRead = true))
+            }
         }
     }
 
     fun markNotificationAsRead(id: Long) {
         viewModelScope.launch {
             notificationDao.markAsRead(id)
+            val notif = notificationDao.getNotificationById(id)
+            if (notif != null) {
+                FirebaseRealtimeManager.syncNotificationToFirebase(notif)
+            }
+        }
+    }
+
+    fun markNotificationsAsReadByCategory(category: String) {
+        viewModelScope.launch {
+            try {
+                val list = notificationDao.getUnreadNotificationsDirect()
+                for (n in list) {
+                    if (n.category.equals(category, ignoreCase = true)) {
+                        notificationDao.markAsRead(n.id)
+                        FirebaseRealtimeManager.syncNotificationToFirebase(n.copy(isRead = true))
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("MainViewModel", "Failed marking category $category read: ${e.message}")
+            }
         }
     }
 
@@ -978,25 +1004,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Current logged-in employee profile (persisted in Room user_profile table)
+    // Current logged-in employee session (persisted via Jetpack DataStore, Room user_profile table, and Firebase)
     val userProfile = userProfileDao.getUserProfile()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val currentEmployeeName = MutableStateFlow("Rahul Sharma")
-    val currentEmployeeRole = MutableStateFlow("Senior Developer")
+    val userSession = com.example.data.session.UserSessionManager.currentSessionState
+
+    val currentEmployeeName = MutableStateFlow(
+        com.example.data.session.UserSessionManager.currentSessionState.value.displayName.ifBlank {
+            com.example.util.AppPreferences.getUserName(application) ?: "User"
+        }
+    )
+    val currentEmployeeRole = MutableStateFlow(
+        com.example.data.session.UserSessionManager.currentSessionState.value.role.ifBlank {
+            com.example.util.AppPreferences.getUserRole(application) ?: "Employee"
+        }
+    )
 
     init {
+        // Initialize DataStore & Firebase-backed UserSessionManager immediately on startup
+        com.example.data.session.UserSessionManager.initialize(application, userProfileDao)
+
+        viewModelScope.launch {
+            com.example.data.session.UserSessionManager.currentSessionState.collect { session ->
+                if (session.displayName.isNotBlank()) {
+                    currentEmployeeName.value = session.displayName
+                }
+                if (session.role.isNotBlank()) {
+                    currentEmployeeRole.value = session.role
+                }
+            }
+        }
+
         FirebaseRealtimeManager.setCurrentEmployeeName(currentEmployeeName.value)
         FirebaseRealtimeManager.initialize(
             context = application,
             attendanceDao = attendanceDao,
             userProfileDao = userProfileDao,
             taskDao = taskDao,
+            leadDao = leadDao,
             chatDao = chatDao,
             activityFeedDao = activityFeedDao,
             scope = viewModelScope,
             notificationDao = notificationDao,
-            projectDao = projectDao
+            projectDao = projectDao,
+            leaveDao = leaveDao
         )
         try {
             FcmBroadcastManager.getInstance(application)
@@ -1102,11 +1154,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun completeFirstTimeCheckIn(name: String, role: String) {
-        val trimmedName = name.trim().ifEmpty { "Rahul Sharma" }
-        val trimmedRole = role.trim().ifEmpty { "Senior Developer" }
+        val trimmedName = name.trim().ifEmpty { "User" }
+        val trimmedRole = role.trim().ifEmpty { "Employee" }
         currentEmployeeName.value = trimmedName
         currentEmployeeRole.value = trimmedRole
         showFirstTimeCheckInDialog.value = false
+
+        com.example.data.session.UserSessionManager.saveSession(
+            name = trimmedName,
+            role = trimmedRole
+        )
 
         viewModelScope.launch {
             // 1. Persist to Room UserProfileDao
@@ -1171,6 +1228,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         currentEmployeeName.value = trimmedName
         currentEmployeeRole.value = trimmedRole
 
+        com.example.data.session.UserSessionManager.saveSession(
+            name = trimmedName,
+            role = trimmedRole,
+            email = email.trim(),
+            phoneNumber = phone.trim(),
+            department = department.trim(),
+            joiningDate = joiningDate.trim(),
+            emergencyContact = emergencyContact.trim(),
+            address = address.trim(),
+            skills = skills.trim(),
+            bio = bio.trim()
+        )
+
         viewModelScope.launch {
             val profile = UserProfileEntity(
                 id = 1L,
@@ -1220,6 +1290,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteAllUserProfileFields() {
         currentEmployeeName.value = ""
         currentEmployeeRole.value = ""
+        com.example.data.session.UserSessionManager.clearSession()
         viewModelScope.launch {
             val blankProfile = UserProfileEntity(
                 id = 1L,
@@ -2263,8 +2334,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             chatDao,
             activityFeedDao,
             viewModelScope,
-            projectDao = projectDao
+            projectDao = projectDao,
+            leaveDao = leaveDao
         )
+
+        FirebaseRealtimeManager.onHolidaysUpdatedCallback = { list ->
+            _holidays.value = list
+        }
 
         // Initialize Firestore Auth Provider to check and sync authoritative user roles from Firestore
         FirestoreAuthProvider.initialize(application.applicationContext, viewModelScope)
@@ -2272,14 +2348,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Collect Room user profile to restore persisted name, role, and onboarding state
         viewModelScope.launch {
             userProfileDao.getUserProfile().collect { profile ->
-                if (profile != null && profile.isOnboarded) {
+                if (profile != null && profile.name.isNotBlank() && profile.isOnboarded) {
                     currentEmployeeName.value = profile.name
-                    currentEmployeeRole.value = profile.role
+                    currentEmployeeRole.value = profile.role.ifBlank { "Employee" }
+                    com.example.util.AppPreferences.saveUserName(application, profile.name)
+                    com.example.util.AppPreferences.saveUserRole(application, profile.role.ifBlank { "Employee" })
                     FirebaseRealtimeManager.setCurrentEmployeeName(profile.name)
                     showFirstTimeCheckInDialog.value = false
                 } else {
-                    // Not onboarded yet -> show onboarding popup
-                    showFirstTimeCheckInDialog.value = true
+                    val savedName = com.example.util.AppPreferences.getUserName(application)
+                    if (!savedName.isNullOrBlank()) {
+                        currentEmployeeName.value = savedName
+                        currentEmployeeRole.value = com.example.util.AppPreferences.getUserRole(application) ?: "Employee"
+                        showFirstTimeCheckInDialog.value = false
+                    } else {
+                        val isDone = com.example.util.AppPreferences.isOnboardingCompleted(application)
+                        showFirstTimeCheckInDialog.value = !isDone
+                    }
                 }
             }
         }
@@ -2868,6 +2953,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun reassignTask(task: TaskEntity, newAssignee: String) {
+        viewModelScope.launch {
+            val updated = task.copy(assignee = newAssignee)
+            taskDao.update(updated)
+            FirebaseRealtimeManager.syncTaskToFirebase(updated)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "📋 Task Reassigned",
+                    subtitle = "'${task.title}' reassigned to $newAssignee",
+                    timeAgo = "Just now",
+                    category = "task",
+                    isRead = false
+                )
+            )
+            com.example.util.AppSoundHelper.playGeneralNotificationSound(appContext)
+        }
+    }
+
     fun addTask(
         title: String,
         projectName: String,
@@ -3319,6 +3422,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 createdAt = System.currentTimeMillis()
             )
             leaveDao.insert(leave)
+            FirebaseRealtimeManager.syncLeaveToFirebase(leave)
             notificationDao.insert(
                 NotificationEntity(
                     title = "Leave Request Submitted",
@@ -3334,6 +3438,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteLeave(leave: LeaveApplicationEntity) {
         viewModelScope.launch {
             leaveDao.delete(leave)
+            FirebaseRealtimeManager.deleteLeaveFromFirebase(leave.id)
         }
     }
 
@@ -3343,6 +3448,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val target = all.find { it.id == leaveId } ?: return@launch
             val updated = target.copy(status = newStatus)
             leaveDao.update(updated)
+            FirebaseRealtimeManager.syncLeaveToFirebase(updated)
             notificationDao.insert(
                 NotificationEntity(
                     title = if (newStatus == "Approved") "✅ Leave Approved" else "❌ Leave Rejected",
@@ -3374,15 +3480,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addHoliday(title: String, date: String, day: String, type: String = "Gazetted Holiday") {
         val newHoliday = HolidayItem(id = System.currentTimeMillis(), title = title, date = date, day = day, type = type)
         _holidays.value = _holidays.value + newHoliday
+        FirebaseRealtimeManager.syncHolidayToFirebase(newHoliday)
     }
 
     fun deleteHoliday(id: Long) {
         _holidays.value = _holidays.value.filter { it.id != id }
+        FirebaseRealtimeManager.deleteHolidayFromFirebase(id)
     }
 
     fun updateHoliday(id: Long, title: String, date: String, day: String, type: String) {
         _holidays.value = _holidays.value.map {
-            if (it.id == id) it.copy(title = title, date = date, day = day, type = type) else it
+            if (it.id == id) {
+                val updated = it.copy(title = title, date = date, day = day, type = type)
+                FirebaseRealtimeManager.syncHolidayToFirebase(updated)
+                updated
+            } else it
         }
     }
 
@@ -3492,6 +3604,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteCallRecording(id: Long) {
         viewModelScope.launch {
             callRecordingDao.deleteById(id)
+        }
+    }
+
+    fun analyzeCall(callLog: CallLogEntity) {
+        viewModelScope.launch {
+            val updatedLog = CallInsightsHelper.processCallRecording(getApplication(), callLog)
+            // Update UI/State as needed
         }
     }
 

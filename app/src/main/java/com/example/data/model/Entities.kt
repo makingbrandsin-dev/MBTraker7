@@ -294,7 +294,12 @@ data class CallLogEntity(
     val status: String, // Connected, No Answer, Busy
     val timestampText: String, // Today, 09:32 AM
     val durationText: String, // 4m 12s
-    val phoneNumber: String = "+91 98765 43210"
+    val phoneNumber: String = "+91 98765 43210",
+    val audioPath: String? = null,
+    val summary: String? = null,
+    val transcription: String? = null,
+    val aiInsights: String? = null,
+    val leadUpdated: Boolean = false
 )
 
 @Entity(tableName = "chat_messages")

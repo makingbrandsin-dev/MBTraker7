@@ -66,6 +66,7 @@ object AppSoundHelper {
     }
 
     fun playGeneralNotificationSound(context: Context) {
+        if (!com.example.util.AppPreferences.isNotificationSoundEnabled(context)) return
         playSystemNotificationSound(context)
     }
 
@@ -74,6 +75,7 @@ object AppSoundHelper {
         fallbackType: Int,
         context: Context
     ) {
+        if (!com.example.util.AppPreferences.isNotificationSoundEnabled(context)) return
         Thread {
             try {
                 val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 85)
@@ -92,6 +94,7 @@ object AppSoundHelper {
     }
 
     private fun playSystemNotificationSound(context: Context, type: Int = RingtoneManager.TYPE_NOTIFICATION) {
+        if (!com.example.util.AppPreferences.isNotificationSoundEnabled(context)) return
         try {
             val uri = RingtoneManager.getDefaultUri(type)
             val ringtone = RingtoneManager.getRingtone(context.applicationContext, uri)

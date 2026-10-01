@@ -661,6 +661,128 @@ fun AdminBroadcastScreen(
                 }
             }
 
+            // 🎙️ Dynamic Notification Category Toggles (Options in Admin Panel)
+            item {
+                var refreshTogglesKey by remember { mutableStateOf(0) }
+                val isSoundEnabled = remember(refreshTogglesKey) { com.example.util.AppPreferences.isNotificationSoundEnabled(context) }
+                
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFEFF6FF),
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.SettingsSuggest,
+                                        contentDescription = null,
+                                        tint = BrandBlue,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "System Alert & Sound Options",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 15.sp,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "Configure real-time delivery targets and audio alerts",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Master Sound Toggle
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isSoundEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                                contentDescription = null,
+                                tint = if (isSoundEnabled) BrandBlue else TextMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("System Notification Sounds", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+                                Text("Toggle sound chimes and keypad pings globally", fontSize = 11.sp, color = TextSecondary)
+                            }
+                            Switch(
+                                checked = isSoundEnabled,
+                                onCheckedChange = {
+                                    com.example.util.AppPreferences.setNotificationSoundEnabled(context, it)
+                                    refreshTogglesKey++
+                                    Toast.makeText(context, if (it) "🔊 Sounds enabled!" else "🔇 Sounds muted!", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = BrandBlue)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("CONFIGURE CATEGORY PUSH & IN-APP DELIVERY:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        val categories = listOf(
+                            "attendance" to Pair("Attendance & Regularizations", "Check-ins, check-outs, break updates"),
+                            "task" to Pair("Task & Sprint Milestones", "Assignments, task edits, status updates"),
+                            "followup" to Pair("Lead & CRM Alerts", "Incoming WhatsApp leads, follow-up timers"),
+                            "leave" to Pair("Leaves & Holiday Rosters", "Leave applications and approvals"),
+                            "message" to Pair("Team Chat Discussions", "Messages in Dev, Sales, & Corporate channels"),
+                            "broadcast" to Pair("Admin Announcements", "Company-wide high priority push alerts")
+                        )
+
+                        categories.forEach { (cat, info) ->
+                            val isEnabled = remember(refreshTogglesKey) { com.example.util.AppPreferences.isNotificationEnabled(context, cat) }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isEnabled) BrandBlue else TextMuted)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(info.first, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = TextPrimary)
+                                    Text(info.second, fontSize = 10.sp, color = TextSecondary)
+                                }
+                                Switch(
+                                    checked = isEnabled,
+                                    onCheckedChange = {
+                                        com.example.util.AppPreferences.setNotificationEnabled(context, cat, it)
+                                        refreshTogglesKey++
+                                    },
+                                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = BrandBlue)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // 3. Sent Broadcast History & Cloud Delivery Logs
             item {
                 Row(

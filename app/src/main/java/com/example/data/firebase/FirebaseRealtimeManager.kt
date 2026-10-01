@@ -14,6 +14,7 @@ import com.example.data.local.LeadDao
 import com.example.data.local.NotificationDao
 import com.example.data.local.TaskDao
 import com.example.data.local.UserProfileDao
+import com.example.data.local.LeaveDao
 import com.example.data.model.ActivityFeedItemEntity
 import com.example.data.model.AttendanceRecord
 import com.example.data.model.ChatMessageEntity
@@ -25,10 +26,13 @@ import com.example.data.model.NotificationEntity
 import com.example.data.model.ProjectEntity
 import com.example.data.model.TaskEntity
 import com.example.data.model.UserProfileEntity
+import com.example.data.model.LeaveApplicationEntity
+import com.example.data.model.HolidayItem
 import com.example.data.websocket.RealtimeWebSocketManager
 import com.example.data.websocket.WebSocketRealtimeEvent
 import com.example.util.NotificationHelper
 import com.example.util.ReactionUtils
+import com.example.util.AppSoundHelper
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.DocumentChange
@@ -117,6 +121,7 @@ object FirebaseRealtimeManager {
     private var chatDaoRef: ChatDao? = null
     private var projectDaoRef: com.example.data.local.ProjectDao? = null
     private var notificationDaoRef: NotificationDao? = null
+    private var leaveDaoRef: LeaveDao? = null
     private var notificationListener: ListenerRegistration? = null
     private val handledNotificationDocIds = ConcurrentHashMap.newKeySet<String>()
 
@@ -155,12 +160,14 @@ object FirebaseRealtimeManager {
         activityFeedDao: ActivityFeedDao? = null,
         scope: CoroutineScope,
         notificationDao: NotificationDao? = null,
-        projectDao: com.example.data.local.ProjectDao? = null
+        projectDao: com.example.data.local.ProjectDao? = null,
+        leaveDao: LeaveDao? = null
     ) {
         attendanceDaoRef = attendanceDao
         chatDaoRef = chatDao
         notificationDaoRef = notificationDao
         projectDaoRef = projectDao
+        leaveDaoRef = leaveDao
         appContext = context.applicationContext
         appScope = scope
         registerNetworkCallback(context)
@@ -298,6 +305,16 @@ object FirebaseRealtimeManager {
             if (projectDao != null && projectListener == null) {
                 startRealtimeProjectListener(projectDao, scope)
             }
+            if (leadDao != null && leadListener == null) {
+                startRealtimeLeadListener(leadDao, scope)
+            }
+            if (leaveDao != null && leaveListener == null) {
+                startRealtimeLeaveListener(leaveDao, scope)
+            }
+            if (holidayListener == null) {
+                startRealtimeHolidayListener(scope)
+            }
+            startBrandingConfigListener(context)
             return
         }
 
@@ -308,6 +325,7 @@ object FirebaseRealtimeManager {
             }
 
             firestore = FirebaseFirestore.getInstance()
+            startBrandingConfigListener(context)
             isInitialized = true
             updateSyncState(
                 status = NetworkSyncStatus.SYNCED,
@@ -353,6 +371,13 @@ object FirebaseRealtimeManager {
             if (notificationDao != null) {
                 startRealtimeNotificationListener(notificationDao, scope)
             }
+            if (leadDao != null) {
+                startRealtimeLeadListener(leadDao, scope)
+            }
+            if (leaveDao != null) {
+                startRealtimeLeaveListener(leaveDao, scope)
+            }
+            startRealtimeHolidayListener(scope)
         } catch (e: Exception) {
             Log.e(TAG, "Firebase initialization error: ${e.message}", e)
             updateSyncState(
@@ -1029,7 +1054,27 @@ object FirebaseRealtimeManager {
                                         timestamp = timestamp,
                                         employeeName = employeeName
                                     )
+                                    val existing = attendanceDao.getAttendanceRecordByIdDirect(id)
                                     attendanceDao.insert(record)
+
+                                    val isMyUpdate = employeeName.trim().equals(currentEmployeeName.trim(), ignoreCase = true)
+                                    if (!isMyUpdate && existing != record) {
+                                        val isNew = existing == null
+                                        val statusChanged = existing != null && (existing.status != status || existing.isWorking != isWorking)
+                                        if (isNew) {
+                                            triggerLiveAlertAndNotification(
+                                                title = "⏰ Attendance Check-In",
+                                                subtitle = "$employeeName checked in on $date at $checkInTime ($status)",
+                                                category = "attendance"
+                                            )
+                                        } else if (statusChanged) {
+                                            triggerLiveAlertAndNotification(
+                                                title = "🔄 Attendance Roster Updated",
+                                                subtitle = "$employeeName status updated to '$status' (Working: $isWorking)",
+                                                category = "attendance"
+                                            )
+                                        }
+                                    }
                                 }
                             }
                             updateSyncState(
@@ -1085,7 +1130,26 @@ object FirebaseRealtimeManager {
                                         estimatedTimeNeeded = estimatedTimeNeeded,
                                         assignee = assignee
                                     )
+                                    val existing = taskDao.getTaskByIdDirect(id)
                                     taskDao.insert(task)
+
+                                    if (existing != task) {
+                                        val isNew = existing == null
+                                        val isStatusChanged = existing != null && (existing.status != status || existing.isCompleted != isCompleted)
+                                        if (isNew) {
+                                            triggerLiveAlertAndNotification(
+                                                title = "📋 New Task Assigned",
+                                                subtitle = "\"$title\" assigned to $assignee for project $projectName",
+                                                category = "task"
+                                            )
+                                        } else if (isStatusChanged) {
+                                            triggerLiveAlertAndNotification(
+                                                title = "🔄 Task Status Changed",
+                                                subtitle = "\"$title\" updated to '$status'",
+                                                category = "task"
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1151,6 +1215,28 @@ object FirebaseRealtimeManager {
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start project listener: ${e.message}")
+        }
+    }
+
+    private var brandingListener: ListenerRegistration? = null
+
+    fun startBrandingConfigListener(context: Context) {
+        try {
+            brandingListener?.remove()
+            brandingListener = firestore?.collection("app_config")?.document("branding")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                    val logoUrl = snapshot.getString("appLogoUrl") ?: snapshot.getString("appLogoUri")
+                    val bgHex = snapshot.getString("bgHexColor") ?: "#0F172A"
+                    if (!logoUrl.isNullOrBlank()) {
+                        com.example.util.AppPreferences.saveCustomAppLogoUri(context, logoUrl)
+                    }
+                    if (bgHex.isNotBlank()) {
+                        com.example.util.AppPreferences.saveAppIconBgColor(context, bgHex)
+                    }
+                }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start branding config listener: ${e.message}")
         }
     }
 
@@ -1246,32 +1332,85 @@ object FirebaseRealtimeManager {
                 val createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
 
                 if (title.isNotBlank()) {
-                    val entity = NotificationEntity(
-                        id = id,
-                        title = title,
-                        subtitle = subtitle,
-                        timeAgo = timeAgo,
-                        category = category,
-                        isRead = isRead
-                    )
-                    notificationDao.insert(entity)
+                    appContext?.let { ctx ->
+                        if (com.example.util.AppPreferences.isNotificationEnabled(ctx, category)) {
+                            val entity = NotificationEntity(
+                                id = id,
+                                title = title,
+                                subtitle = subtitle,
+                                timeAgo = timeAgo,
+                                category = category,
+                                isRead = isRead
+                            )
+                            notificationDao.insert(entity)
 
-                    // Alert user if this is a newly arrived notification published recently
-                    if (handledNotificationDocIds.add(docId)) {
-                        val isRecent = System.currentTimeMillis() - createdAt < 90_000L
-                        if (isRecent) {
-                            appContext?.let { ctx ->
-                                NotificationHelper.showBroadcastAlert(
-                                    context = ctx,
-                                    title = title,
-                                    messageText = subtitle,
-                                    audience = targetAudience,
-                                    priority = doc.getString("priority") ?: "High"
-                                )
+                            // Alert user if this is a newly arrived notification published recently
+                            if (handledNotificationDocIds.add(docId)) {
+                                val isRecent = System.currentTimeMillis() - createdAt < 90_000L
+                                if (isRecent) {
+                                    NotificationHelper.showBroadcastAlert(
+                                        context = ctx,
+                                        title = title,
+                                        messageText = subtitle,
+                                        audience = targetAudience,
+                                        priority = doc.getString("priority") ?: "High"
+                                    )
+                                    AppSoundHelper.playGeneralNotificationSound(ctx)
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fun triggerLiveAlertAndNotification(
+        title: String,
+        subtitle: String,
+        category: String,
+        targetAudience: String = "All Users"
+    ) {
+        val ctx = appContext ?: return
+        val scope = appScope ?: return
+        
+        // Check if the specific notification category is enabled in Settings
+        if (!com.example.util.AppPreferences.isNotificationEnabled(ctx, category)) {
+            Log.d(TAG, "Notification category '$category' is muted in Admin configuration settings.")
+            return
+        }
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                // 1. Save locally in Room DB
+                val entity = NotificationEntity(
+                    title = title,
+                    subtitle = subtitle,
+                    timeAgo = "Just now",
+                    category = category,
+                    isRead = false
+                )
+                val insertedId = notificationDaoRef?.insert(entity) ?: 0L
+                
+                // 2. Sync notification to Firebase so all devices retrieve it
+                if (insertedId > 0L) {
+                    syncNotificationToFirebase(entity.copy(id = insertedId))
+                }
+
+                // 3. Play sound feedback
+                AppSoundHelper.playGeneralNotificationSound(ctx)
+
+                // 4. Trigger localized Heads-up Android notifications depending on type
+                when (category) {
+                    "attendance" -> NotificationHelper.showBroadcastAlert(ctx, title, subtitle, targetAudience)
+                    "task" -> NotificationHelper.showTaskAlert(ctx, title, subtitle)
+                    "followup" -> NotificationHelper.showLeadAlert(ctx, title, "Lead Update", subtitle)
+                    "leave" -> NotificationHelper.showBroadcastAlert(ctx, title, subtitle, targetAudience)
+                    "message" -> NotificationHelper.showChatAlert(ctx, "Team", subtitle)
+                    else -> NotificationHelper.showBroadcastAlert(ctx, title, subtitle, targetAudience)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error in triggerLiveAlertAndNotification: ${e.message}")
             }
         }
     }
@@ -2213,5 +2352,224 @@ object FirebaseRealtimeManager {
             statusMessage = "Firestore: Live & Synced Just Now",
             newTimestamp = System.currentTimeMillis()
         )
+    }
+
+    // --- LEADS REAL-TIME LISTENER ---
+    private var leadListener: ListenerRegistration? = null
+
+    fun startRealtimeLeadListener(leadDao: LeadDao, scope: CoroutineScope) {
+        if (!isEffectiveOnline() || firestore == null) return
+        try {
+            leadListener?.remove()
+            leadListener = firestore?.collection("leads")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null) return@addSnapshotListener
+                    scope.launch(Dispatchers.IO) {
+                        for (doc in snapshot.documents) {
+                            val id = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
+                            val name = doc.getString("customerName") ?: ""
+                            val company = doc.getString("company") ?: ""
+                            val phone = doc.getString("phone") ?: ""
+                            val email = doc.getString("email") ?: ""
+                            val leadScore = (doc.getLong("leadScore") ?: 70L).toInt()
+                            val requirement = doc.getString("requirement") ?: ""
+                            val stage = doc.getString("status") ?: "New"
+                            val assignedTo = doc.getString("assignedTo") ?: ""
+                            val nextFollowUp = doc.getString("nextFollowUp") ?: ""
+                            
+                            val isNew = leadDao.getLeadByIdDirect(id) == null
+                            
+                            val lead = LeadEntity(
+                                id = id,
+                                name = name,
+                                company = company,
+                                phone = phone,
+                                email = email,
+                                leadScore = leadScore,
+                                requirement = requirement,
+                                potentialValue = "₹ " + (doc.getDouble("value") ?: 0.0).toLong().toString(),
+                                stage = stage,
+                                assignedTo = assignedTo,
+                                nextFollowUp = nextFollowUp
+                            )
+                            leadDao.insert(lead)
+                            
+                            if (isNew && name.isNotBlank()) {
+                                triggerLiveAlertAndNotification(
+                                    title = "🎯 New Lead: $name ($company)",
+                                    subtitle = "Requirement: $requirement. Assigned to: $assignedTo",
+                                    category = "followup"
+                                )
+                            }
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start lead listener: ${e.message}")
+        }
+    }
+
+    // --- LEAVES REAL-TIME LISTENER ---
+    private var leaveListener: ListenerRegistration? = null
+
+    fun startRealtimeLeaveListener(leaveDao: LeaveDao, scope: CoroutineScope) {
+        if (!isEffectiveOnline() || firestore == null) return
+        try {
+            leaveListener?.remove()
+            leaveListener = firestore?.collection("leave_applications")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null) return@addSnapshotListener
+                    scope.launch(Dispatchers.IO) {
+                        for (doc in snapshot.documents) {
+                            val id = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
+                            val username = doc.getString("username") ?: ""
+                            val leaveType = doc.getString("leaveType") ?: "Casual Leave"
+                            val startDate = doc.getString("startDate") ?: ""
+                            val endDate = doc.getString("endDate") ?: ""
+                            val totalDays = (doc.getLong("totalDays") ?: 1L).toInt()
+                            val reason = doc.getString("reason") ?: ""
+                            val status = doc.getString("status") ?: "Pending"
+                            val appliedDate = doc.getString("appliedDate") ?: ""
+                            val createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
+                            
+                            val existing = leaveDao.getLeaveByIdDirect(id)
+                            val isNew = existing == null
+                            val isStatusChanged = existing != null && existing.status != status
+                            
+                            val leave = LeaveApplicationEntity(
+                                id = id,
+                                username = username,
+                                leaveType = leaveType,
+                                startDate = startDate,
+                                endDate = endDate,
+                                totalDays = totalDays,
+                                reason = reason,
+                                status = status,
+                                appliedDate = appliedDate,
+                                createdAt = createdAt
+                            )
+                            leaveDao.insert(leave)
+                            
+                            if (isNew && username.isNotBlank()) {
+                                triggerLiveAlertAndNotification(
+                                    title = "📅 New Leave Request",
+                                    subtitle = "$leaveType submitted by $username for $startDate to $endDate",
+                                    category = "leave",
+                                    targetAudience = "Management"
+                                )
+                            } else if (isStatusChanged) {
+                                triggerLiveAlertAndNotification(
+                                    title = "🔄 Leave Status Updated",
+                                    subtitle = "Leave for $username has been $status",
+                                    category = "leave",
+                                    targetAudience = "Employee"
+                                )
+                            }
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start leave listener: ${e.message}")
+        }
+    }
+
+    // --- HOLIDAYS REAL-TIME LISTENER ---
+    private var holidayListener: ListenerRegistration? = null
+    var onHolidaysUpdatedCallback: ((List<HolidayItem>) -> Unit)? = null
+
+    fun startRealtimeHolidayListener(scope: CoroutineScope) {
+        if (!isEffectiveOnline() || firestore == null) return
+        try {
+            holidayListener?.remove()
+            holidayListener = firestore?.collection("holidays")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null) return@addSnapshotListener
+                    val list = mutableListOf<HolidayItem>()
+                    for (doc in snapshot.documents) {
+                        val id = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
+                        val title = doc.getString("title") ?: ""
+                        val date = doc.getString("date") ?: ""
+                        val day = doc.getString("day") ?: ""
+                        val type = doc.getString("type") ?: "Public Holiday"
+                        list.add(HolidayItem(id = id, title = title, date = date, day = day, type = type))
+                    }
+                    if (list.isNotEmpty()) {
+                        onHolidaysUpdatedCallback?.invoke(list)
+                        appContext?.let { ctx ->
+                            AppSoundHelper.playGeneralNotificationSound(ctx)
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start holiday listener: ${e.message}")
+        }
+    }
+
+    // --- HOLIDAYS & LEAVES SYNC AND DELETE HELPERS ---
+    fun syncLeaveToFirebase(leave: LeaveApplicationEntity) {
+        if (!isEffectiveOnline() || firestore == null) return
+        try {
+            val docId = if (leave.id > 0L) "leave_${leave.id}" else "leave_${System.currentTimeMillis()}"
+            val data = hashMapOf(
+                "id" to (if (leave.id > 0L) leave.id else System.currentTimeMillis()),
+                "username" to leave.username,
+                "leaveType" to leave.leaveType,
+                "startDate" to leave.startDate,
+                "endDate" to leave.endDate,
+                "totalDays" to leave.totalDays,
+                "reason" to leave.reason,
+                "status" to leave.status,
+                "appliedDate" to leave.appliedDate,
+                "createdAt" to leave.createdAt,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            firestore?.collection("leave_applications")?.document(docId)?.set(data, SetOptions.merge())
+                ?.addOnSuccessListener {
+                    Log.d(TAG, "Leave Application synced to Firestore '$docId'")
+                }
+                ?.addOnFailureListener { e ->
+                    Log.w(TAG, "Failed syncing leave application: ${e.message}")
+                }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error in syncLeaveToFirebase: ${e.message}")
+        }
+    }
+
+    fun deleteLeaveFromFirebase(leaveId: Long) {
+        if (!isEffectiveOnline() || firestore == null) return
+        try {
+            val docId = "leave_$leaveId"
+            firestore?.collection("leave_applications")?.document(docId)?.delete()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting leave from Firebase: ${e.message}")
+        }
+    }
+
+    fun syncHolidayToFirebase(holiday: HolidayItem) {
+        if (!isEffectiveOnline() || firestore == null) return
+        try {
+            val docId = "holiday_${holiday.id}"
+            val data = hashMapOf(
+                "id" to holiday.id,
+                "title" to holiday.title,
+                "date" to holiday.date,
+                "day" to holiday.day,
+                "type" to holiday.type,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            firestore?.collection("holidays")?.document(docId)?.set(data, SetOptions.merge())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing holiday to Firebase: ${e.message}")
+        }
+    }
+
+    fun deleteHolidayFromFirebase(holidayId: Long) {
+        if (!isEffectiveOnline() || firestore == null) return
+        try {
+            val docId = "holiday_$holidayId"
+            firestore?.collection("holidays")?.document(docId)?.delete()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting holiday from Firebase: ${e.message}")
+        }
     }
 }
