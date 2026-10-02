@@ -36,6 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.example.data.model.Department
 import com.example.data.model.EmployeeEntity
 import com.example.data.model.EmployeeStatus
@@ -44,6 +47,7 @@ import com.example.data.model.CompanyProfile
 import com.example.data.model.HolidayItem
 import com.example.data.model.LeaveApplicationEntity
 import com.example.data.model.MiloKnowledgeItem
+import com.example.data.model.AuditLogEntity
 import com.example.presentation.components.banner.AppOfferBanner
 import com.example.presentation.components.banner.OfferBannerCard
 import com.example.presentation.components.banner.OfferBannerSlider
@@ -51,7 +55,6 @@ import com.example.ui.components.AppHeader
 import com.example.ui.components.MetricBadge
 import com.example.ui.components.StatusIndicatorBadge
 import com.example.ui.components.TeamWorkloadChartCard
-import com.example.ui.components.liftOnPress
 import com.example.domain.milo.*
 import com.example.milo.*
 import com.example.ui.theme.*
@@ -131,8 +134,10 @@ fun ManagerDashboardScreen(
     val holidays by viewModel.holidays.collectAsState()
     val miloKnowledgeList by viewModel.miloKnowledgeList.collectAsState()
     val companyProfile by viewModel.companyProfile.collectAsState()
+    val auditLogs by viewModel.auditLogs.collectAsState(initial = emptyList())
 
     var showLeaveManagementDialog by remember { mutableStateOf(false) }
+    var showAuditLogDialog by remember { mutableStateOf(false) }
     var showHolidaysDialog by remember { mutableStateOf(false) }
     var showAddHolidayDialog by remember { mutableStateOf(false) }
     var showCompanyProfileDialog by remember { mutableStateOf(false) }
@@ -972,6 +977,165 @@ fun ManagerDashboardScreen(
             confirmButton = {
                 Button(onClick = { showManageBannersDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)) {
                     Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // 0D-2. Dialog: Admin Audit & Governance Log
+    if (showAuditLogDialog) {
+        var selectedFilter by remember { mutableStateOf("ALL") }
+        var searchFilter by remember { mutableStateOf("") }
+        val filteredLogs = remember(auditLogs, selectedFilter, searchFilter) {
+            auditLogs.filter { log ->
+                val matchesFilter = when (selectedFilter) {
+                    "TASKS" -> log.action == "TASK_REASSIGN"
+                    "ATTENDANCE" -> log.action == "ATTENDANCE_CHANGE"
+                    "LEADS" -> log.action == "LEAD_STATUS_UPDATE"
+                    else -> true
+                }
+                val matchesSearch = if (searchFilter.isBlank()) true else {
+                    log.description.contains(searchFilter, ignoreCase = true) ||
+                    log.performedBy.contains(searchFilter, ignoreCase = true) ||
+                    log.action.contains(searchFilter, ignoreCase = true)
+                }
+                matchesFilter && matchesSearch
+            }
+        }
+        val dateFormat = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
+
+        AlertDialog(
+            onDismissRequest = { showAuditLogDialog = false },
+            icon = { Icon(Icons.Default.Security, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(36.dp)) },
+            title = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Admin Audit & Governance Trail", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text("${auditLogs.size} Total System Records • Immutable Trail", fontSize = 11.sp, color = TextSecondary)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 500.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = searchFilter,
+                        onValueChange = { searchFilter = it },
+                        placeholder = { Text("Search logs by user, action, note...", fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    // Filter chips row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = selectedFilter == "ALL",
+                            onClick = { selectedFilter = "ALL" },
+                            label = { Text("All (${auditLogs.size})", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = selectedFilter == "TASKS",
+                            onClick = { selectedFilter = "TASKS" },
+                            label = { Text("Tasks", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = selectedFilter == "ATTENDANCE",
+                            onClick = { selectedFilter = "ATTENDANCE" },
+                            label = { Text("Attendance", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = selectedFilter == "LEADS",
+                            onClick = { selectedFilter = "LEADS" },
+                            label = { Text("Leads", fontSize = 11.sp) }
+                        )
+                    }
+
+                    if (filteredLogs.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.FactCheck, contentDescription = null, tint = Color(0xFFCBD5E1), modifier = Modifier.size(40.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("No audit logs match criteria", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Text("Actions will be logged automatically as admins update tasks, attendance, or leads.", fontSize = 11.sp, color = TextSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(filteredLogs, key = { it.id }) { log ->
+                                val (icon, iconTint, bgTint) = when (log.action) {
+                                    "TASK_REASSIGN" -> Triple(Icons.Default.AssignmentInd, Color(0xFF4F46E5), Color(0xFFEEF2FF))
+                                    "ATTENDANCE_CHANGE" -> Triple(Icons.Default.Timer, Color(0xFFD97706), Color(0xFFFEF3C7))
+                                    "LEAD_STATUS_UPDATE" -> Triple(Icons.Default.TrendingUp, Color(0xFF059669), Color(0xFFD1FAE5))
+                                    else -> Triple(Icons.Default.Security, BrandBlue, Color(0xFFEFF6FF))
+                                }
+                                val actionLabel = when (log.action) {
+                                    "TASK_REASSIGN" -> "Task Update"
+                                    "ATTENDANCE_CHANGE" -> "Attendance"
+                                    "LEAD_STATUS_UPDATE" -> "Lead Status"
+                                    else -> log.action
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = bgTint,
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(shape = RoundedCornerShape(4.dp), color = bgTint) {
+                                                    Text(actionLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = iconTint, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                                }
+                                                Text(dateFormat.format(Date(log.timestamp)), fontSize = 10.sp, color = TextMuted)
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(log.description, fontSize = 12.sp, color = Color(0xFF0F172A), fontWeight = FontWeight.Medium)
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text("By: ${log.performedBy}", fontSize = 11.sp, color = TextSecondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showAuditLogDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)) {
+                    Text("Close", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         )
@@ -3199,6 +3363,90 @@ fun ManagerDashboardScreen(
                             Icon(Icons.Default.FactCheck, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Manage & Review All Leaves (${leavesList.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+                    }
+                }
+            }
+
+            // 🛡️ 4B. Enterprise Audit Trail & Governance (Admin Audit Logs)
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = CircleShape, color = Color(0xFFEEF2FF), modifier = Modifier.size(36.dp)) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Audit Trail & Governance", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                                    Text("Task reassignments, attendance, lead status logs", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+
+                            Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFEEF2FF)) {
+                                Text(
+                                    "${auditLogs.size} EVENTS",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4F46E5),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            "Every critical administrative mutation is permanently tracked with timestamps, actor names, and previous/new states to maintain full accountability.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF475569)
+                        )
+
+                        if (auditLogs.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("Recent System Activity:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            auditLogs.take(2).forEach { log ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                ) {
+                                    Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("🛡️", fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(log.description, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = TextPrimary)
+                                            Text("By ${log.performedBy} • ${SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(log.timestamp))}", fontSize = 10.sp, color = TextSecondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = { showAuditLogDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(42.dp)
+                        ) {
+                            Icon(Icons.Default.History, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open Audit & Compliance Log (${auditLogs.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
                         }
                     }
                 }

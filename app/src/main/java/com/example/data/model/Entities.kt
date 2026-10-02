@@ -490,4 +490,14 @@ data class CompanyProfile(
     val overview: String = "Making Brands provides end-to-end Enterprise CRM, Workforce Attendance & Tracking, Lead Automation, and AI-powered operations management."
 )
 
+@Entity(tableName = "audit_logs")
+data class AuditLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val action: String, // e.g. "TASK_REASSIGN", "ATTENDANCE_CHANGE", "LEAD_STATUS_UPDATE"
+    val description: String,
+    val performedBy: String,
+    val entityId: Long? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 

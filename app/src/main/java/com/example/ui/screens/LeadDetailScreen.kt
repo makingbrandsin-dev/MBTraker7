@@ -6,6 +6,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,11 +38,22 @@ fun LeadDetailScreen(
     onBack: () -> Unit
 ) {
     val leads by viewModel.leads.collectAsState()
+    val callLogs by viewModel.callLogs.collectAsState()
     val lead = leads.find { it.id == leadId } ?: leads.firstOrNull()
     val context = LocalContext.current
+    
+    val leadCallLogs = remember(lead, callLogs) {
+        lead?.let { l ->
+            callLogs.filter { it.phoneNumber.contains(l.phone.takeLast(5)) || l.phone.contains(it.phoneNumber.takeLast(5)) }
+        } ?: emptyList()
+    }
 
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Overview", "Activity", "Notes", "Files")
+    val tabs = mutableListOf("Overview", "Activity", "Notes", "Files")
+    if (leadCallLogs.any { !it.transcription.isNullOrBlank() }) {
+        tabs.add("AI Insights")
+    }
+    
     var newNoteText by remember { mutableStateOf("") }
     var isAddingNote by remember { mutableStateOf(false) }
     var showSendQuoteDialog by remember { mutableStateOf(false) }
@@ -486,6 +499,41 @@ fun LeadDetailScreen(
                                                 Text("2.4 MB · Ready to share on WhatsApp", fontSize = 11.sp, color = Color(0xFF64748B))
                                             }
                                             Icon(Icons.Default.Share, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                                4 -> { // AI Insights
+                                    Text("AI Call Insights", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF0F172A))
+                                    Column(
+                                        modifier = Modifier.heightIn(max = 300.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        leadCallLogs.filter { !it.transcription.isNullOrBlank() }.forEach { callLog ->
+                                            Card(
+                                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Text("Call on ${callLog.timestampText}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElectricBlue)
+                                                    
+                                                    Text("Transcription:", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF475569))
+                                                    Text(callLog.transcription!!, fontSize = 13.sp, color = Color(0xFF0F172A), lineHeight = 18.sp)
+                                                    
+                                                    if (!callLog.aiInsights.isNullOrBlank()) {
+                                                        HorizontalDivider(color = Color(0xFFE2E8F0))
+                                                        Text("AI Summary & Takeaways:", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = ElectricBlue)
+                                                        callLog.aiInsights!!.split("\n").forEach { line ->
+                                                            if (line.isNotBlank()) {
+                                                                Row(verticalAlignment = Alignment.Top) {
+                                                                    Text("•", fontSize = 14.sp, color = ElectricBlue, modifier = Modifier.padding(end = 4.dp))
+                                                                    Text(line.trim('-').trim(), fontSize = 13.sp, color = Color(0xFF0F172A), lineHeight = 18.sp)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }

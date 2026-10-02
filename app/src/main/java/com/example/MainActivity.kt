@@ -556,6 +556,7 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() },
                     onOpenChannel = { id, title ->
+                        viewModel.markChannelAsRead(id)
                         navController.navigate(Screen.ChatRoom.createRoute(id, title))
                     },
                     onNavigateToProfile = { navController.navigate(Screen.Profile.route) }

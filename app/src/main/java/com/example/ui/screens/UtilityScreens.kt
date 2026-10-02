@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
+import androidx.compose.animation.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -917,11 +918,18 @@ fun NotificationsScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(notifications) { item ->
-                    NotificationCardItem(
-                        item = item,
-                        onClick = { viewModel.markNotificationAsRead(item.id) }
-                    )
+                items(notifications, key = { it.id }) { item ->
+                    AnimatedVisibility(
+                        visible = !item.isRead, // Fade-up disappearance when marked as read
+                        enter = slideInVertically(initialOffsetY = { -40 }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { -40 }) + fadeOut(),
+                        modifier = Modifier.animateItem()
+                    ) {
+                        NotificationCardItem(
+                            item = item,
+                            onClick = { viewModel.markNotificationAsRead(item.id) }
+                        )
+                    }
                 }
             }
         }

@@ -37,9 +37,10 @@ import java.util.Date
         ProjectMilestoneEntity::class,
         VaultDocumentEntity::class,
         AttendanceRegularizationEntity::class,
-        ActivityFeedItemEntity::class
+        ActivityFeedItemEntity::class,
+        AuditLogEntity::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -67,6 +68,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun projectMilestoneDao(): ProjectMilestoneDao
     abstract fun vaultDocumentDao(): VaultDocumentDao
     abstract fun attendanceRegularizationDao(): AttendanceRegularizationDao
+    abstract fun auditLogDao(): AuditLogDao
 
     companion object {
         @Volatile

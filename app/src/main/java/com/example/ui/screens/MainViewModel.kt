@@ -156,7 +156,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val callLogDao = container.callLogDao
     private val chatDao = container.chatDao
     private val notificationDao = container.notificationDao
+    private val auditLogDao = container.auditLogDao
     private val userProfileDao = container.userProfileDao
+    
+    fun logAdminAction(action: String, description: String, entityId: Long? = null) {
+        viewModelScope.launch {
+            val adminName = currentEmployeeName.value.ifBlank { "System" }
+            auditLogDao.insert(AuditLogEntity(
+                action = action,
+                description = description,
+                performedBy = adminName,
+                entityId = entityId
+            ))
+        }
+    }
     private val leaveDao = container.leaveDao
     private val leadSourceDao = container.leadSourceDao
     private val callRecordingDao = container.callRecordingDao
@@ -172,6 +185,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val activityFeedDao = container.activityFeedDao
 
     val activityFeedItems = activityFeedDao.getAllFeedItems()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val auditLogs: StateFlow<List<AuditLogEntity>> = auditLogDao.getAllLogs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Abstracted Repository Layer for Entities
@@ -558,6 +574,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isSynced = isOnline
                 )
                 attendanceDao.update(updated)
+                logAdminAction("ATTENDANCE_CHANGE", "Attendance record updated: ${updated.status}", updated.id)
                 FirebaseRealtimeManager.syncAttendanceToFirebase(updated)
                 notificationDao.insert(
                     NotificationEntity(
@@ -588,6 +605,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isSynced = isOnline
                 )
                 attendanceDao.update(updated)
+                logAdminAction("ATTENDANCE_CHANGE", "Attendance record updated: ${updated.status}", updated.id)
                 FirebaseRealtimeManager.syncAttendanceToFirebase(updated)
                 notificationDao.insert(
                     NotificationEntity(
@@ -2524,6 +2542,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isSynced = isOnline
                 )
                 attendanceDao.update(updated)
+                logAdminAction("ATTENDANCE_CHANGE", "Attendance record updated: ${updated.status}", updated.id)
 
                 // Sync to Firebase Realtime Manager (Firestore)
                 FirebaseRealtimeManager.syncAttendanceToFirebase(updated)
@@ -2940,6 +2959,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTask(task: TaskEntity) {
         viewModelScope.launch {
             taskDao.update(task)
+            logAdminAction("TASK_REASSIGN", "Task ${task.title} reassigned/updated", task.id)
             FirebaseRealtimeManager.syncTaskToFirebase(task)
             notificationDao.insert(
                 NotificationEntity(
@@ -3190,6 +3210,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val updated = lead.copy(stage = newStage)
             leadDao.update(updated)
+            logAdminAction("LEAD_STATUS_UPDATE", "Lead ${updated.name} stage updated to ${updated.stage}", updated.id)
             FirebaseRealtimeManager.syncLeadToFirebase(updated)
             if (newStage.equals("Won", ignoreCase = true) || newStage.equals("Converted", ignoreCase = true)) {
                 miloViewModel.handleEvent(MiloEvent.LeadConverted(lead.name))

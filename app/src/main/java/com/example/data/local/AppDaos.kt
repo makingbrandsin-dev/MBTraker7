@@ -171,6 +171,9 @@ interface TaskDao {
 
 @Dao
 interface LeadDao {
+    @Query("SELECT * FROM leads WHERE phone = :phone LIMIT 1")
+    suspend fun getLeadByPhone(phone: String): LeadEntity?
+
     @Query("SELECT * FROM leads ORDER BY id DESC, createdAt DESC")
     fun getAllLeads(): Flow<List<LeadEntity>>
 
@@ -251,6 +254,12 @@ interface FollowUpDao {
 interface CallLogDao {
     @Query("SELECT * FROM call_logs WHERE callType != 'Incoming' AND callType != 'Missed' ORDER BY id DESC")
     fun getAllCallLogs(): Flow<List<CallLogEntity>>
+
+    @Query("SELECT * FROM call_logs WHERE leadUpdated = 0 AND transcription IS NOT NULL AND aiInsights IS NOT NULL")
+    suspend fun getUnprocessedCallLogs(): List<CallLogEntity>
+
+    @Query("UPDATE call_logs SET leadUpdated = 1 WHERE id = :id")
+    suspend fun markAsProcessed(id: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(log: CallLogEntity): Long
@@ -684,6 +693,15 @@ interface AttendanceRegularizationDao {
 
     @Query("DELETE FROM attendance_regularizations")
     suspend fun clearAll()
+}
+
+@Dao
+interface AuditLogDao {
+    @Query("SELECT * FROM audit_logs ORDER BY timestamp DESC")
+    fun getAllLogs(): Flow<List<AuditLogEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(log: AuditLogEntity)
 }
 
 
