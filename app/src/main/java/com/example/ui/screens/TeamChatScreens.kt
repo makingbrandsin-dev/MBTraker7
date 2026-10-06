@@ -63,6 +63,10 @@ fun TeamChatListScreen(
     val isDeviceOnline by viewModel.isDeviceOnline.collectAsState()
     val context = LocalContext.current
 
+    LaunchedEffect(Unit) {
+        viewModel.trackUserAppActivityPresence()
+    }
+
     val isChatUnlocked by viewModel.isChatBiometricUnlocked.collectAsState()
     val isBiometricChatEnabled = remember { BiometricHelper.isBiometricForChatEnabled(context) }
     val effectivelyUnlocked = !isBiometricChatEnabled || isChatUnlocked
@@ -404,6 +408,10 @@ fun ChatRoomScreen(
     val unsyncedChatCount by viewModel.unsyncedChatCount.collectAsState()
     val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
+
+    LaunchedEffect(Unit) {
+        viewModel.trackUserAppActivityPresence()
+    }
     var inputText by remember { mutableStateOf("") }
     var isRecordingVoice by remember { mutableStateOf(false) }
     var recordingDurationSeconds by remember { mutableIntStateOf(0) }

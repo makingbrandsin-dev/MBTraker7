@@ -32,7 +32,7 @@
 
     <application
         android:name=".MBTrakerApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -85,6 +85,17 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="team_chat_channel" />
+
+        <!-- FileProvider for secure, permission-less local CSV and PDF document exports & sharing -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.example.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

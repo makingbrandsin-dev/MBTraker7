@@ -240,4 +240,28 @@ object AppPreferences {
             .putBoolean("notif_sound_enabled", enabled)
             .apply()
     }
+
+    fun getNotificationSoundPreset(context: Context, category: String): String {
+        val key = "notif_sound_preset_${category.lowercase().trim()}"
+        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .getString(key, getDefaultPresetForCategory(category)) ?: getDefaultPresetForCategory(category)
+    }
+
+    fun setNotificationSoundPreset(context: Context, category: String, preset: String) {
+        val key = "notif_sound_preset_${category.lowercase().trim()}"
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(key, preset)
+            .apply()
+    }
+
+    private fun getDefaultPresetForCategory(category: String): String {
+        return when (category.lowercase().trim()) {
+            "task" -> "BEEP_ACK"
+            "lead", "crm" -> "KEYPAD_VOLUME"
+            "attendance" -> "CHIRP_CONFIRM"
+            "chat", "message" -> "CRISP_PING"
+            else -> "SYSTEM_ALERT"
+        }
+    }
 }

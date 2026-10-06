@@ -277,6 +277,8 @@ class FcmBroadcastManager private constructor(private val context: Context) {
                                 // Trigger real alert if this broadcast was published recently after app start
                                 if (timestamp > lastHandledBroadcastTimestamp && handledBroadcastIds.add(id)) {
                                     triggerIncomingBroadcastAlert(item)
+                                } else if (handledBroadcastIds.add(id)) {
+                                    syncBroadcastToLocalNotifications(item)
                                 }
                             } catch (e: Exception) {
                                 Log.w(TAG, "Error parsing broadcast document: ${e.message}")
@@ -290,6 +292,28 @@ class FcmBroadcastManager private constructor(private val context: Context) {
                 }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to attach broadcast listener: ${e.message}")
+        }
+    }
+
+    private fun syncBroadcastToLocalNotifications(broadcast: FcmBroadcastLog) {
+        scope.launch {
+            try {
+                val db = AppDatabase.getDatabase(context)
+                val count = db.notificationDao().countNotificationByTitle(broadcast.title)
+                if (count == 0) {
+                    db.notificationDao().insert(
+                        NotificationEntity(
+                            title = broadcast.title,
+                            subtitle = "[${broadcast.audience}] ${broadcast.message}",
+                            timeAgo = broadcast.formattedDate.ifBlank { "Recent" },
+                            category = "broadcast",
+                            isRead = false
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error syncing past broadcast to local DB: ${e.message}")
+            }
         }
     }
 

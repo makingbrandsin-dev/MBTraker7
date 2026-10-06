@@ -1,11 +1,13 @@
 package com.example.ui.components
 
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -475,6 +477,14 @@ fun SyncStatusIndicator(
                     )
             )
             Spacer(modifier = Modifier.width(4.dp))
+            if (syncState.status == NetworkSyncStatus.SYNCED) {
+                PulsingStatusDot(
+                    color = config.contentColor,
+                    dotSize = 6.dp,
+                    haloExpansion = 4.dp
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+            }
             Text(
                 text = config.label,
                 fontSize = 11.sp,
@@ -704,10 +714,11 @@ fun SyncDetailsDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Test Offline Mode Toggle
+                // Live Synchronization Status Banner
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFF1F5F9),
+                    color = if (syncState.isOnline) Color(0xFFF0FDF4) else Color(0xFFFFFBEB),
+                    border = BorderStroke(1.dp, if (syncState.isOnline) Color(0xFFBBF7D0) else Color(0xFFFDE68A)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -715,29 +726,30 @@ fun SyncDetailsDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Simulate Offline Mode",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (syncState.isOnline) Icons.Default.CloudSync else Icons.Default.CloudOff,
+                                contentDescription = null,
+                                tint = if (syncState.isOnline) Color(0xFF16A34A) else Color(0xFFD97706),
+                                modifier = Modifier.size(20.dp)
                             )
-                            Text(
-                                text = "Queue changes locally to test offline sync",
-                                fontSize = 10.sp,
-                                color = TextSecondary
-                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = if (syncState.isOnline) "Production Live Mode Active" else "Offline Local Cache Mode",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (syncState.isOnline) Color(0xFF166534) else Color(0xFF92400E)
+                                )
+                                Text(
+                                    text = if (syncState.isOnline) "Realtime cloud updates & instant background sync" else "Changes saved locally and will auto-sync on reconnect",
+                                    fontSize = 10.sp,
+                                    color = if (syncState.isOnline) Color(0xFF15803D) else Color(0xFFB45309)
+                                )
+                            }
                         }
-                        Switch(
-                            checked = syncState.isSimulatedOffline,
-                            onCheckedChange = { onToggleOffline(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFFD97706)
-                            )
-                        )
                     }
                 }
 
@@ -948,6 +960,67 @@ fun CrmTasksAttendanceSwitcher(
     }
 }
 
+/**
+ * 💫 Reusable animated pulsing status dot
+ * Uses Compose rememberInfiniteTransition to produce a subtle pulsing halo wave
+ * to draw attention to real-time sync and active presence states.
+ */
+@Composable
+fun PulsingStatusDot(
+    color: Color = Color(0xFF22C55E),
+    dotSize: androidx.compose.ui.unit.Dp = 8.dp,
+    haloExpansion: androidx.compose.ui.unit.Dp = 5.dp,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse_dot_transition")
+
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulse_scale"
+    )
+
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.65f,
+        targetValue = 0.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulse_alpha"
+    )
+
+    Box(
+        modifier = modifier.size(dotSize + haloExpansion),
+        contentAlignment = Alignment.Center
+    ) {
+        // Outer subtle pulsing wave
+        Box(
+            modifier = Modifier
+                .size(dotSize)
+                .graphicsLayer {
+                    scaleX = pulseScale
+                    scaleY = pulseScale
+                    alpha = pulseAlpha
+                }
+                .clip(CircleShape)
+                .background(color)
+        )
+
+        // Core solid indicator dot
+        Box(
+            modifier = Modifier
+                .size(dotSize)
+                .clip(CircleShape)
+                .background(color)
+        )
+    }
+}
+
 @Composable
 fun StatusIndicatorBadge(
     status: com.example.data.model.PresenceStatus,
@@ -955,8 +1028,10 @@ fun StatusIndicatorBadge(
     showLabel: Boolean = false,
     dotSize: androidx.compose.ui.unit.Dp = 8.dp
 ) {
+    val isOnline = status == com.example.data.model.PresenceStatus.ONLINE
+
     val (dotColor, labelText, bgContainer) = when (status) {
-        com.example.data.model.PresenceStatus.ONLINE -> Triple(Color(0xFF22C55E), "Online", Color(0xFFDCFCE7))
+        com.example.data.model.PresenceStatus.ONLINE -> Triple(Color(0xFF22C55E), "Active", Color(0xFFDCFCE7))
         com.example.data.model.PresenceStatus.IN_MEETING -> Triple(Color(0xFFF59E0B), "In Meeting", Color(0xFFFEF3C7))
         com.example.data.model.PresenceStatus.OFFLINE -> Triple(Color(0xFF94A3B8), "Offline", Color(0xFFF1F5F9))
     }
@@ -971,13 +1046,21 @@ fun StatusIndicatorBadge(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(dotSize)
-                        .clip(CircleShape)
-                        .background(dotColor)
-                )
-                Spacer(modifier = Modifier.width(5.dp))
+                if (isOnline) {
+                    PulsingStatusDot(
+                        color = dotColor,
+                        dotSize = dotSize,
+                        haloExpansion = 4.dp
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(dotSize)
+                            .clip(CircleShape)
+                            .background(dotColor)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = labelText,
                     fontSize = 11.sp,
@@ -987,13 +1070,22 @@ fun StatusIndicatorBadge(
             }
         }
     } else {
-        Box(
-            modifier = modifier
-                .size(dotSize)
-                .clip(CircleShape)
-                .background(dotColor)
-                .border(1.5.dp, Color.White, CircleShape)
-        )
+        if (isOnline) {
+            PulsingStatusDot(
+                color = dotColor,
+                dotSize = dotSize,
+                haloExpansion = 4.dp,
+                modifier = modifier
+            )
+        } else {
+            Box(
+                modifier = modifier
+                    .size(dotSize)
+                    .clip(CircleShape)
+                    .background(dotColor)
+                    .border(1.5.dp, Color.White, CircleShape)
+            )
+        }
     }
 }
 

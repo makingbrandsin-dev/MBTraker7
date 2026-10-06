@@ -378,7 +378,7 @@ fun ProfileScreen(
             title = { Text("Clear All Employee Data?", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "This will delete your local dummy tasks, chat logs, call logs, and attendance history, keeping only official records assigned to you.",
+                    "This will reset your local cached tasks, chat logs, call logs, and attendance history, keeping only live official records assigned to you.",
                     fontSize = 13.sp,
                     color = Color(0xFF475569)
                 )
@@ -388,7 +388,7 @@ fun ProfileScreen(
                     onClick = {
                         viewModel.clearEmployeeData()
                         showClearEmployeeDataDialog = false
-                        Toast.makeText(context, "Employee data and dummy records cleared!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Employee local cache cleared and refreshed!", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = StatusOrange)
                 ) {
@@ -941,13 +941,27 @@ fun NotificationCardItem(
     item: NotificationEntity,
     onClick: () -> Unit
 ) {
-    val (icon, bgColor, tintColor) = when (item.category) {
-        "followup" -> Triple(Icons.Default.PhoneCallback, Color(0xFFFEE2E2), Color(0xFFDC2626))
-        "task" -> Triple(Icons.Default.Task, Color(0xFFE0E7FF), Color(0xFF4F46E5))
-        "message" -> Triple(Icons.Default.Chat, Color(0xFFE0F2FE), Color(0xFF0284C7))
-        "attendance" -> Triple(Icons.Default.Timer, Color(0xFFDCFCE7), Color(0xFF15803D))
-        "leave" -> Triple(Icons.Default.DateRange, Color(0xFFFEF3C7), Color(0xFFB45309))
-        else -> Triple(Icons.Default.Folder, Color(0xFFEDE9FE), Color(0xFF7C3AED))
+    val catLower = item.category.lowercase()
+    val titleLower = item.title.lowercase()
+    val (icon, bgColor, tintColor) = when {
+        catLower.contains("task") || titleLower.contains("task") || titleLower.contains("sprint") ->
+            Triple(Icons.Default.Task, Color(0xFFEEF2FF), Color(0xFF4F46E5))
+        catLower.contains("lead") || catLower.contains("crm") || catLower.contains("followup") || titleLower.contains("lead") || titleLower.contains("client") ->
+            Triple(Icons.Default.PersonAdd, Color(0xFFFEF2F2), Color(0xFFE11D48))
+        catLower.contains("attendance") || catLower.contains("clock") || titleLower.contains("punch") || titleLower.contains("attendance") || titleLower.contains("regularization") ->
+            Triple(Icons.Default.AccessTimeFilled, Color(0xFFECFDF5), Color(0xFF059669))
+        catLower.contains("chat") || catLower.contains("message") || titleLower.contains("chat") || titleLower.contains("message") ->
+            Triple(Icons.Default.Forum, Color(0xFFF0F9FF), Color(0xFF0284C7))
+        catLower.contains("change") || catLower.contains("admin") || catLower.contains("system") || titleLower.contains("change") || titleLower.contains("update") || titleLower.contains("assigned") ->
+            Triple(Icons.Default.AdminPanelSettings, Color(0xFFFFFBEB), Color(0xFFD97706))
+        catLower.contains("broadcast") || catLower.contains("announcement") || catLower.contains("push") || titleLower.contains("broadcast") || titleLower.contains("notice") ->
+            Triple(Icons.Default.Campaign, Color(0xFFFFF7ED), Color(0xFFEA580C))
+        catLower.contains("leave") || catLower.contains("holiday") || titleLower.contains("leave") ->
+            Triple(Icons.Default.EventAvailable, Color(0xFFFAF5FF), Color(0xFF9333EA))
+        catLower.contains("call") || titleLower.contains("call") ->
+            Triple(Icons.Default.Call, Color(0xFFF0FDF4), Color(0xFF16A34A))
+        else ->
+            Triple(Icons.Default.NotificationsActive, Color(0xFFEFF6FF), Color(0xFF2563EB))
     }
 
     Card(
@@ -2314,7 +2328,7 @@ fun SettingsScreen(
                             OutlinedButton(
                                 onClick = {
                                     viewModel.testTriggerChatNotification()
-                                    toastMessage = "🔔 Sent Test Team Chat Push Alert!"
+                                    toastMessage = "🔔 Sent Team Chat Push Notification!"
                                 },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(10.dp),
@@ -2322,13 +2336,13 @@ fun SettingsScreen(
                             ) {
                                 Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Test Chat Alert", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Send Chat Alert", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
 
                             Button(
                                 onClick = {
                                     viewModel.testTriggerTaskNotification()
-                                    toastMessage = "⚡ Sent Test Task Update Alert!"
+                                    toastMessage = "⚡ Sent Task Update Push Notification!"
                                 },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(10.dp),
@@ -2336,14 +2350,14 @@ fun SettingsScreen(
                             ) {
                                 Icon(Icons.Default.AssignmentTurnedIn, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Test Task Alert", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                Text("Send Task Alert", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                             }
                         }
                     }
                 }
             }
 
-            // 🦁 Milo AI & Character Debug Lab Card
+            // 🦁 Milo AI Intelligence & Copilot Suite Card
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
@@ -2369,8 +2383,8 @@ fun SettingsScreen(
                                 }
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
-                                    Text("Milo AI Debug Lab", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
-                                    Text("FirebaseAI & Gemini Model Inspector", fontSize = 12.sp, color = TextSecondary)
+                                    Text("Milo AI Copilot Suite", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                                    Text("Making Brands Intelligent Business Engine", fontSize = 12.sp, color = TextSecondary)
                                 }
                             }
 
@@ -2379,7 +2393,7 @@ fun SettingsScreen(
                                 color = Color(0xFFDBEAFE)
                             ) {
                                 Text(
-                                    "Gemini AI",
+                                    "Production Active",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = ElectricBlue,
@@ -2390,7 +2404,7 @@ fun SettingsScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            "Test prompts, validate structured JSON schemas, and inspect the 13 dynamic character states live.",
+                            "Milo continuously tracks CRM leads, monitors employee shifts, drafts client wishes, and provides daily executive insights.",
                             fontSize = 12.sp,
                             color = Color(0xFF64748B),
                             lineHeight = 16.sp
@@ -2407,9 +2421,9 @@ fun SettingsScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
                             ) {
-                                Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Icon(Icons.Default.SmartToy, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Milo Debug", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Ask Milo AI", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
 
                             OutlinedButton(
@@ -2444,6 +2458,16 @@ fun SettingsScreen(
                         Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
                         SettingToggleRow("Sound & Vibration", "Play audio alert on new chat messages", soundEnabled) {
                             soundEnabled = it
+                        }
+                        Divider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                        val isMiloMutedSetting by com.example.milo.MiloVoiceHelper.isMutedFlow.collectAsState()
+                        SettingToggleRow(
+                            title = "Milo Voice Speech",
+                            subtitle = if (isMiloMutedSetting) "Milo voice is muted (briefings are silent)" else "Milo speaks status briefings and verbal insights",
+                            checked = !isMiloMutedSetting
+                        ) { isEnabled ->
+                            com.example.milo.MiloVoiceHelper.setMuted(context, !isEnabled)
+                            toastMessage = if (isEnabled) "🔊 Milo voice unmuted" else "🔇 Milo voice muted"
                         }
                     }
                 }

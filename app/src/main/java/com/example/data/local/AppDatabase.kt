@@ -38,9 +38,11 @@ import java.util.Date
         VaultDocumentEntity::class,
         AttendanceRegularizationEntity::class,
         ActivityFeedItemEntity::class,
-        AuditLogEntity::class
+        AuditLogEntity::class,
+        ClientOccasionWishEntity::class,
+        WrittenDraftEntity::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -69,6 +71,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun vaultDocumentDao(): VaultDocumentDao
     abstract fun attendanceRegularizationDao(): AttendanceRegularizationDao
     abstract fun auditLogDao(): AuditLogDao
+    abstract fun clientOccasionWishDao(): ClientOccasionWishDao
+    abstract fun writtenDraftDao(): WrittenDraftDao
 
     companion object {
         @Volatile

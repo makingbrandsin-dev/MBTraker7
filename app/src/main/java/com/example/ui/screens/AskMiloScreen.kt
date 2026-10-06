@@ -78,6 +78,7 @@ fun AskMiloScreen(
     val allCallLogs by viewModel.callLogs.collectAsState()
     val attendanceRecord by viewModel.latestAttendance.collectAsState()
     val miloState by viewModel.miloViewModel.state.collectAsState()
+    val isMiloMuted by com.example.milo.MiloVoiceHelper.isMutedFlow.collectAsState()
 
     val (greetingTitle, greetingSubtitle) = remember(employeeName) {
         getTimeBasedGreeting(employeeName)
@@ -421,18 +422,48 @@ fun AskMiloScreen(
                         )
                     }
 
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFF0FDF4),
-                        border = BorderStroke(1.dp, Color(0xFFBBF7D0))
-                    ) {
-                        Text(
-                            text = "LIVE",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = StatusGreen,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
+                    Column(horizontalAlignment = Alignment.End) {
+                        IconButton(
+                            onClick = {
+                                val currentMuted = com.example.milo.MiloVoiceHelper.isMuted(context)
+                                if (currentMuted) {
+                                    com.example.milo.MiloVoiceHelper.setMuted(context, false)
+                                    com.example.util.MiloHaptics.performButtonTap(context)
+                                    android.widget.Toast.makeText(context, "🔊 Milo voice unmuted", android.widget.Toast.LENGTH_SHORT).show()
+                                    com.example.milo.MiloVoiceHelper.speakText(context, "Milo voice is ready.")
+                                } else {
+                                    com.example.milo.MiloVoiceHelper.setMuted(context, true)
+                                    com.example.util.MiloHaptics.performButtonTap(context)
+                                    android.widget.Toast.makeText(context, "🔇 Milo voice muted", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(if (isMiloMuted) Color(0xFFFEF2F2) else Color(0xFFF1F5F9), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = if (isMiloMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                contentDescription = if (isMiloMuted) "Unmute Milo Voice" else "Mute Milo Voice",
+                                tint = if (isMiloMuted) Color(0xFFEF4444) else ButtonPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isMiloMuted) Color(0xFFFEF2F2) else Color(0xFFF0FDF4),
+                            border = BorderStroke(1.dp, if (isMiloMuted) Color(0xFFFECACA) else Color(0xFFBBF7D0))
+                        ) {
+                            Text(
+                                text = if (isMiloMuted) "MUTED" else "LIVE",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isMiloMuted) Color(0xFFEF4444) else StatusGreen,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }

@@ -12,6 +12,9 @@ interface AttendanceDao {
     @Query("SELECT * FROM attendance_records ORDER BY id DESC")
     fun getAllAttendance(): Flow<List<AttendanceRecord>>
 
+    @Query("SELECT * FROM attendance_records ORDER BY id DESC")
+    suspend fun getAllAttendanceDirectly(): List<AttendanceRecord>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(record: AttendanceRecord): Long
 
@@ -50,6 +53,9 @@ interface EmployeeDao {
 
     @Query("SELECT * FROM employees WHERE id = :id")
     fun getEmployeeById(id: Long): Flow<EmployeeEntity?>
+
+    @Query("SELECT * FROM employees WHERE id = :id LIMIT 1")
+    suspend fun getEmployeeByIdDirect(id: Long): EmployeeEntity?
 
     @Query("SELECT * FROM employees WHERE department = :department ORDER BY name ASC")
     fun getEmployeesByDepartment(department: Department): Flow<List<EmployeeEntity>>
@@ -131,6 +137,9 @@ interface ProjectDao {
 interface TaskDao {
     @Query("SELECT * FROM tasks ORDER BY id DESC")
     fun getAllTasks(): Flow<List<TaskEntity>>
+
+    @Query("SELECT * FROM tasks ORDER BY id DESC")
+    suspend fun getAllTasksDirectly(): List<TaskEntity>
 
     @Query("SELECT * FROM tasks WHERE projectId = :projectId ORDER BY id DESC")
     fun getTasksByProject(projectId: Long): Flow<List<TaskEntity>>
@@ -403,6 +412,9 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications WHERE isRead = 0")
     suspend fun getUnreadNotificationsDirect(): List<NotificationEntity>
 
+    @Query("SELECT COUNT(*) FROM notifications WHERE title = :title")
+    suspend fun countNotificationByTitle(title: String): Int
+
     @Query("DELETE FROM notifications")
     suspend fun clearAll()
 
@@ -435,6 +447,9 @@ interface UserProfileDao {
 interface LeaveDao {
     @Query("SELECT * FROM leave_applications ORDER BY id DESC")
     fun getAllLeaves(): Flow<List<LeaveApplicationEntity>>
+
+    @Query("SELECT * FROM leave_applications ORDER BY id DESC")
+    suspend fun getAllLeavesDirectly(): List<LeaveApplicationEntity>
 
     @Query("SELECT * FROM leave_applications WHERE username = :username ORDER BY id DESC")
     fun getLeavesForUser(username: String): Flow<List<LeaveApplicationEntity>>
@@ -489,6 +504,9 @@ interface CallRecordingDao {
 interface InvoiceDao {
     @Query("SELECT * FROM invoices ORDER BY id DESC")
     fun getAllInvoices(): Flow<List<InvoiceEntity>>
+
+    @Query("SELECT * FROM invoices ORDER BY id DESC")
+    suspend fun getAllInvoicesDirectly(): List<InvoiceEntity>
 
     @Query("SELECT * FROM invoices WHERE status = :status ORDER BY id DESC")
     fun getInvoicesByStatus(status: String): Flow<List<InvoiceEntity>>
@@ -703,6 +721,76 @@ interface AuditLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(log: AuditLogEntity)
 }
+
+@Dao
+interface ClientOccasionWishDao {
+    @Query("SELECT * FROM client_occasion_wishes ORDER BY id DESC")
+    fun getAllWishes(): Flow<List<ClientOccasionWishEntity>>
+
+    @Query("SELECT * FROM client_occasion_wishes ORDER BY id DESC")
+    suspend fun getAllWishesDirectly(): List<ClientOccasionWishEntity>
+
+    @Query("SELECT * FROM client_occasion_wishes WHERE occasionName = :occasionName ORDER BY id DESC")
+    fun getWishesForOccasion(occasionName: String): Flow<List<ClientOccasionWishEntity>>
+
+    @Query("SELECT * FROM client_occasion_wishes WHERE clientPhone = :phone ORDER BY id DESC")
+    fun getWishesForClient(phone: String): Flow<List<ClientOccasionWishEntity>>
+
+    @Query("SELECT * FROM client_occasion_wishes WHERE id = :id LIMIT 1")
+    suspend fun getWishByIdDirect(id: Long): ClientOccasionWishEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(wish: ClientOccasionWishEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(wishes: List<ClientOccasionWishEntity>)
+
+    @Update
+    suspend fun update(wish: ClientOccasionWishEntity)
+
+    @Query("UPDATE client_occasion_wishes SET isSentViaWhatsApp = 1, sentTimestamp = :timestamp, status = 'Sent via WhatsApp' WHERE id = :id")
+    suspend fun markAsSent(id: Long, timestamp: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM client_occasion_wishes WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM client_occasion_wishes")
+    suspend fun clearAll()
+}
+
+@Dao
+interface WrittenDraftDao {
+    @Query("SELECT * FROM written_drafts ORDER BY lastEdited DESC")
+    fun getAllDrafts(): Flow<List<WrittenDraftEntity>>
+
+    @Query("SELECT * FROM written_drafts ORDER BY lastEdited DESC")
+    suspend fun getAllDraftsDirectly(): List<WrittenDraftEntity>
+
+    @Query("SELECT * FROM written_drafts WHERE category = :category ORDER BY lastEdited DESC")
+    fun getDraftsByCategory(category: String): Flow<List<WrittenDraftEntity>>
+
+    @Query("SELECT * FROM written_drafts WHERE id = :id LIMIT 1")
+    suspend fun getDraftById(id: Long): WrittenDraftEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(draft: WrittenDraftEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(drafts: List<WrittenDraftEntity>)
+
+    @Update
+    suspend fun update(draft: WrittenDraftEntity)
+
+    @Delete
+    suspend fun delete(draft: WrittenDraftEntity)
+
+    @Query("DELETE FROM written_drafts WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM written_drafts")
+    suspend fun clearAll()
+}
+
 
 
 

@@ -83,8 +83,8 @@ fun MiloDebugScreen(
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
-                            Text("Milo AI Debug Lab", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                            Text("FirebaseAI & Gemini Model Inspector", fontSize = 11.sp, color = TextSecondary)
+                            Text("Milo AI Intelligence Center", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text("Realtime Gemini AI & Copilot Engine", fontSize = 11.sp, color = TextSecondary)
                         }
                     }
                 },
@@ -227,7 +227,7 @@ fun MiloDebugScreen(
                     Tab(
                         selected = activeTab == 0,
                         onClick = { activeTab = 0 },
-                        text = { Text("Prompt Test", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                        text = { Text("AI Prompts & Queries", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                         modifier = Modifier.testTag("milo_tab_prompt_test")
                     )
                     Tab(
@@ -239,7 +239,7 @@ fun MiloDebugScreen(
                     Tab(
                         selected = activeTab == 2,
                         onClick = { activeTab = 2 },
-                        text = { Text("Schema & Logs", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                        text = { Text("Schema & Live Logs", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                         modifier = Modifier.testTag("milo_tab_schema_logs")
                     )
                 }
@@ -255,7 +255,7 @@ fun MiloDebugScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Test Custom Prompt on FirebaseAI", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+                            Text("Ask Custom Prompt on FirebaseAI", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
                             Text("Sends prompt to Gemini API with JSON structured schema enforcement", fontSize = 11.sp, color = TextSecondary)
 
                             Spacer(modifier = Modifier.height(12.dp))

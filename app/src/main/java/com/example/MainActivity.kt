@@ -33,6 +33,14 @@ import com.example.ui.components.AppBottomNavigationBar
 import com.example.ui.screens.*
 import com.example.ui.theme.*
 import com.example.util.WhatsAppHelper
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import android.widget.Toast
+import androidx.compose.ui.draw.clip
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -42,6 +50,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         enableEdgeToEdge()
         com.example.util.NotificationHelper.createNotificationChannels(applicationContext)
+        com.example.milo.MiloVoiceHelper.init(applicationContext)
         setContent {
             MyApplicationTheme {
                 MainAppNavHost(viewModel = viewModel)
@@ -93,6 +102,7 @@ sealed class Screen(val route: String) {
     object AdminBroadcast : Screen("admin_broadcast")
     object AdminMilo : Screen("admin_milo")
     object AskMilo : Screen("ask_milo")
+    object ClientWishesStudio : Screen("client_wishes_studio")
 }
 
 private fun getScreenOrder(route: String?): Int {
@@ -251,18 +261,31 @@ fun MainAppNavHost(viewModel: MainViewModel) {
 
     LaunchedEffect(currentRoute) {
         currentRoute?.let { route ->
+            viewModel.trackUserAppActivityPresence()
             when {
                 route == Screen.Crm.route || route == Screen.Leads.route -> {
                     viewModel.markNotificationsAsReadByCategory("followup")
+                    viewModel.markNotificationsAsReadByCategory("lead")
+                    viewModel.markNotificationsAsReadByCategory("crm")
+                    viewModel.markNotificationsAsReadByCategory("client")
+                    com.example.util.NotificationHelper.dismissNotificationsByCategory(context, "lead")
                 }
                 route == Screen.Tasks.route -> {
                     viewModel.markNotificationsAsReadByCategory("task")
+                    viewModel.markNotificationsAsReadByCategory("sprint")
+                    com.example.util.NotificationHelper.dismissNotificationsByCategory(context, "task")
                 }
                 route == Screen.Attendance.route -> {
                     viewModel.markNotificationsAsReadByCategory("attendance")
+                    viewModel.markNotificationsAsReadByCategory("clock")
+                    viewModel.markNotificationsAsReadByCategory("punch")
+                    com.example.util.NotificationHelper.dismissNotificationsByCategory(context, "attendance")
                 }
                 route == Screen.Chat.route || route.startsWith("chat_room/") -> {
                     viewModel.markNotificationsAsReadByCategory("message")
+                    viewModel.markNotificationsAsReadByCategory("chat")
+                    viewModel.markNotificationsAsReadByCategory("team_chat")
+                    com.example.util.NotificationHelper.dismissNotificationsByCategory(context, "chat")
                 }
             }
         }
@@ -343,9 +366,8 @@ fun MainAppNavHost(viewModel: MainViewModel) {
             ) {
                 LoginScreen(
                     viewModel = viewModel,
-                    onLoginSuccess = { isAdmin ->
-                        val targetRoute = if (isAdmin) Screen.Manager.route else Screen.Home.route
-                        navController.navigate(targetRoute) {
+                    onLoginSuccess = { _ ->
+                        navController.navigate(Screen.Home.route) {
                             popUpTo(Screen.Login.route) { inclusive = true }
                         }
                     },
@@ -365,9 +387,8 @@ fun MainAppNavHost(viewModel: MainViewModel) {
             ) {
                 OtpVerificationScreen(
                     viewModel = viewModel,
-                    onVerifySuccess = { isAdmin ->
-                        val targetRoute = if (isAdmin) Screen.Manager.route else Screen.Home.route
-                        navController.navigate(targetRoute) {
+                    onVerifySuccess = { _ ->
+                        navController.navigate(Screen.Home.route) {
                             popUpTo(Screen.Login.route) { inclusive = true }
                         }
                     },
@@ -375,7 +396,7 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 )
             }
 
-            // 1. Employee Dashboard (Home)
+            // 1. Executive Operations & Admin Dashboard (Home)
             composable(
                 route = Screen.Home.route,
                 enterTransition = { tabEnterTransition() },
@@ -383,25 +404,33 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 popEnterTransition = { tabEnterTransition() },
                 popExitTransition = { tabExitTransition() }
             ) {
-                EmployeeDashboardScreen(
+                ManagerDashboardScreen(
                     viewModel = viewModel,
-                    onNavigateToAttendance = { navController.navigate(Screen.Attendance.route) },
+                    onBack = {
+                        val popped = navController.popBackStack()
+                        if (!popped) {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    },
+                    onLogout = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
                     onNavigateToProjects = { navController.navigate(Screen.Projects.route) },
-                    onNavigateToTasks = { navController.navigate(Screen.Tasks.route) },
                     onNavigateToLeads = { navController.navigate(Screen.Crm.route) },
-                    onNavigateToCalls = { navController.navigate(Screen.CallTracker.route) },
-                    onNavigateToHolidays = { navController.navigate(Screen.Holidays.route) },
-                    onNavigateToNotifications = { navController.navigate(Screen.Notifications.route) },
-                    onNavigateToManager = { navController.navigate(Screen.Manager.route) },
-                    onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
-                    onNavigateToInvoices = { navController.navigate(Screen.Invoices.route) },
                     onNavigateToChat = { navController.navigate(Screen.Chat.route) },
-                    onNavigateToMeetings = { navController.navigate(Screen.ClientMeetings.route) },
-                    onNavigateToExpenses = { navController.navigate(Screen.ExpenseClaims.route) },
+                    onNavigateToTracking = { navController.navigate(Screen.LiveTeamTracking.route) },
                     onNavigateToTimesheets = { navController.navigate(Screen.Timesheets.route) },
+                    onNavigateToMeetings = { navController.navigate(Screen.ClientMeetings.route) },
                     onNavigateToVault = { navController.navigate(Screen.Vault.route) },
-                    onNavigateToLiveTracking = { navController.navigate(Screen.LiveTeamTracking.route) },
-                    onNavigateToEmployees = { navController.navigate(Screen.Employees.route) }
+                    onNavigateToCalls = { navController.navigate(Screen.CallTracker.route) },
+                    onNavigateToBannersAdmin = { navController.navigate(Screen.AdminBanners.route) },
+                    onNavigateToBroadcastAdmin = { navController.navigate(Screen.AdminBroadcast.route) },
+                    onNavigateToMiloAdmin = { navController.navigate(Screen.AdminMilo.route) },
+                    onNavigateToClientWishes = { navController.navigate(Screen.ClientWishesStudio.route) }
                 )
             }
 
@@ -618,7 +647,7 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                         com.example.util.AppPreferences.setOnboardingCompleted(context, true)
                         val isLogged = viewModel.isUserLoggedIn()
                         val destination = if (isLogged) {
-                            if (viewModel.userRole.value == "MB Admin") Screen.Manager.route else Screen.Home.route
+                            Screen.Home.route
                         } else {
                             Screen.Login.route
                         }
@@ -840,7 +869,21 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onNavigateToCalls = { navController.navigate(Screen.CallTracker.route) },
                     onNavigateToBannersAdmin = { navController.navigate(Screen.AdminBanners.route) },
                     onNavigateToBroadcastAdmin = { navController.navigate(Screen.AdminBroadcast.route) },
-                    onNavigateToMiloAdmin = { navController.navigate(Screen.AdminMilo.route) }
+                    onNavigateToMiloAdmin = { navController.navigate(Screen.AdminMilo.route) },
+                    onNavigateToClientWishes = { navController.navigate(Screen.ClientWishesStudio.route) }
+                )
+            }
+
+            composable(
+                route = Screen.ClientWishesStudio.route,
+                enterTransition = { detailEnterTransition() },
+                exitTransition = { detailExitTransition() },
+                popEnterTransition = { detailPopEnterTransition() },
+                popExitTransition = { detailPopExitTransition() }
+            ) {
+                ClientWishesPosterStudioScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -975,6 +1018,141 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     onNavigateToTasks = { navController.navigate(Screen.Tasks.route) },
                     onNavigateToCalls = { navController.navigate(Screen.CallTracker.route) }
                 )
+            }
+        }
+
+        // 🚀 Secure In-App Version Update Dialog overlay
+        val showUpdatePrompt by viewModel.showUpdatePrompt.collectAsState()
+        val isUpdating by viewModel.isUpdating.collectAsState()
+        val updateProgress by viewModel.updateProgress.collectAsState()
+        val curVer by viewModel.currentVersion.collectAsState()
+        val newVer by viewModel.latestVersion.collectAsState()
+
+        if (showUpdatePrompt) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { if (!isUpdating) viewModel.dismissUpdatePrompt() },
+                properties = androidx.compose.ui.window.DialogProperties(
+                    dismissOnBackPress = !isUpdating,
+                    dismissOnClickOutside = !isUpdating
+                )
+            ) {
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFEFF6FF),
+                            modifier = Modifier.size(64.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = null,
+                                    tint = BrandBlue,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        Text(
+                            text = "New Version Available!",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 18.sp,
+                            color = TextPrimary,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "Upgrade from v$curVer to v$newVer",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = BrandBlue,
+                            modifier = Modifier
+                                .background(Color(0xFFEFF6FF), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = "A new security update and feature release is ready for installation. Local databases and logged-in profiles are preserved seamlessly.",
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 16.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        if (isUpdating) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                LinearProgressIndicator(
+                                    progress = { updateProgress },
+                                    color = BrandBlue,
+                                    trackColor = Color(0xFFF1F5F9),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Applying secure upgrade package... ${(updateProgress * 100).toInt()}%",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandBlue
+                                )
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { viewModel.dismissUpdatePrompt() },
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF64748B)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Later", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        viewModel.startDownloadUpdate {
+                                            com.example.util.AppSoundHelper.playProjectDoneSound(context)
+                                            Toast.makeText(context, "🎉 App updated successfully to v$newVer!", Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                    modifier = Modifier.weight(1.3f)
+                                ) {
+                                    Text("Update Now", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

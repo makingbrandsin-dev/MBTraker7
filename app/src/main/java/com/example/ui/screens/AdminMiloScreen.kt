@@ -36,6 +36,8 @@ import com.example.milo.MiloCharacter
 import com.example.milo.MiloRealStatusView
 import com.example.milo.MiloVideoHelper
 import com.example.milo.MiloVideoSurface
+import com.example.milo.MiloAdminExecutiveSheet
+import com.example.ui.components.MiloAdminCopilotWidget
 import com.example.ui.components.liftOnPress
 import com.example.ui.theme.*
 
@@ -157,6 +159,14 @@ fun AdminMiloScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // 🦁 Milo Executive AI Suite & Autonomous Copilot Center
+            item {
+                MiloAdminCopilotWidget(
+                    viewModel = viewModel,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             // 🟢 Green Screen Background Removal (Chroma Key Engine) Options
             item {
                 Card(
@@ -243,6 +253,7 @@ fun AdminMiloScreen(
             item {
                 var currentVoice by remember(refreshKey) { mutableStateOf(com.example.milo.MiloVoiceHelper.getVoiceOption(context)) }
                 var showVoiceDropdown by remember { mutableStateOf(false) }
+                val isMuted by com.example.milo.MiloVoiceHelper.isMutedFlow.collectAsState()
 
                 Card(
                     shape = RoundedCornerShape(16.dp),
@@ -272,7 +283,50 @@ fun AdminMiloScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text("Milo Voice Customization", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
-                                Text("Choose accents & gender settings for Milo", fontSize = 11.sp, color = TextSecondary)
+                                Text("Choose accents & audio mute controls for Milo", fontSize = 11.sp, color = TextSecondary)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Master Voice Mute Switch
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isMuted) Color(0xFFFEF2F2) else Color(0xFFF0FDF4),
+                            border = BorderStroke(1.dp, if (isMuted) Color(0xFFFECACA) else Color(0xFFBBF7D0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isMuted) "Milo Voice Audio: MUTED" else "Milo Voice Audio: ENABLED",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isMuted) Color(0xFF991B1B) else Color(0xFF166534)
+                                    )
+                                    Text(
+                                        text = if (isMuted) "Audio briefings and responses are silent" else "Milo speaks briefings and verbal confirmations",
+                                        fontSize = 10.sp,
+                                        color = if (isMuted) Color(0xFFB91C1C) else Color(0xFF15803D)
+                                    )
+                                }
+                                Switch(
+                                    checked = !isMuted,
+                                    onCheckedChange = { active ->
+                                        com.example.milo.MiloVoiceHelper.setMuted(context, !active)
+                                        Toast.makeText(context, if (active) "🔊 Milo voice unmuted" else "🔇 Milo voice muted", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFF16A34A)
+                                    )
+                                )
                             }
                         }
 

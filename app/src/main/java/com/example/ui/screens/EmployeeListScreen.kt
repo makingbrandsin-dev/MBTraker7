@@ -353,6 +353,15 @@ fun EmployeeListScreen(
                         onDelete = {
                             viewModel.deleteEmployee(employee)
                             Toast.makeText(context, "Removed ${employee.name}", Toast.LENGTH_SHORT).show()
+                        },
+                        onApprove = {
+                            viewModel.updateEmployee(employee.copy(status = EmployeeStatus.ACTIVE))
+                            viewModel.recordAndBroadcastNotification(
+                                title = "✅ Employee Approved: ${employee.name}",
+                                subtitle = "Employee account has been approved by Admin.",
+                                category = "changes"
+                            )
+                            Toast.makeText(context, "Approved ${employee.name} successfully!", Toast.LENGTH_SHORT).show()
                         }
                     )
                 }
@@ -369,6 +378,16 @@ fun EmployeeListScreen(
                 viewModel.deleteEmployee(emp)
                 selectedEmployeeForDetail = null
                 Toast.makeText(context, "Removed ${emp.name}", Toast.LENGTH_SHORT).show()
+            },
+            onApprove = {
+                viewModel.updateEmployee(emp.copy(status = EmployeeStatus.ACTIVE))
+                viewModel.recordAndBroadcastNotification(
+                    title = "✅ Employee Approved: ${emp.name}",
+                    subtitle = "Employee account has been approved by Admin.",
+                    category = "changes"
+                )
+                selectedEmployeeForDetail = null
+                Toast.makeText(context, "Approved ${emp.name} successfully!", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -398,7 +417,8 @@ fun EmployeeListScreen(
 private fun EmployeeCard(
     employee: EmployeeEntity,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onApprove: () -> Unit
 ) {
     val context = LocalContext.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -543,6 +563,18 @@ private fun EmployeeCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (employee.status == EmployeeStatus.INACTIVE) {
+                        Button(
+                            onClick = onApprove,
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .height(32.dp)
+                                .padding(end = 8.dp)
+                        ) {
+                            Text("Approve", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                     TextButton(
                         onClick = { showDeleteConfirm = true }
                     ) {
@@ -581,7 +613,8 @@ private fun EmployeeCard(
 private fun EmployeeDetailDialog(
     employee: EmployeeEntity,
     onDismiss: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onApprove: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -604,8 +637,23 @@ private fun EmployeeDetailDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (employee.status == EmployeeStatus.INACTIVE) {
+                    Button(
+                        onClick = onApprove,
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text("Approve", color = Color.White)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Close")
+                }
             }
         }
     )

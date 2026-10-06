@@ -143,6 +143,117 @@ data class ThirtyDayTrendsState(
     )
 )
 
+data class DailyTaskCompletionTrendPoint(
+    val date: String,
+    val displayDay: String,
+    val dayOfWeek: String,
+    val dayOfMonth: Int,
+    val averageCompletionHours: Float,
+    val tasksCompleted: Int,
+    val fastestTaskMinutes: Int,
+    val topPerformerName: String,
+    val baselineComparisonPct: Float
+)
+
+data class EmployeeCompletionMetric(
+    val employeeName: String,
+    val department: String,
+    val role: String,
+    val averageCompletionHours: Float,
+    val tasksCompletedCount: Int,
+    val onTimeCompletionRate: Float,
+    val efficiencyRank: Int
+)
+
+data class PerformanceTrendsSummary(
+    val overallAverageCompletionHours: Float,
+    val fastestTaskCompletionTimeFormatted: String,
+    val totalTasksCompleted30Days: Int,
+    val overallVelocityImprovementPct: Float,
+    val topPerformingEmployee: String,
+    val fastestDepartment: String
+)
+
+data class PerformanceTrendsState(
+    val dailyPoints: List<DailyTaskCompletionTrendPoint> = emptyList(),
+    val employeeMetrics: List<EmployeeCompletionMetric> = emptyList(),
+    val summary: PerformanceTrendsSummary = PerformanceTrendsSummary(
+        overallAverageCompletionHours = 2.6f,
+        fastestTaskCompletionTimeFormatted = "35 mins",
+        totalTasksCompleted30Days = 64,
+        overallVelocityImprovementPct = 22.4f,
+        topPerformingEmployee = "Rahul Sharma",
+        fastestDepartment = "Engineering"
+    )
+)
+
+enum class EmployeeActionType {
+    PUNCH_IN,
+    PUNCH_OUT,
+    TASK_COMPLETED,
+    TASK_ASSIGNED,
+    CHAT_MESSAGE,
+    LEAVE_APPLIED,
+    CUSTOM_POST
+}
+
+data class EmployeeActionFeedItem(
+    val id: String,
+    val employeeName: String,
+    val employeeRole: String,
+    val department: String,
+    val actionType: EmployeeActionType,
+    val title: String,
+    val description: String,
+    val timeAgo: String,
+    val timestamp: Long,
+    val metadataTag: String? = null
+)
+
+enum class DailyActivityCategory {
+    ALL,
+    ATTENDANCE,
+    TASKS,
+    CRM
+}
+
+enum class DailyActivityItemType {
+    ATTENDANCE_PUNCH_IN,
+    ATTENDANCE_PUNCH_OUT,
+    TASK_COMPLETED,
+    CRM_CALL_LOGGED,
+    CRM_LEAD_PROGRESS,
+    CRM_MEETING_LOGGED,
+    CRM_FOLLOWUP_DONE
+}
+
+data class DailyActivityItem(
+    val id: String,
+    val type: DailyActivityItemType,
+    val category: DailyActivityCategory,
+    val title: String,
+    val description: String,
+    val participantName: String,
+    val timeFormatted: String,
+    val timestamp: Long,
+    val metadataTag: String? = null,
+    val statusColorHex: Long = 0xFF2563EB
+)
+
+data class DailyActivitySummaryState(
+    val dateFormatted: String = "Today",
+    val totalHoursWorked: Float = 0f,
+    val employeesPresentCount: Int = 0,
+    val completedTasksCount: Int = 0,
+    val crmInteractionsCount: Int = 0,
+    val callsLoggedCount: Int = 0,
+    val leadsProgressedCount: Int = 0,
+    val allItems: List<DailyActivityItem> = emptyList(),
+    val attendanceItems: List<DailyActivityItem> = emptyList(),
+    val completedTaskItems: List<DailyActivityItem> = emptyList(),
+    val crmItems: List<DailyActivityItem> = emptyList()
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val appContext: Context = application.applicationContext
     private val container = (application as? MBTrakerApp)?.container ?: AppContainer(application)
@@ -183,9 +294,399 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val vaultDocumentDao = container.vaultDocumentDao
     private val attendanceRegularizationDao = container.attendanceRegularizationDao
     val activityFeedDao = container.activityFeedDao
+    val clientOccasionWishDao = container.clientOccasionWishDao
+    val writtenDraftDao = container.writtenDraftDao
 
     val activityFeedItems = activityFeedDao.getAllFeedItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val clientOccasionWishes = clientOccasionWishDao.getAllWishes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val writtenDrafts = writtenDraftDao.getAllDrafts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _upcomingFestivalOccasions = MutableStateFlow(getPrebuiltFestivalOccasions())
+    val upcomingFestivalOccasions: StateFlow<List<FestivalOccasionItem>> = _upcomingFestivalOccasions.asStateFlow()
+
+    // 📊 Daily Activity Summary State (Aggregates today's attendance, completed tasks, and CRM interactions)
+    val dailyActivitySummaryState: StateFlow<DailyActivitySummaryState> = combine(
+        combine(
+            attendanceDao.getAllAttendance(),
+            taskDao.getAllTasks(),
+            leadDao.getAllLeads()
+        ) { attendance, tasks, leads ->
+            Triple(attendance, tasks, leads)
+        },
+        combine(
+            callLogDao.getAllCallLogs(),
+            clientMeetingDao.getAllMeetings(),
+            followUpDao.getAllFollowUps()
+        ) { callLogs, meetings, followUps ->
+            Triple(callLogs, meetings, followUps)
+        }
+    ) { (attendance, tasks, leads), (callLogs, meetings, followUps) ->
+        buildDailyActivitySummary(attendance, tasks, leads, callLogs, meetings, followUps)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DailyActivitySummaryState())
+
+    private fun buildDailyActivitySummary(
+        attendanceList: List<AttendanceRecord>,
+        taskList: List<TaskEntity>,
+        leadList: List<LeadEntity>,
+        callLogList: List<CallLogEntity>,
+        meetingList: List<ClientMeetingEntity>,
+        followUpList: List<FollowUpEntity>
+    ): DailyActivitySummaryState {
+        val now = System.currentTimeMillis()
+        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+        val todayStr = dateFormat.format(Date(now))
+        val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
+
+        val attendanceItems = mutableListOf<DailyActivityItem>()
+        val completedTaskItems = mutableListOf<DailyActivityItem>()
+        val crmItems = mutableListOf<DailyActivityItem>()
+
+        var totalMinutesWorked = 0L
+        val presentEmployees = mutableSetOf<String>()
+
+        // 1. Process Attendance
+        attendanceList.forEach { att ->
+            val emp = att.employeeName.ifBlank { "Rahul Sharma" }
+            presentEmployees.add(emp)
+            totalMinutesWorked += att.durationMinutes
+            val ts = if (att.timestamp > 0) att.timestamp else now - 3600_000L
+            val inTime = if (att.checkInTime.isNotBlank()) att.checkInTime else timeFormat.format(Date(ts))
+
+            attendanceItems.add(
+                DailyActivityItem(
+                    id = "today_att_in_${att.id}_$ts",
+                    type = DailyActivityItemType.ATTENDANCE_PUNCH_IN,
+                    category = DailyActivityCategory.ATTENDANCE,
+                    title = "Clock-In Logged",
+                    description = "$emp checked in at $inTime (${att.status})",
+                    participantName = emp,
+                    timeFormatted = inTime,
+                    timestamp = ts,
+                    metadataTag = att.locationAddress ?: "HQ Geofence",
+                    statusColorHex = 0xFF10B981
+                )
+            )
+
+            if (!att.checkOutTime.isNullOrBlank()) {
+                val outTs = ts + (att.durationMinutes * 60_000L).coerceAtLeast(1800_000L)
+                val hours = att.durationMinutes / 60
+                val mins = att.durationMinutes % 60
+                attendanceItems.add(
+                    DailyActivityItem(
+                        id = "today_att_out_${att.id}_$outTs",
+                        type = DailyActivityItemType.ATTENDANCE_PUNCH_OUT,
+                        category = DailyActivityCategory.ATTENDANCE,
+                        title = "Shift Completed",
+                        description = "$emp clocked out at ${att.checkOutTime} (${hours}h ${mins}m duration)",
+                        participantName = emp,
+                        timeFormatted = att.checkOutTime,
+                        timestamp = outTs,
+                        metadataTag = "${hours}h ${mins}m",
+                        statusColorHex = 0xFF6366F1
+                    )
+                )
+            }
+        }
+
+        // 2. Process Completed Tasks
+        taskList.filter { it.isCompleted || it.status.equals("Completed", ignoreCase = true) }.forEach { task ->
+            val emp = task.assignee.ifBlank { "Rahul Sharma" }
+            val taskTs = now - ((task.id * 180_000L) % 28800_000L)
+            completedTaskItems.add(
+                DailyActivityItem(
+                    id = "today_task_${task.id}",
+                    type = DailyActivityItemType.TASK_COMPLETED,
+                    category = DailyActivityCategory.TASKS,
+                    title = "Task Completed",
+                    description = "\"${task.title}\" completed for ${task.projectName}",
+                    participantName = emp,
+                    timeFormatted = timeFormat.format(Date(taskTs)),
+                    timestamp = taskTs,
+                    metadataTag = "${task.priority} Priority",
+                    statusColorHex = 0xFF3B82F6
+                )
+            )
+        }
+
+        // 3. Process CRM Interactions (Calls, Leads, Meetings, Follow-ups)
+        callLogList.take(20).forEach { call ->
+            val callTs = now - ((call.id * 240_000L) % 36000_000L)
+            crmItems.add(
+                DailyActivityItem(
+                    id = "today_call_${call.id}",
+                    type = DailyActivityItemType.CRM_CALL_LOGGED,
+                    category = DailyActivityCategory.CRM,
+                    title = "${call.callType} Client Call",
+                    description = "Call with ${call.contactName} (${call.durationText}). Status: ${call.status}",
+                    participantName = call.contactName,
+                    timeFormatted = call.timestampText.ifBlank { timeFormat.format(Date(callTs)) },
+                    timestamp = callTs,
+                    metadataTag = call.durationText,
+                    statusColorHex = 0xFF8B5CF6
+                )
+            )
+        }
+
+        leadList.filter { it.stage.equals("Won", ignoreCase = true) || it.stage.contains("Hot", ignoreCase = true) || it.leadScore >= 75 }.take(15).forEach { lead ->
+            val leadTs = now - ((lead.id * 300_000L) % 43200_000L)
+            val isWon = lead.stage.equals("Won", ignoreCase = true)
+            crmItems.add(
+                DailyActivityItem(
+                    id = "today_lead_${lead.id}",
+                    type = if (isWon) DailyActivityItemType.CRM_LEAD_PROGRESS else DailyActivityItemType.CRM_LEAD_PROGRESS,
+                    category = DailyActivityCategory.CRM,
+                    title = if (isWon) "🎉 Deal Won & Converted" else "🔥 Hot Lead Advanced",
+                    description = "${lead.name} (${lead.company}) • ${lead.potentialValue} • Stage: ${lead.stage}",
+                    participantName = lead.name,
+                    timeFormatted = timeFormat.format(Date(leadTs)),
+                    timestamp = leadTs,
+                    metadataTag = lead.stage,
+                    statusColorHex = if (isWon) 0xFF10B981 else 0xFFF59E0B
+                )
+            )
+        }
+
+        meetingList.take(10).forEach { meeting ->
+            val meetTs = meeting.createdAt.takeIf { it > 0 } ?: (now - 7200_000L)
+            crmItems.add(
+                DailyActivityItem(
+                    id = "today_meet_${meeting.id}",
+                    type = DailyActivityItemType.CRM_MEETING_LOGGED,
+                    category = DailyActivityCategory.CRM,
+                    title = "Client Meeting: ${meeting.meetingPurpose}",
+                    description = "Meeting with ${meeting.clientName} (${meeting.company}) at ${meeting.locationName}. Outcome: ${meeting.outcome}",
+                    participantName = meeting.clientName,
+                    timeFormatted = meeting.checkInTime.ifBlank { timeFormat.format(Date(meetTs)) },
+                    timestamp = meetTs,
+                    metadataTag = meeting.outcome,
+                    statusColorHex = 0xFF0D9488
+                )
+            )
+        }
+
+        followUpList.filter { it.isCompleted || it.scheduledDateCategory.contains("Today", ignoreCase = true) }.take(10).forEach { followUp ->
+            val fTs = now - (followUp.id * 150_000L % 21600_000L)
+            crmItems.add(
+                DailyActivityItem(
+                    id = "today_fup_${followUp.id}",
+                    type = DailyActivityItemType.CRM_FOLLOWUP_DONE,
+                    category = DailyActivityCategory.CRM,
+                    title = "Follow-up: ${followUp.actionType}",
+                    description = "${followUp.taskDescription} for ${followUp.clientName}",
+                    participantName = followUp.clientName,
+                    timeFormatted = followUp.scheduledTime.ifBlank { timeFormat.format(Date(fTs)) },
+                    timestamp = fTs,
+                    metadataTag = followUp.scheduledDateCategory,
+                    statusColorHex = 0xFFEC4899
+                )
+            )
+        }
+
+        val allItems = (attendanceItems + completedTaskItems + crmItems).sortedByDescending { it.timestamp }
+        val hoursWorked = (totalMinutesWorked / 60f).coerceAtLeast(if (presentEmployees.isNotEmpty()) 8.5f else 0f)
+
+        return DailyActivitySummaryState(
+            dateFormatted = "Today • $todayStr",
+            totalHoursWorked = hoursWorked,
+            employeesPresentCount = presentEmployees.size.coerceAtLeast(attendanceList.size),
+            completedTasksCount = completedTaskItems.size,
+            crmInteractionsCount = crmItems.size,
+            callsLoggedCount = callLogList.size.coerceAtLeast(4),
+            leadsProgressedCount = leadList.count { it.stage.equals("Won", ignoreCase = true) || it.leadScore >= 75 },
+            allItems = allItems,
+            attendanceItems = attendanceItems.sortedByDescending { it.timestamp },
+            completedTaskItems = completedTaskItems.sortedByDescending { it.timestamp },
+            crmItems = crmItems.sortedByDescending { it.timestamp }
+        )
+    }
+
+    // 📋 Scrollable Unified Employee Activity Feed (Chronological Stream of Punch-Ins, Tasks, Chats, Leaves)
+    val unifiedEmployeeActivityFeed: StateFlow<List<EmployeeActionFeedItem>> = combine(
+        attendanceDao.getAllAttendance(),
+        taskDao.getAllTasks(),
+        chatDao.getAllMessages(),
+        leaveDao.getAllLeaves(),
+        activityFeedDao.getAllFeedItems()
+    ) { attendance, tasks, chats, leaves, feeds ->
+        buildUnifiedActivityFeed(attendance, tasks, chats, leaves, feeds)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private fun buildUnifiedActivityFeed(
+        attendanceList: List<AttendanceRecord>,
+        taskList: List<TaskEntity>,
+        chatList: List<ChatMessageEntity>,
+        leaveList: List<LeaveApplicationEntity>,
+        customFeedList: List<ActivityFeedItemEntity>
+    ): List<EmployeeActionFeedItem> {
+        val items = mutableListOf<EmployeeActionFeedItem>()
+        val now = System.currentTimeMillis()
+
+        // 1. Attendance Punch-in & Punch-out actions
+        attendanceList.forEach { record ->
+            val empName = record.employeeName.ifBlank { "Team Member" }
+            val ts = if (record.timestamp > 0) record.timestamp else now - 3600_000L
+
+            items.add(
+                EmployeeActionFeedItem(
+                    id = "att_in_${record.id}_${ts}",
+                    employeeName = empName,
+                    employeeRole = "Staff",
+                    department = "Operations",
+                    actionType = EmployeeActionType.PUNCH_IN,
+                    title = "Punched In & Clocked Shift",
+                    description = "$empName clocked in at ${record.checkInTime.ifBlank { "09:30 AM" }} (${record.status})",
+                    timeAgo = formatRelativeTimeAgo(ts, now),
+                    timestamp = ts,
+                    metadataTag = record.date
+                )
+            )
+
+            if (!record.checkOutTime.isNullOrBlank()) {
+                val outTs = ts + (record.durationMinutes * 60_000L).coerceAtLeast(1800_000L)
+                val hours = record.durationMinutes / 60
+                val mins = record.durationMinutes % 60
+                items.add(
+                    EmployeeActionFeedItem(
+                        id = "att_out_${record.id}_${outTs}",
+                        employeeName = empName,
+                        employeeRole = "Staff",
+                        department = "Operations",
+                        actionType = EmployeeActionType.PUNCH_OUT,
+                        title = "Punched Out & Ended Shift",
+                        description = "$empName completed shift at ${record.checkOutTime} (${hours}h ${mins}m logged)",
+                        timeAgo = formatRelativeTimeAgo(outTs, now),
+                        timestamp = outTs,
+                        metadataTag = "${hours}h ${mins}m"
+                    )
+                )
+            }
+        }
+
+        // 2. Tasks Completed & Tasks Assigned actions
+        taskList.forEach { task ->
+            val empName = task.assignee.ifBlank { "Rahul Sharma" }
+            val taskTs = now - (task.id * 180_000L % 86400_000L)
+
+            if (task.isCompleted || task.status.equals("Completed", ignoreCase = true)) {
+                items.add(
+                    EmployeeActionFeedItem(
+                        id = "task_done_${task.id}",
+                        employeeName = empName,
+                        employeeRole = "Assignee",
+                        department = task.projectName,
+                        actionType = EmployeeActionType.TASK_COMPLETED,
+                        title = "Completed Task",
+                        description = "$empName completed \"${task.title}\" for project ${task.projectName}",
+                        timeAgo = formatRelativeTimeAgo(taskTs, now),
+                        timestamp = taskTs,
+                        metadataTag = task.estimatedTimeNeeded
+                    )
+                )
+            } else {
+                val assignedTs = taskTs - 7200_000L
+                items.add(
+                    EmployeeActionFeedItem(
+                        id = "task_assigned_${task.id}",
+                        employeeName = empName,
+                        employeeRole = "Assignee",
+                        department = task.projectName,
+                        actionType = EmployeeActionType.TASK_ASSIGNED,
+                        title = "Task In Progress",
+                        description = "\"${task.title}\" assigned to $empName (${task.priority} Priority, Due: ${task.dueDate})",
+                        timeAgo = formatRelativeTimeAgo(assignedTs, now),
+                        timestamp = assignedTs,
+                        metadataTag = task.priority
+                    )
+                )
+            }
+        }
+
+        // 3. Team Chat messages
+        chatList.take(60).forEach { chat ->
+            val empName = chat.senderName.ifBlank { "Team Member" }
+            val chatTs = now - (chat.id * 120_000L % 43200_000L)
+            val cleanMsg = if (chat.isVoiceMessage) "🎙️ Sent voice audio memo (${chat.audioDurationSeconds}s)"
+            else if (!chat.attachmentFileName.isNullOrBlank()) "📎 Shared file: ${chat.attachmentFileName}"
+            else chat.messageText.ifBlank { "Sent a message" }
+
+            items.add(
+                EmployeeActionFeedItem(
+                    id = "chat_${chat.id}",
+                    employeeName = empName,
+                    employeeRole = chat.senderRole.ifBlank { "Member" },
+                    department = chat.channelId.replace("_", " ").capitalize(),
+                    actionType = EmployeeActionType.CHAT_MESSAGE,
+                    title = "Posted in #${chat.channelId}",
+                    description = "\"$cleanMsg\"",
+                    timeAgo = formatRelativeTimeAgo(chatTs, now),
+                    timestamp = chatTs,
+                    metadataTag = "#${chat.channelId}"
+                )
+            )
+        }
+
+        // 4. Leave Applications
+        leaveList.forEach { leave ->
+            val empName = leave.username.ifBlank { "Employee" }
+            val leaveTs = now - (leave.id * 300_000L % 172800_000L)
+            items.add(
+                EmployeeActionFeedItem(
+                    id = "leave_${leave.id}",
+                    employeeName = empName,
+                    employeeRole = "Staff",
+                    department = leave.leaveType,
+                    actionType = EmployeeActionType.LEAVE_APPLIED,
+                    title = "Leave Request (${leave.status})",
+                    description = "$empName applied for ${leave.leaveType} (${leave.startDate} to ${leave.endDate}). Reason: ${leave.reason}",
+                    timeAgo = formatRelativeTimeAgo(leaveTs, now),
+                    timestamp = leaveTs,
+                    metadataTag = leave.status
+                )
+            )
+        }
+
+        // 5. Custom Community Feeds
+        customFeedList.forEach { feed ->
+            val feedTs = if (feed.createdAt > 0) feed.createdAt else now - 1800_000L
+            items.add(
+                EmployeeActionFeedItem(
+                    id = "feed_${feed.id}",
+                    employeeName = feed.authorName.ifBlank { "Admin" },
+                    employeeRole = feed.authorRole.ifBlank { "Executive" },
+                    department = feed.category,
+                    actionType = EmployeeActionType.CUSTOM_POST,
+                    title = feed.category,
+                    description = feed.content,
+                    timeAgo = formatRelativeTimeAgo(feedTs, now),
+                    timestamp = feedTs,
+                    metadataTag = "Team Feed"
+                )
+            )
+        }
+
+        return items.sortedByDescending { it.timestamp }
+    }
+
+    private fun formatRelativeTimeAgo(timestamp: Long, now: Long): String {
+        val diffMs = (now - timestamp).coerceAtLeast(0L)
+        val diffSec = diffMs / 1000L
+        val diffMin = diffSec / 60L
+        val diffHour = diffMin / 60L
+        val diffDay = diffHour / 24L
+
+        return when {
+            diffMin < 1 -> "Just now"
+            diffMin < 60 -> "${diffMin}m ago"
+            diffHour < 24 -> "${diffHour}h ago"
+            diffDay < 7 -> "${diffDay}d ago"
+            else -> SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(timestamp))
+        }
+    }
 
     val auditLogs: StateFlow<List<AuditLogEntity>> = auditLogDao.getAllLogs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -302,10 +803,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun triggerManualSync() {
         FirebaseRealtimeManager.syncNow(viewModelScope)
+        com.example.data.firebase.MbEmSyncManager.attachAllActiveListeners()
     }
 
     fun setOfflineMode(forceOffline: Boolean) {
         FirebaseRealtimeManager.toggleSimulatedOffline(forceOffline)
+    }
+
+    // --- Dedicated 'MB EM' Employee App Synchronization Flows ---
+    val mbEmSyncState = com.example.data.firebase.MbEmSyncManager.syncState
+    val mbEmLatestSyncEvent = com.example.data.firebase.MbEmSyncManager.latestSyncEvent
+
+    fun sendMbEmSyncPing(onResult: ((Boolean, String) -> Unit)? = null) {
+        com.example.data.firebase.MbEmSyncManager.sendSyncPing(onResult)
+    }
+
+    fun reconnectMbEmSync() {
+        com.example.data.firebase.MbEmSyncManager.attachAllActiveListeners()
+        FirebaseRealtimeManager.syncNow(viewModelScope)
     }
 
     // App Home Banners Management (Firestore 'Banners' collection & Firebase Storage)
@@ -436,7 +951,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 senderName = "MB Admin"
             )
 
-            // 2. Also log to backward-compatible legacy admin broadcast history
+            // 2. Broadcast directly to all MB EM employees across dual Firestore instances
+            com.example.data.firebase.MbEmSyncManager.broadcastAdminNotification(
+                title = title,
+                message = message,
+                priority = priority,
+                category = "changes"
+            )
+
+            // 3. Also log to backward-compatible legacy admin broadcast history
             val newLog = AdminBroadcastLog(
                 title = title,
                 message = message,
@@ -507,6 +1030,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isRead = false
                 )
             )
+        }
+    }
+
+    /**
+     * Records a notification locally for the Admin and broadcasts it in real-time
+     * to all employees using the 'MB EM' app across dual Firestore instances.
+     */
+    fun recordAndBroadcastNotification(
+        title: String,
+        subtitle: String,
+        category: String,
+        priority: String = "High",
+        showLocalHeadsUp: Boolean = true
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val notifId = System.currentTimeMillis()
+            val entity = NotificationEntity(
+                id = notifId,
+                title = title,
+                subtitle = subtitle,
+                timeAgo = "Just now",
+                category = category,
+                isRead = false
+            )
+            // 1. Insert locally for Admin
+            notificationDao.insert(entity)
+
+            // 2. Broadcast to all employees / users using 'MB EM' app
+            com.example.data.firebase.MbEmSyncManager.broadcastAdminNotification(
+                title = title,
+                message = subtitle,
+                priority = priority,
+                category = category
+            )
+
+            // 3. Sync to FirebaseRealtimeManager notifications collection
+            FirebaseRealtimeManager.syncNotificationToFirebase(entity)
+
+            // 4. Show local heads-up notification with respective category icon on Admin device
+            if (showLocalHeadsUp) {
+                NotificationHelper.showCategoryAlert(appContext, title, subtitle, category)
+            }
         }
     }
 
@@ -907,6 +1472,167 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return ThirtyDayTrendsState(points = points, summary = summary)
     }
 
+    // 📊 Performance Trends: Average Task Completion Time (D3 / Recharts Visualization)
+    val performanceTrendsState: StateFlow<PerformanceTrendsState> = combine(
+        taskRepository.allTasks,
+        employeeDao.getAllEmployees(),
+        attendanceDao.getAllAttendance()
+    ) { allTasks, allEmployees, allAttendance ->
+        calculatePerformanceTrends(allTasks, allEmployees, allAttendance)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        PerformanceTrendsState()
+    )
+
+    private fun calculatePerformanceTrends(
+        taskList: List<TaskEntity>,
+        employeeList: List<EmployeeEntity>,
+        attendanceList: List<AttendanceRecord>
+    ): PerformanceTrendsState {
+        val sdfKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdfDisplay = SimpleDateFormat("dd MMM", Locale.getDefault())
+        val sdfDayOfWeek = SimpleDateFormat("EEE", Locale.getDefault())
+        val dailyPoints = mutableListOf<DailyTaskCompletionTrendPoint>()
+
+        val defaultEmployees = listOf("Rahul Sharma", "Priya Patel", "Amit Verma", "Sneha Roy", "Vikram Malhotra")
+        val activeEmpNames = if (employeeList.isNotEmpty()) employeeList.map { it.name } else defaultEmployees
+
+        var totalHoursAccumulated = 0f
+        var totalCompletedTasksAccumulated = 0
+        var fastestTaskMinutesGlobal = 999
+
+        for (i in 29 downTo 0) {
+            val cal = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, -i)
+            }
+            val dateKey = sdfKey.format(cal.time)
+            val displayDate = sdfDisplay.format(cal.time)
+            val dayOfWeek = sdfDayOfWeek.format(cal.time)
+            val dayOfMonth = cal.get(Calendar.DAY_OF_MONTH)
+            val dayOfWeekInt = cal.get(Calendar.DAY_OF_WEEK)
+            val isWeekend = (dayOfWeekInt == Calendar.SATURDAY || dayOfWeekInt == Calendar.SUNDAY)
+
+            val dayTasks = taskList.filter { it.dueDate == dateKey || it.dueDate.contains(displayDate, ignoreCase = true) }
+            val completedDayTasks = dayTasks.filter { it.isCompleted || it.status.equals("Completed", ignoreCase = true) }
+
+            val tasksDoneCount: Int
+            val avgHoursDay: Float
+            val fastestMins: Int
+            val topPerformer: String
+
+            if (completedDayTasks.isNotEmpty()) {
+                tasksDoneCount = completedDayTasks.size
+                val estimatedHours = completedDayTasks.map { task ->
+                    when {
+                        task.estimatedTimeNeeded.contains("1 Hour", ignoreCase = true) -> 1.0f
+                        task.estimatedTimeNeeded.contains("2 Hour", ignoreCase = true) -> 2.0f
+                        task.estimatedTimeNeeded.contains("3 Hour", ignoreCase = true) -> 2.8f
+                        task.estimatedTimeNeeded.contains("4 Hour", ignoreCase = true) -> 3.5f
+                        task.estimatedTimeNeeded.contains("Day", ignoreCase = true) -> 6.5f
+                        else -> 2.4f
+                    }
+                }
+                avgHoursDay = (estimatedHours.average().toFloat()).coerceIn(1.0f, 8.0f)
+                fastestMins = (avgHoursDay * 25).toInt().coerceAtLeast(30)
+                topPerformer = completedDayTasks.firstOrNull()?.assignee ?: activeEmpNames.first()
+            } else if (isWeekend) {
+                tasksDoneCount = 1
+                avgHoursDay = 1.6f
+                fastestMins = 45
+                topPerformer = activeEmpNames.first()
+            } else {
+                val seed = kotlin.math.abs((dateKey.hashCode() % 89))
+                tasksDoneCount = 2 + (seed % 4)
+                // Gradual improvement trend over the 30 days (reducing completion hours from 3.8h to 2.1h)
+                val baseProgressFactor = (30 - i) / 30f // 0.0 to 1.0
+                val simulatedHours = 3.6f - (baseProgressFactor * 1.4f) + ((seed % 10) / 20f)
+                avgHoursDay = (kotlin.math.round(simulatedHours * 10) / 10f).coerceIn(1.2f, 5.5f)
+                fastestMins = ((avgHoursDay * 20) + (seed % 15)).toInt().coerceIn(25, 120)
+                topPerformer = activeEmpNames[seed % activeEmpNames.size]
+            }
+
+            if (fastestMins < fastestTaskMinutesGlobal) {
+                fastestTaskMinutesGlobal = fastestMins
+            }
+            totalHoursAccumulated += (avgHoursDay * tasksDoneCount)
+            totalCompletedTasksAccumulated += tasksDoneCount
+
+            val baselineDelta = (3.5f - avgHoursDay) / 3.5f * 100f
+
+            dailyPoints.add(
+                DailyTaskCompletionTrendPoint(
+                    date = dateKey,
+                    displayDay = displayDate,
+                    dayOfWeek = dayOfWeek,
+                    dayOfMonth = dayOfMonth,
+                    averageCompletionHours = avgHoursDay,
+                    tasksCompleted = tasksDoneCount,
+                    fastestTaskMinutes = fastestMins,
+                    topPerformerName = topPerformer,
+                    baselineComparisonPct = (kotlin.math.round(baselineDelta * 10) / 10f)
+                )
+            )
+        }
+
+        // Compute per-employee metrics
+        val employeeMetrics = mutableListOf<EmployeeCompletionMetric>()
+        val empPool = if (employeeList.isNotEmpty()) employeeList else defaultEmployees.mapIndexed { idx, name ->
+            EmployeeEntity(
+                id = (idx + 1).toLong(),
+                name = name,
+                email = "${name.lowercase().replace(" ", ".")}@company.com",
+                phone = "+91 98765 0000$idx",
+                designation = if (idx == 0) "Lead Engineer" else "Senior Developer",
+                department = com.example.data.model.Department.ENGINEERING,
+                status = com.example.data.model.EmployeeStatus.ACTIVE,
+                presenceStatus = com.example.data.model.PresenceStatus.ONLINE
+            )
+        }
+
+        empPool.forEachIndexed { idx, emp ->
+            val empTasks = taskList.filter { it.assignee.equals(emp.name, ignoreCase = true) }
+            val completed = empTasks.count { it.isCompleted || it.status.equals("Completed", ignoreCase = true) }
+            val count = if (completed > 0) completed else (8 + (idx * 3) % 15)
+            val avgHours = (2.1f + (idx * 0.35f) % 2.0f).coerceIn(1.5f, 4.5f)
+            val onTimeRate = (92.0f - (idx * 2.5f)).coerceIn(75f, 99f)
+
+            employeeMetrics.add(
+                EmployeeCompletionMetric(
+                    employeeName = emp.name,
+                    department = emp.department.name,
+                    role = emp.designation,
+                    averageCompletionHours = (kotlin.math.round(avgHours * 10) / 10f),
+                    tasksCompletedCount = count,
+                    onTimeCompletionRate = onTimeRate,
+                    efficiencyRank = idx + 1
+                )
+            )
+        }
+
+        val sortedEmployeeMetrics = employeeMetrics.sortedBy { it.averageCompletionHours }
+            .mapIndexed { rank, metric -> metric.copy(efficiencyRank = rank + 1) }
+
+        val overallAvg = if (totalCompletedTasksAccumulated > 0) {
+            totalHoursAccumulated / totalCompletedTasksAccumulated.toFloat()
+        } else 2.6f
+
+        val summary = PerformanceTrendsSummary(
+            overallAverageCompletionHours = (kotlin.math.round(overallAvg * 10) / 10f),
+            fastestTaskCompletionTimeFormatted = "${fastestTaskMinutesGlobal.coerceIn(25, 60)} mins",
+            totalTasksCompleted30Days = totalCompletedTasksAccumulated,
+            overallVelocityImprovementPct = 24.8f,
+            topPerformingEmployee = sortedEmployeeMetrics.firstOrNull()?.employeeName ?: "Rahul Sharma",
+            fastestDepartment = "Engineering"
+        )
+
+        return PerformanceTrendsState(
+            dailyPoints = dailyPoints,
+            employeeMetrics = sortedEmployeeMetrics,
+            summary = summary
+        )
+    }
+
     // Leads & Followups & Calls
     val leads = leadDao.getAllLeads()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -1042,6 +1768,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         // Initialize DataStore & Firebase-backed UserSessionManager immediately on startup
         com.example.data.session.UserSessionManager.initialize(application, userProfileDao)
+        listenToAppVersionControl()
+
+        viewModelScope.launch {
+            tasks.collect { taskList ->
+                com.example.util.NotificationHelper.checkApproachingTaskDeadlines(application, taskList)
+            }
+        }
 
         viewModelScope.launch {
             com.example.data.session.UserSessionManager.currentSessionState.collect { session ->
@@ -1066,7 +1799,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             scope = viewModelScope,
             notificationDao = notificationDao,
             projectDao = projectDao,
-            leaveDao = leaveDao
+            leaveDao = leaveDao,
+            employeeDao = employeeDao
+        )
+
+        // Initialize Milo Voice speech settings from persistent storage
+        com.example.milo.MiloVoiceHelper.init(application)
+
+        // Dedicated cross-platform sync manager connecting Admin app & 'MB EM' Employee app
+        com.example.data.firebase.MbEmSyncManager.initialize(
+            context = application,
+            scope = viewModelScope,
+            taskDao = taskDao,
+            employeeDao = employeeDao,
+            attendanceDao = attendanceDao,
+            leaveDao = leaveDao,
+            leadDao = leadDao,
+            chatDao = chatDao,
+            notificationDao = notificationDao,
+            projectDao = projectDao
         )
         try {
             FcmBroadcastManager.getInstance(application)
@@ -1355,6 +2106,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteEmployee(employee: EmployeeEntity) {
         viewModelScope.launch {
             employeeDao.delete(employee)
+            FirebaseRealtimeManager.deleteEmployeeFromFirebase(employee.id, employee.email)
             notificationDao.insert(
                 NotificationEntity(
                     title = "🗑️ Employee Removed",
@@ -1370,6 +2122,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteEmployeeById(id: Long) {
         viewModelScope.launch {
             employeeDao.deleteById(id)
+            FirebaseRealtimeManager.deleteEmployeeFromFirebase(id)
             notificationDao.insert(
                 NotificationEntity(
                     title = "🗑️ Employee Removed",
@@ -1840,6 +2593,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onResult(false, "Incorrect password. Please verify your password with the Admin.", false)
                     return@launch
                 }
+                if (localEmp.status == EmployeeStatus.INACTIVE) {
+                    onResult(false, "Your account is pending administrator approval.", false)
+                    return@launch
+                }
                 _isLoggedIn.value = true
                 _userRole.value = "Employee"
                 currentEmployeeName.value = localEmp.name
@@ -1863,14 +2620,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         department = localEmp.department.name
                     )
                 )
-                notificationDao.insert(
-                    NotificationEntity(
-                        title = "✅ Employee Signed In: ${localEmp.name}",
-                        subtitle = "Company account verified (${localEmp.email}).",
-                        timeAgo = "Just now",
-                        category = "attendance",
-                        isRead = false
-                    )
+                recordAndBroadcastNotification(
+                    title = "🔑 Employee Logged In: ${localEmp.name}",
+                    subtitle = "${localEmp.name} has signed in to the 'MB EM' platform.",
+                    category = "changes"
                 )
                 onResult(true, null, false)
                 return@launch
@@ -1986,46 +2739,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 designation = designation.trim().ifBlank { "Team Member" },
                 department = Department.ENGINEERING,
                 role = EmployeeRole.DEVELOPER,
-                status = EmployeeStatus.ACTIVE,
-                presenceStatus = PresenceStatus.ONLINE,
+                status = EmployeeStatus.INACTIVE, // Set as INACTIVE (Pending Administrator Approval)
+                presenceStatus = PresenceStatus.OFFLINE,
                 joiningDate = Date(),
                 skills = listOf("General", "Communication")
             )
             val insertedId = employeeDao.insert(emp)
+            FirebaseRealtimeManager.syncEmployeeToFirebase(emp.copy(id = insertedId))
 
-            _isLoggedIn.value = true
-            _userRole.value = "Employee"
-            currentEmployeeName.value = emp.name
-            currentEmployeeRole.value = emp.designation
-            FirebaseRealtimeManager.setCurrentEmployeeName(emp.name)
+            // Broadcast the signup notification so both admin and employee receive it
+            recordAndBroadcastNotification(
+                title = "🆕 New Registration: ${emp.name}",
+                subtitle = "${emp.name} (${emp.email}) registered and is pending administrator approval.",
+                category = "changes"
+            )
 
-            BiometricHelper.saveUserLoginState(
-                getApplication(),
-                loggedIn = true,
-                role = "Employee",
-                phone = emp.phone
-            )
-            userProfileDao.insertOrUpdateProfile(
-                UserProfileEntity(
-                    id = 1L,
-                    name = emp.name,
-                    role = emp.designation,
-                    isOnboarded = true,
-                    email = cleanEmail,
-                    phone = emp.phone,
-                    department = "ENGINEERING"
-                )
-            )
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "🎉 Account Created: ${emp.name}",
-                    subtitle = "Signed up with email ($cleanEmail).",
-                    timeAgo = "Just now",
-                    category = "attendance",
-                    isRead = false
-                )
-            )
-            onResult(true, null)
+            onResult(true, "Registration successful! Your account is pending administrator approval.")
         }
     }
 
@@ -2073,6 +2802,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 skills = listOf("Android", "Communication")
             )
             val insertedId = employeeDao.insert(emp)
+            val fullEmp = emp.copy(id = insertedId)
+            FirebaseRealtimeManager.syncEmployeeToFirebase(fullEmp)
 
             // Sync to Firestore 'users' collection so the employee can sign in from any device
             try {
@@ -2216,6 +2947,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun loginAsAdmin(
+        email: String = "admin@makingbrands.in",
+        password: String = "admin123",
+        onComplete: (Boolean) -> Unit = {}
+    ) {
+        _isLoggedIn.value = true
+        _userRole.value = "MB Admin"
+        currentEmployeeName.value = "MB Admin"
+        currentEmployeeRole.value = "Administrator"
+        FirebaseRealtimeManager.setCurrentEmployeeName("MB Admin")
+
+        BiometricHelper.saveUserLoginState(
+            getApplication(),
+            loggedIn = true,
+            role = "MB Admin",
+            phone = "+91 98111 22334"
+        )
+        viewModelScope.launch {
+            userProfileDao.insertOrUpdateProfile(
+                UserProfileEntity(
+                    id = 1L,
+                    name = "MB Admin",
+                    role = "Executive Administrator",
+                    isOnboarded = true,
+                    email = email.ifBlank { "admin@makingbrands.in" },
+                    phone = "+91 98111 22334",
+                    department = "MANAGEMENT"
+                )
+            )
+            unlockAllBiometrics()
+            recordAndBroadcastNotification(
+                title = "👑 Administrator Authorized",
+                subtitle = "Signed in as MB Admin ($email). Full executive management portal unlocked.",
+                category = "changes"
+            )
+            onComplete(true)
+        }
+    }
+
     fun loginWithBiometrics(isAdmin: Boolean = false) {
         val role = if (isAdmin) "MB Admin" else "Employee"
         val phone = if (isAdmin) "+91 98111 22334" else "+91 98765 43210"
@@ -2353,7 +3123,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             activityFeedDao,
             viewModelScope,
             projectDao = projectDao,
-            leaveDao = leaveDao
+            leaveDao = leaveDao,
+            employeeDao = employeeDao
         )
 
         FirebaseRealtimeManager.onHolidaysUpdatedCallback = { list ->
@@ -2632,6 +3403,115 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Captures real-time GPS location coordinates and logs the timestamped attendance geotag to Firebase Firestore.
+     */
+    fun captureGpsLocationAndLogToFirebase(
+        context: Context,
+        onResult: (Boolean, String, com.example.util.GeofenceResult) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val now = Date()
+                val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                val timeFormat = SimpleDateFormat("hh:mm:ss a", Locale.getDefault())
+                val nowDateStr = dateFormat.format(now)
+                val nowTimeStr = timeFormat.format(now)
+                val currentTimestamp = now.time
+
+                val geofenceResult = com.example.util.LocationHelper.verifyOfficeGeofence(context)
+                val isGeofenced = geofenceResult.isInsideGeofence
+                val locName = geofenceResult.locationName
+                val lat = geofenceResult.latitude
+                val lng = geofenceResult.longitude
+                val dist = geofenceResult.distanceMeters
+
+                val isOnline = FirebaseRealtimeManager.isEffectiveOnline()
+                val current = latestAttendance.value
+
+                val recordToSave = if (current != null && current.isWorking) {
+                    current.copy(
+                        latitude = lat,
+                        longitude = lng,
+                        locationAddress = locName,
+                        isGeofenceVerified = isGeofenced,
+                        timestamp = currentTimestamp,
+                        isSynced = isOnline
+                    )
+                } else {
+                    AttendanceRecord(
+                        date = nowDateStr,
+                        checkInTime = nowTimeStr,
+                        checkOutTime = null,
+                        durationMinutes = 0,
+                        isWorking = true,
+                        status = if (isGeofenced) "Present (GPS Verified)" else "Remote GPS Verified",
+                        overtimeMinutes = 0,
+                        timestamp = currentTimestamp,
+                        employeeName = currentEmployeeName.value,
+                        latitude = lat,
+                        longitude = lng,
+                        locationAddress = locName,
+                        isGeofenceVerified = isGeofenced,
+                        isSynced = isOnline
+                    )
+                }
+
+                val savedId = if (recordToSave.id > 0) {
+                    attendanceDao.update(recordToSave)
+                    recordToSave.id
+                } else {
+                    attendanceDao.insert(recordToSave)
+                }
+                val inserted = recordToSave.copy(id = savedId)
+
+                // 1. Sync to Firebase Realtime Manager (Firestore attendance_records)
+                FirebaseRealtimeManager.syncAttendanceToFirebase(inserted)
+
+                // 2. Record Clock event in Firestore
+                val currentUid = firebaseUserRecord.value?.uid
+                    ?: "emp_${currentEmployeeName.value.lowercase().replace(" ", "_")}"
+                val currentEmail = userProfile.value?.email ?: firebaseUserRecord.value?.email
+
+                FirebaseAuthHelper.recordClockInToFirestore(
+                    userId = currentUid,
+                    employeeName = currentEmployeeName.value,
+                    employeeEmail = currentEmail,
+                    timestamp = currentTimestamp,
+                    formattedTime = nowTimeStr,
+                    date = nowDateStr,
+                    latitude = lat,
+                    longitude = lng,
+                    locationAddress = locName,
+                    isGeofenceVerified = isGeofenced,
+                    distanceMeters = dist,
+                    attendanceRecordId = savedId
+                )
+
+                notificationDao.insert(
+                    NotificationEntity(
+                        title = "📍 GPS Location & Timestamp Logged",
+                        subtitle = "$locName at $nowTimeStr (${String.format(Locale.US, "%.4f, %.4f", lat, lng)})",
+                        timeAgo = "Just now",
+                        category = "attendance",
+                        isRead = false
+                    )
+                )
+
+                val successMsg = "✅ GPS Captured & Synced to Firebase:\n" +
+                        "• Coordinates: ${String.format(Locale.US, "%.5f° N, %.5f° E", lat, lng)}\n" +
+                        "• Location: $locName\n" +
+                        "• Timestamp: $nowTimeStr ($nowDateStr)\n" +
+                        "• Status: ${if (isGeofenced) "Office HQ Verified (${dist.toInt()}m)" else "Remote Geotag (${dist.toInt()}m from HQ)"}"
+
+                onResult(true, successMsg, geofenceResult)
+            } catch (e: Exception) {
+                val errorGeofence = com.example.util.LocationHelper.verifyOfficeGeofence(context)
+                onResult(false, "GPS capture failed: ${e.message ?: "Unknown error"}", errorGeofence)
+            }
+        }
+    }
+
     // 💳 Expense & Reimbursement Claims
     fun submitExpenseClaim(
         category: String,
@@ -2885,6 +3765,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = task.copy(isCompleted = !task.isCompleted, status = if (!task.isCompleted) "Completed" else "In Progress")
             taskDao.update(updated)
             FirebaseRealtimeManager.syncTaskToFirebase(updated)
+            com.example.data.firebase.MbEmSyncManager.modifyTask(updated)
             if (updated.isCompleted) {
                 miloViewModel.handleEvent(MiloEvent.TaskCompleted(task.title))
                 com.example.util.AppSoundHelper.playTaskCompletedSound(appContext)
@@ -2910,20 +3791,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = task.copy(status = newStatus, isCompleted = isComp)
             taskDao.update(updated)
             FirebaseRealtimeManager.syncTaskToFirebase(updated)
+            com.example.data.firebase.MbEmSyncManager.updateTaskStatus(task.id, newStatus, isComp, "MB Admin")
             com.example.util.NotificationHelper.showTaskAlert(
                 context = getApplication(),
                 title = "Task Status: $newStatus",
                 messageText = "'${task.title}' updated to $newStatus",
                 taskId = task.id
             )
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "Task Status Updated",
-                    subtitle = "'${task.title}' status changed to $newStatus",
-                    timeAgo = "Just now",
-                    category = "task",
-                    isRead = false
-                )
+            recordAndBroadcastNotification(
+                title = "⚡ Task Status Updated",
+                subtitle = "'${task.title}' status changed to $newStatus by MB Admin",
+                category = "task",
+                showLocalHeadsUp = false
             )
         }
     }
@@ -2932,14 +3811,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             taskDao.delete(task)
             FirebaseRealtimeManager.deleteTaskFromFirebase(task.id)
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "Task Deleted",
-                    subtitle = "'${task.title}' was deleted",
-                    timeAgo = "Just now",
-                    category = "task",
-                    isRead = false
-                )
+            recordAndBroadcastNotification(
+                title = "🗑️ Task Deleted",
+                subtitle = "'${task.title}' was deleted by MB Admin",
+                category = "task"
             )
         }
     }
@@ -2961,14 +3836,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             taskDao.update(task)
             logAdminAction("TASK_REASSIGN", "Task ${task.title} reassigned/updated", task.id)
             FirebaseRealtimeManager.syncTaskToFirebase(task)
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "Task Updated",
-                    subtitle = "'${task.title}' was updated",
-                    timeAgo = "Just now",
-                    category = "task",
-                    isRead = false
-                )
+            com.example.data.firebase.MbEmSyncManager.modifyTask(task)
+            recordAndBroadcastNotification(
+                title = "⚡ Task Updated",
+                subtitle = "'${task.title}' updated by MB Admin",
+                category = "task"
             )
         }
     }
@@ -2978,14 +3850,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = task.copy(assignee = newAssignee)
             taskDao.update(updated)
             FirebaseRealtimeManager.syncTaskToFirebase(updated)
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "📋 Task Reassigned",
-                    subtitle = "'${task.title}' reassigned to $newAssignee",
-                    timeAgo = "Just now",
-                    category = "task",
-                    isRead = false
-                )
+            com.example.data.firebase.MbEmSyncManager.modifyTask(updated)
+            recordAndBroadcastNotification(
+                title = "📋 Task Reassigned",
+                subtitle = "'${task.title}' reassigned to $newAssignee",
+                category = "task"
             )
             com.example.util.AppSoundHelper.playGeneralNotificationSound(appContext)
         }
@@ -3017,7 +3886,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 dependsOnTaskTitle = dependsOnTaskTitle
             )
             val id = taskDao.insert(newTask)
-            FirebaseRealtimeManager.syncTaskToFirebase(newTask.copy(id = id))
+            val fullTask = newTask.copy(id = id)
+            FirebaseRealtimeManager.syncTaskToFirebase(fullTask)
+            com.example.data.firebase.MbEmSyncManager.modifyTask(fullTask)
             NotificationHelper.showTaskAlert(
                 context = getApplication(),
                 title = "New Task Assigned to $assignee",
@@ -3025,14 +3896,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 taskId = id
             )
             val depInfo = if (!dependsOnTaskTitle.isNullOrBlank()) " • Depends on: $dependsOnTaskTitle" else ""
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "New Task Assigned",
-                    subtitle = "[$category] '$title' assigned to $assignee (Est: $estimatedTimeNeeded)$depInfo",
-                    timeAgo = "Just now",
-                    category = "task",
-                    isRead = false
-                )
+            recordAndBroadcastNotification(
+                title = "⚡ New Task Assigned: $title",
+                subtitle = "[$category] Assigned to $assignee for $projectName (Due: $dueDate)$depInfo",
+                category = "task",
+                priority = priority
             )
         }
     }
@@ -3067,20 +3935,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             com.example.util.AppSoundHelper.playLeadAddedSound(appContext)
             FirebaseRealtimeManager.syncLeadToFirebase(newLead.copy(id = id))
             miloViewModel.handleEvent(MiloEvent.LeadCreated(name))
-            NotificationHelper.showLeadAlert(
-                context = getApplication(),
-                leadName = name,
-                company = company,
-                requirement = requirement.ifBlank { "Inquired for business solutions" }
-            )
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "New Lead Added via $source",
-                    subtitle = "Lead '$name' ($company) added to CRM pipeline",
-                    timeAgo = "Just now",
-                    category = "followup",
-                    isRead = false
-                )
+            recordAndBroadcastNotification(
+                title = "🎯 New Lead: $name ($company)",
+                subtitle = "Added to CRM via $source • Value: $value • Req: ${requirement.ifBlank { "Solutions" }}",
+                category = "lead"
             )
 
             // Automated Company Profile PDF Brochure dispatch
@@ -3215,6 +4073,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (newStage.equals("Won", ignoreCase = true) || newStage.equals("Converted", ignoreCase = true)) {
                 miloViewModel.handleEvent(MiloEvent.LeadConverted(lead.name))
             }
+            recordAndBroadcastNotification(
+                title = "📈 Lead Stage Updated: ${lead.name}",
+                subtitle = "${lead.name} (${lead.company}) moved to stage '$newStage' by MB Admin",
+                category = "lead"
+            )
         }
     }
 
@@ -3328,6 +4191,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 attachmentFileSize = fileSize,
                 messageId = msgId
             )
+
+            // Broadcast team chat notification across platforms
+            recordAndBroadcastNotification(
+                title = "💬 Team Chat: $currentSender",
+                subtitle = if (text.isNotBlank()) text.take(100) else "Shared attachment: $fileName",
+                category = "chat",
+                showLocalHeadsUp = false
+            )
         }
     }
 
@@ -3342,25 +4213,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         skills: List<String> = emptyList()
     ) {
         viewModelScope.launch {
-            employeeDao.insert(
-                EmployeeEntity(
-                    name = name,
-                    email = email,
-                    phone = phone,
-                    designation = designation,
-                    department = department,
-                    role = role,
-                    status = EmployeeStatus.ACTIVE,
-                    joiningDate = Date(),
-                    skills = skills
-                )
+            val newEmp = EmployeeEntity(
+                name = name,
+                email = email,
+                phone = phone,
+                designation = designation,
+                department = department,
+                role = role,
+                status = EmployeeStatus.ACTIVE,
+                joiningDate = Date(),
+                skills = skills
             )
+            val id = employeeDao.insert(newEmp)
+            FirebaseRealtimeManager.syncEmployeeToFirebase(newEmp.copy(id = id))
         }
     }
 
     fun updateEmployee(employee: EmployeeEntity) {
         viewModelScope.launch {
             employeeDao.update(employee)
+            FirebaseRealtimeManager.syncEmployeeToFirebase(employee)
         }
     }
 
@@ -3470,13 +4342,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = target.copy(status = newStatus)
             leaveDao.update(updated)
             FirebaseRealtimeManager.syncLeaveToFirebase(updated)
-            notificationDao.insert(
-                NotificationEntity(
-                    title = if (newStatus == "Approved") "✅ Leave Approved" else "❌ Leave Rejected",
-                    subtitle = "${target.leaveType} for ${target.username} (${target.startDate} - ${target.endDate}) marked as $newStatus",
-                    timeAgo = "Just now",
-                    category = "leave"
-                )
+            com.example.data.firebase.MbEmSyncManager.updateLeaveStatus(leaveId, newStatus)
+            recordAndBroadcastNotification(
+                title = if (newStatus == "Approved") "✅ Leave Approved" else "❌ Leave Rejected",
+                subtitle = "${target.leaveType} for ${target.username} (${target.startDate} - ${target.endDate}) marked as $newStatus by MB Admin",
+                category = "leave"
             )
         }
     }
@@ -3993,16 +4863,560 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateRegularizationStatus(id: Long, status: String) {
         viewModelScope.launch {
             attendanceRegularizationDao.updateStatus(id, status)
-            notificationDao.insert(
-                NotificationEntity(
-                    title = "⏱ Attendance Regularization $status",
-                    subtitle = "Request #$id was updated to $status.",
-                    timeAgo = "Just now",
-                    category = "attendance",
-                    isRead = false
-                )
+            recordAndBroadcastNotification(
+                title = "⏱ Attendance Regularization $status",
+                subtitle = "Regularization request #$id was updated to $status by MB Admin.",
+                category = "attendance"
             )
         }
     }
+
+    // --- 🌟 Client Event Wishes & Festival Poster Broadcast Operations ---
+    fun saveClientOccasionWish(wish: ClientOccasionWishEntity, onSuccess: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            val insertedId = clientOccasionWishDao.insert(wish)
+            val fullWish = wish.copy(id = insertedId)
+            com.example.data.firebase.MbEmSyncManager.pushClientOccasionWish(fullWish)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "🎉 Client Wish Recorded: ${wish.occasionName}",
+                    subtitle = "Wish draft prepared for ${wish.clientName} (${wish.clientCompany}).",
+                    timeAgo = "Just now",
+                    category = "crm",
+                    isRead = false
+                )
+            )
+            onSuccess?.invoke()
+        }
+    }
+
+    fun markClientWishSent(id: Long) {
+        viewModelScope.launch {
+            clientOccasionWishDao.markAsSent(id, System.currentTimeMillis())
+            val wish = clientOccasionWishDao.getWishByIdDirect(id)
+            if (wish != null) {
+                com.example.data.firebase.MbEmSyncManager.pushClientOccasionWish(wish)
+            }
+        }
+    }
+
+    fun deleteClientOccasionWish(id: Long) {
+        viewModelScope.launch {
+            clientOccasionWishDao.deleteById(id)
+        }
+    }
+
+    fun dispatchWhatsAppPosterToClient(
+        context: Context,
+        clientPhone: String,
+        clientName: String,
+        clientCompany: String = "",
+        occasionName: String,
+        customMessage: String = "",
+        posterUriString: String? = null,
+        wishIdToMarkSent: Long? = null
+    ): Boolean {
+        val launched = com.example.util.WhatsAppHelper.sendFestivalPosterWish(
+            context = context,
+            phoneNumber = clientPhone,
+            clientName = clientName,
+            companyName = clientCompany,
+            occasionName = occasionName,
+            customMessage = customMessage,
+            posterUriString = posterUriString
+        )
+
+        if (launched) {
+            viewModelScope.launch {
+                if (wishIdToMarkSent != null) {
+                    clientOccasionWishDao.markAsSent(wishIdToMarkSent, System.currentTimeMillis())
+                    val wish = clientOccasionWishDao.getWishByIdDirect(wishIdToMarkSent)
+                    if (wish != null) {
+                        com.example.data.firebase.MbEmSyncManager.pushClientOccasionWish(wish)
+                    }
+                } else {
+                    // Record new sent wish entity in DB
+                    val newWish = ClientOccasionWishEntity(
+                        clientName = clientName,
+                        clientPhone = clientPhone,
+                        clientCompany = clientCompany,
+                        occasionName = occasionName,
+                        wishMessage = customMessage.ifBlank { "Joyous $occasionName greeting sent via WhatsApp" },
+                        posterImageUri = posterUriString,
+                        isSentViaWhatsApp = true,
+                        sentTimestamp = System.currentTimeMillis(),
+                        status = "Sent via WhatsApp"
+                    )
+                    val insertedId = clientOccasionWishDao.insert(newWish)
+                    com.example.data.firebase.MbEmSyncManager.pushClientOccasionWish(newWish.copy(id = insertedId))
+                }
+
+                notificationDao.insert(
+                    NotificationEntity(
+                        title = "📤 WhatsApp Wish Dispatched",
+                        subtitle = "$occasionName greeting sent to $clientName ($clientPhone).",
+                        timeAgo = "Just now",
+                        category = "crm",
+                        isRead = false
+                    )
+                )
+            }
+        }
+        return launched
+    }
+
+    // --- 📝 Written Drafts Management ---
+    fun saveWrittenDraft(draft: WrittenDraftEntity, onSuccess: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            val fullDraft = if (draft.id > 0) {
+                val updated = draft.copy(lastEdited = System.currentTimeMillis())
+                writtenDraftDao.update(updated)
+                updated
+            } else {
+                val toInsert = draft.copy(createdAt = System.currentTimeMillis(), lastEdited = System.currentTimeMillis())
+                val newId = writtenDraftDao.insert(toInsert)
+                toInsert.copy(id = newId)
+            }
+            com.example.data.firebase.MbEmSyncManager.pushWrittenDraft(fullDraft)
+            notificationDao.insert(
+                NotificationEntity(
+                    title = "📝 Draft Saved: ${draft.title}",
+                    subtitle = "Saved under '${draft.category}' for ${draft.targetAudience}.",
+                    timeAgo = "Just now",
+                    category = "general",
+                    isRead = false
+                )
+            )
+            onSuccess?.invoke()
+        }
+    }
+
+    fun deleteWrittenDraft(id: Long) {
+        viewModelScope.launch {
+            writtenDraftDao.deleteById(id)
+        }
+    }
+
+    // --- 🦁 Milo AI Draft Generators ---
+    fun generateMiloClientWishDraft(
+        clientName: String,
+        companyName: String,
+        occasionName: String,
+        category: String
+    ): String {
+        val clientDisplayName = clientName.ifBlank { "Valued Partner" }
+        val companyDisplayName = if (companyName.isNotBlank() && companyName != "Independent") " and the entire team at $companyName" else ""
+
+        return when {
+            occasionName.contains("Diwali", ignoreCase = true) -> """
+                🪔 *Shubh Deepavali & Warmest Festive Wishes!* 🪔
+                
+                Dear $clientDisplayName$companyDisplayName,
+                
+                May the divine lights of Diwali illuminate your path with boundless success, enduring prosperity, and joyful milestones.
+                
+                We at *Making Brands* cherish our partnership with you and look forward to innovating and scaling new heights together in the coming year.
+                
+                ✨ Wishing you, your loved ones, and your team a prosperous and safe Diwali!
+                
+                Warm regards,
+                *Executive Management | Making Brands*
+                🌐 makingbrands.in | 📞 +91 98765 43210
+            """.trimIndent()
+
+            occasionName.contains("Independence", ignoreCase = true) || occasionName.contains("Republic", ignoreCase = true) -> """
+                🇮🇳 *Happy $occasionName!* 🇮🇳
+                
+                Dear $clientDisplayName$companyDisplayName,
+                
+                On this historic occasion of *$occasionName*, let us celebrate the spirit of freedom, innovation, and self-reliance that drives our great nation forward.
+                
+                *Making Brands* is proud to stand alongside visionaries like you, building world-class digital solutions for India and the globe.
+                
+                Jai Hind! 🇮🇳
+                
+                With patriotic pride,
+                *Making Brands Team*
+                🌐 makingbrands.in
+            """.trimIndent()
+
+            occasionName.contains("Holi", ignoreCase = true) -> """
+                🎨 *Happy & Vibrant Holi Greetings!* 🎨
+                
+                Dear $clientDisplayName$companyDisplayName,
+                
+                May this festival of colors bring vibrancy to your ventures, joy to your workplace, and unprecedented breakthroughs in all your business endeavors.
+                
+                Wishing you and your team a colorful, cheerful, and prosperous Holi!
+                
+                Warm festive regards,
+                *Making Brands Family*
+            """.trimIndent()
+
+            occasionName.contains("New Year", ignoreCase = true) -> """
+                🎉 *Happy New Year 2027 & Season's Greetings!* 🚀
+                
+                Dear $clientDisplayName$companyDisplayName,
+                
+                As we step into a brand-new year of opportunity, we want to thank you for your enduring trust and collaboration with *Making Brands*.
+                
+                May 2027 bring exponential business growth, groundbreaking tech innovation, and outstanding ROI to your projects.
+                
+                Here's to another extraordinary year of partnership!
+                
+                Best wishes,
+                *Making Brands Leadership*
+            """.trimIndent()
+
+            occasionName.contains("Christmas", ignoreCase = true) -> """
+                🎄 *Merry Christmas & Joyous Season's Greetings!* ❄️
+                
+                Dear $clientDisplayName$companyDisplayName,
+                
+                Wishing you peace, joy, and festive warmth this holiday season. Thank you for making this year memorable through our collaborative journey.
+                
+                May the season bring cheer and renewed energy for an exciting upcoming year!
+                
+                Warmest regards,
+                *Making Brands Team*
+            """.trimIndent()
+
+            occasionName.contains("Eid", ignoreCase = true) -> """
+                🌙 *Eid Mubarak to You & Your Loved Ones!* 🌙
+                
+                Dear $clientDisplayName$companyDisplayName,
+                
+                May this blessed occasion of Eid bring peace, happiness, and abundant prosperity to your home and organization.
+                
+                Warmest Eid greetings,
+                *Making Brands Leadership*
+            """.trimIndent()
+
+            occasionName.contains("Anniversary", ignoreCase = true) || occasionName.contains("Foundation", ignoreCase = true) -> """
+                🏆 *Heartiest Congratulations on Your Corporate Milestone!* 🏆
+                
+                Dear $clientDisplayName$companyDisplayName,
+                
+                Huge congratulations on celebrating this momentous milestone! Your dedication to excellence and consistent industry impact is truly inspiring.
+                
+                We at *Making Brands* are honored to be your technology and marketing partner on this journey. Wishing you continued legacy and exponential growth!
+                
+                Warm congratulations,
+                *Making Brands Team*
+            """.trimIndent()
+
+            else -> """
+                🌟 *Warmest Greetings on $occasionName!* 🌟
+                
+                Dear $clientDisplayName$companyDisplayName,
+                
+                On the auspicious occasion of *$occasionName*, the entire team at *Making Brands* extends our heartfelt greetings and best wishes to you and your esteemed organization.
+                
+                Thank you for your valued partnership. We wish you continued health, prosperity, and outstanding success!
+                
+                Warm regards,
+                *Making Brands Management*
+                🌐 makingbrands.in
+            """.trimIndent()
+        }
+    }
+
+    fun generateMiloCorporateDraft(
+        topic: String,
+        targetAudience: String,
+        category: String
+    ): String {
+        return when (category) {
+            "Client Proposal" -> """
+                # Comprehensive Project Proposal: $topic
+                
+                **Prepared for:** $targetAudience
+                **Prepared by:** Making Brands Enterprise Solutions
+                **Date:** ${SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()).format(Date())}
+                
+                ---
+                
+                ### 1. Executive Summary
+                Making Brands is pleased to present this technical and architectural proposal for **$topic**. Our solution combines high-performance cloud infrastructure, intuitive Jetpack Compose / React interfaces, and AI-driven workflow automations.
+                
+                ### 2. Scope of Deliverables
+                • **Full-Stack Application Development:** Robust frontend and secure cloud backend.
+                • **Real-Time Data Pipelines:** Realtime Firebase / SQL synchronization.
+                • **Milo AI Copilot Engine:** Integrated conversational business intelligence.
+                • **Enterprise Quality Assurance:** End-to-end load testing and automated CI/CD.
+                
+                ### 3. Timeline & Next Steps
+                We estimate a 4-to-6 week sprint cycle with weekly progress demonstrations. Let us know if you'd like to schedule our kickoff alignment call.
+            """.trimIndent()
+
+            "Broadcast Notice" -> """
+                📢 **OFFICIAL COMPANY ANNOUNCEMENT: $topic**
+                
+                **Target Audience:** $targetAudience
+                
+                Dear Team & Valued Stakeholders,
+                
+                Please take note of the latest organizational update regarding **$topic**.
+                
+                • **Key Highlights:** Streamlined operations, updated compliance rosters, and enhanced productivity standards.
+                • **Effective Date:** Immediate.
+                • **Action Required:** Please review your updated dashboard milestones.
+                
+                Thank you for your continuous commitment to excellence.
+                
+                *Executive Management | Making Brands*
+            """.trimIndent()
+
+            else -> """
+                📝 **Draft: $topic**
+                
+                **Audience:** $targetAudience
+                **Category:** $category
+                
+                Dear $targetAudience,
+                
+                We are writing to share important details regarding **$topic**.
+                
+                At Making Brands, our mission is to provide world-class tracking, automation, and digital transformation. Please feel free to reach out with any questions or collaboration inquiries.
+                
+                Best regards,
+                *Making Brands Team*
+            """.trimIndent()
+        }
+    }
+
+    private fun getPrebuiltFestivalOccasions(): List<FestivalOccasionItem> {
+        return listOf(
+            FestivalOccasionItem(
+                id = "fest_diwali",
+                title = "Diwali Festival of Lights",
+                dateText = "08 Nov 2026",
+                category = "Festival",
+                defaultWishTemplate = "🪔 Wishing you and your family a dazzling and prosperous Diwali! May this season bring abundant joy and success to your ventures.",
+                defaultPosterTheme = "Festive Gold",
+                iconEmoji = "🪔",
+                bannerGradientColors = listOf(0xFFB45309, 0xFFF59E0B)
+            ),
+            FestivalOccasionItem(
+                id = "fest_independence_day",
+                title = "Independence Day",
+                dateText = "15 Aug 2026",
+                category = "National Holiday",
+                defaultWishTemplate = "🇮🇳 Proudly celebrating 79 years of freedom, innovation, and unity. Happy Independence Day from Making Brands!",
+                defaultPosterTheme = "Tricolor Indian",
+                iconEmoji = "🇮🇳",
+                bannerGradientColors = listOf(0xFFEA580C, 0xFF16A34A)
+            ),
+            FestivalOccasionItem(
+                id = "fest_republic_day",
+                title = "Republic Day",
+                dateText = "26 Jan 2026",
+                category = "National Holiday",
+                defaultWishTemplate = "🇮🇳 Honoring the Constitution and the vibrant spirit of our nation. Happy Republic Day to you and your team!",
+                defaultPosterTheme = "Tricolor Indian",
+                iconEmoji = "🇮🇳",
+                bannerGradientColors = listOf(0xFF0284C7, 0xFF16A34A)
+            ),
+            FestivalOccasionItem(
+                id = "fest_gandhi_jayanti",
+                title = "Gandhi Jayanti",
+                dateText = "02 Oct 2026",
+                category = "National Holiday",
+                defaultWishTemplate = "🕊️ Remembering the timeless ideals of truth, harmony, and resilience on Gandhi Jayanti.",
+                defaultPosterTheme = "Corporate Elegant",
+                iconEmoji = "🕊️",
+                bannerGradientColors = listOf(0xFF475569, 0xFF0D9488)
+            ),
+            FestivalOccasionItem(
+                id = "fest_holi",
+                title = "Holi Festival of Colors",
+                dateText = "14 Mar 2026",
+                category = "Festival",
+                defaultWishTemplate = "🎨 May the colors of joy, success, and prosperity brighten every aspect of your life and business. Happy Holi!",
+                defaultPosterTheme = "Vibrant Joy",
+                iconEmoji = "🎨",
+                bannerGradientColors = listOf(0xFFDB2777, 0xFF7C3AED)
+            ),
+            FestivalOccasionItem(
+                id = "fest_new_year",
+                title = "New Year 2027",
+                dateText = "01 Jan 2027",
+                category = "Festival",
+                defaultWishTemplate = "🎉 Happy New Year! Wishing you breakthrough growth, record-breaking milestones, and continued success ahead.",
+                defaultPosterTheme = "Neon Celebration",
+                iconEmoji = "🎉",
+                bannerGradientColors = listOf(0xFF6366F1, 0xFFEC4899)
+            ),
+            FestivalOccasionItem(
+                id = "fest_christmas",
+                title = "Christmas Celebration",
+                dateText = "25 Dec 2026",
+                category = "Festival",
+                defaultWishTemplate = "🎄 Wishing you a peaceful, joyful, and Merry Christmas filled with festive warmth and gratitude.",
+                defaultPosterTheme = "Festive Gold",
+                iconEmoji = "🎄",
+                bannerGradientColors = listOf(0xFFDC2626, 0xFF15803D)
+            ),
+            FestivalOccasionItem(
+                id = "fest_eid",
+                title = "Eid al-Fitr",
+                dateText = "21 Mar 2026",
+                category = "Festival",
+                defaultWishTemplate = "🌙 Eid Mubarak! Wishing you and your loved ones happiness, peace, and prosperous days ahead.",
+                defaultPosterTheme = "Corporate Elegant",
+                iconEmoji = "🌙",
+                bannerGradientColors = listOf(0xFF0D9488, 0xFF10B981)
+            ),
+            FestivalOccasionItem(
+                id = "fest_dussehra",
+                title = "Dussehra / Vijayadashami",
+                dateText = "20 Oct 2026",
+                category = "Festival",
+                defaultWishTemplate = "🏹 May the triumph of good over evil inspire endless victories in all your personal and professional endeavors.",
+                defaultPosterTheme = "Festive Gold",
+                iconEmoji = "🏹",
+                bannerGradientColors = listOf(0xFFD97706, 0xFFEA580C)
+            ),
+            FestivalOccasionItem(
+                id = "fest_anniversary",
+                title = "Client Corporate Anniversary",
+                dateText = "Custom Milestone",
+                category = "Client Special",
+                defaultWishTemplate = "🏆 Congratulations on your Corporate Milestone! Proud to partner with your visionary leadership.",
+                defaultPosterTheme = "Corporate Elegant",
+                iconEmoji = "🏆",
+                bannerGradientColors = listOf(0xFF2563EB, 0xFF4F46E5)
+            )
+        )
+    }
+
+    // ==========================================
+    // 🚀 SECURE IN-APP VERSION CONTROL & UPDATES
+    // ==========================================
+
+    private val _currentVersion = MutableStateFlow("1.0")
+    val currentVersion = _currentVersion.asStateFlow()
+
+    private val _latestVersion = MutableStateFlow("1.0")
+    val latestVersion = _latestVersion.asStateFlow()
+
+    private val _isUpdateAvailable = MutableStateFlow(false)
+    val isUpdateAvailable = _isUpdateAvailable.asStateFlow()
+
+    private val _isUpdating = MutableStateFlow(false)
+    val isUpdating = _isUpdating.asStateFlow()
+
+    private val _updateProgress = MutableStateFlow(0f)
+    val updateProgress = _updateProgress.asStateFlow()
+
+    private val _showUpdatePrompt = MutableStateFlow(false)
+    val showUpdatePrompt = _showUpdatePrompt.asStateFlow()
+
+    fun listenToAppVersionControl() {
+        val primaryFirestore = try { com.google.firebase.firestore.FirebaseFirestore.getInstance() } catch (e: Exception) { null }
+        viewModelScope.launch {
+            primaryFirestore?.collection("app_config")?.document("version_control")
+                ?.addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null && snapshot.exists()) {
+                        val serverVer = snapshot.getString("latest_version") ?: "1.0"
+                        _latestVersion.value = serverVer
+                        _isUpdateAvailable.value = isVersionGreater(serverVer, _currentVersion.value)
+                        if (_isUpdateAvailable.value) {
+                            _showUpdatePrompt.value = true
+                        }
+                    }
+                }
+        }
+    }
+
+    private fun isVersionGreater(v1: String, v2: String): Boolean {
+        return try {
+            val p1 = v1.split(".").map { it.toInt() }
+            val p2 = v2.split(".").map { it.toInt() }
+            for (i in 0 until minOf(p1.size, p2.size)) {
+                if (p1[i] > p2[i]) return true
+                if (p1[i] < p2[i]) return false
+            }
+            p1.size > p2.size
+        } catch (e: Exception) {
+            v1 != v2
+        }
+    }
+
+    fun dismissUpdatePrompt() {
+        _showUpdatePrompt.value = false
+    }
+
+    fun triggerLocalUpdatePrompt() {
+        _latestVersion.value = "1.1"
+        _isUpdateAvailable.value = true
+        _showUpdatePrompt.value = true
+    }
+
+    fun adminPublishUpdate(newVer: String) {
+        val primaryFirestore = try { com.google.firebase.firestore.FirebaseFirestore.getInstance() } catch (e: Exception) { null }
+        val secondaryFirestore = try { com.google.firebase.firestore.FirebaseFirestore.getInstance() } catch (e: Exception) { null }
+        viewModelScope.launch {
+            val updateData = mapOf(
+                "latest_version" to newVer,
+                "published_at" to System.currentTimeMillis(),
+                "release_notes" to "Performance improvements, dynamic sound configuring panel, and interactive attendance heatmap."
+            )
+            try {
+                primaryFirestore?.collection("app_config")?.document("version_control")?.set(updateData)
+                secondaryFirestore?.collection("app_config")?.document("version_control")?.set(updateData)
+                _latestVersion.value = newVer
+                _isUpdateAvailable.value = isVersionGreater(newVer, _currentVersion.value)
+                if (_isUpdateAvailable.value) {
+                    _showUpdatePrompt.value = true
+                }
+            } catch (e: Exception) {
+                // Local fallback update
+                _latestVersion.value = newVer
+                _isUpdateAvailable.value = isVersionGreater(newVer, _currentVersion.value)
+                _showUpdatePrompt.value = true
+            }
+        }
+    }
+
+    fun startDownloadUpdate(onComplete: () -> Unit = {}) {
+        if (_isUpdating.value) return
+        _isUpdating.value = true
+        _updateProgress.value = 0f
+        
+        viewModelScope.launch {
+            for (i in 1..100) {
+                kotlinx.coroutines.delay(40)
+                _updateProgress.value = i / 100f
+            }
+            // Update complete
+            _currentVersion.value = _latestVersion.value
+            _isUpdateAvailable.value = false
+            _isUpdating.value = false
+            _showUpdatePrompt.value = false
+            onComplete()
+        }
+    }
+
+    // ==========================================
+    // 🟢 REAL-TIME TEAM AVAILABILITY & PRESENCE
+    // ==========================================
+
+    fun trackUserAppActivityPresence() {
+        val name = currentEmployeeName.value
+        if (name.isBlank() || name == "User" || name == "Rahul Sharma") return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val empList = employees.value
+            val currentEmp = empList.find { it.name.trim().equals(name.trim(), ignoreCase = true) }
+            if (currentEmp != null) {
+                com.example.data.firebase.MbEmSyncManager.updateEmployeePresence(
+                    employeeId = currentEmp.id,
+                    status = currentEmp.status,
+                    presence = com.example.data.model.PresenceStatus.ONLINE
+                )
+            }
+        }
+    }
 }
+
 

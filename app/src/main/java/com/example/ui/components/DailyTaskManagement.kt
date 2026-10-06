@@ -239,17 +239,18 @@ fun DailyTaskManagementSection(
                 }
             }
 
-            // 2. Progress Bar
+            // 2. Visual CSS Gradient Milestone Progress Bar
             if (totalCount > 0) {
-                Spacer(modifier = Modifier.height(12.dp))
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(7.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = StatusGreen,
-                    trackColor = Color(0xFFF1F5F9),
+                Spacer(modifier = Modifier.height(14.dp))
+                MilestoneGradientProgressBar(
+                    completionPercentage = progress,
+                    completedMilestoneCount = completedCount,
+                    totalMilestoneCount = totalCount,
+                    palette = CssGradientPalette.ROYAL_INDIGO_VIOLET,
+                    barHeight = 10.dp,
+                    showMilestonePills = true,
+                    showCheckpoints = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 

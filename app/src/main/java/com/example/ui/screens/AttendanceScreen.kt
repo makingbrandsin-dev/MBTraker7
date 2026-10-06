@@ -30,6 +30,7 @@ import com.example.ui.components.AppHeader
 import com.example.ui.components.CrmTasksAttendanceSwitcher
 import com.example.ui.components.StandardScreenHeader
 import com.example.ui.components.WhatsAppQuickChatDialog
+import com.example.ui.components.SmartAttendanceGpsCard
 import com.example.ui.components.MiloAssistantDialog
 import com.example.ui.components.formatLiveSeconds
 import com.example.ui.theme.*
@@ -72,13 +73,29 @@ fun AttendanceScreen(
 
     val context = LocalContext.current
     var selectedViewMode by remember { mutableStateOf("visual_chart") } // "visual_chart", "daily_logs", "date_sheet", "monthly_sheet"
-    var selectedMonth by remember { mutableStateOf("September 2026") }
-    var selectedDateForSheet by remember { mutableStateOf("2026-09-17") }
+    val currentMonthFormatted = remember {
+        SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date())
+    }
+    var selectedMonth by remember { mutableStateOf(currentMonthFormatted) }
+    var selectedDateForSheet by remember {
+        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+    }
     var showBreakDialog by remember { mutableStateOf(false) }
     var showGeofencePunchDialog by remember { mutableStateOf(false) }
     var showRegularizationDialog by remember { mutableStateOf(false) }
 
-    val monthsList = listOf("September 2026", "August 2026", "July 2026")
+    val monthsList = remember(currentMonthFormatted) {
+        val cal = Calendar.getInstance()
+        val list = mutableListOf<String>()
+        val fmt = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
+        for (i in 0..5) {
+            val c = Calendar.getInstance().apply { add(Calendar.MONTH, -i) }
+            list.add(fmt.format(c.time))
+        }
+        if (!list.contains("October 2026")) list.add(0, "October 2026")
+        if (!list.contains("September 2026")) list.add("September 2026")
+        list.distinct()
+    }
 
     // Pulsing circle animation when working
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -96,14 +113,20 @@ fun AttendanceScreen(
 
     // Filter attendance records by selected month and starting strictly from the app install date
     val filteredRecords = remember(allAttendance, selectedMonth, installDate) {
-        val monthPrefix = when (selectedMonth) {
-            "September 2026" -> "2026-09"
-            "August 2026" -> "2026-08"
-            "July 2026" -> "2026-07"
-            else -> "2026-09"
+        val monthPrefix = try {
+            val parsedDate = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).parse(selectedMonth)
+            SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(parsedDate ?: Date())
+        } catch (_: Exception) {
+            when (selectedMonth) {
+                "October 2026" -> "2026-10"
+                "September 2026" -> "2026-09"
+                "August 2026" -> "2026-08"
+                "July 2026" -> "2026-07"
+                else -> SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
+            }
         }
         allAttendance
-            .filter { it.date.startsWith(monthPrefix) && it.date >= installDate }
+            .filter { it.date.startsWith(monthPrefix) }
             .sortedWith(compareByDescending<AttendanceRecord> { it.date }.thenByDescending { it.id })
     }
 
@@ -248,6 +271,14 @@ fun AttendanceScreen(
                         }
                     }
                 }
+            }
+
+            // 📍 Smart Attendance Realtime GPS Geotag & Firebase Logger Card
+            item {
+                SmartAttendanceGpsCard(
+                    viewModel = viewModel,
+                    onNavigateToAttendance = { }
+                )
             }
 
             // ⏱️ Live Punch & Break Action Card (Clean Stacked Vertical Layout One Below the Other)
@@ -1696,27 +1727,26 @@ fun MonthlyAttendanceBarChartDashboard(
     var selectedFilter by remember { mutableStateOf("all") } // "all", "workdays", "overtime"
     var selectedDayNumber by remember { mutableStateOf(18) }
 
-    // Generate full month days (e.g. 30 days for September)
-    val totalDaysInMonth = remember(selectedMonth) {
-        when {
-            selectedMonth.startsWith("September") -> 30
-            selectedMonth.startsWith("August") -> 31
-            selectedMonth.startsWith("July") -> 31
-            else -> 30
-        }
+    // Generate full month days dynamically
+    val parsedCal = remember(selectedMonth) {
+        val c = Calendar.getInstance()
+        try {
+            val d = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).parse(selectedMonth)
+            if (d != null) c.time = d
+        } catch (_: Exception) {}
+        c
     }
 
-    val monthPrefix = remember(selectedMonth) {
-        when {
-            selectedMonth.startsWith("September") -> "2026-09"
-            selectedMonth.startsWith("August") -> "2026-08"
-            selectedMonth.startsWith("July") -> "2026-07"
-            else -> "2026-09"
-        }
+    val totalDaysInMonth = remember(parsedCal) {
+        parsedCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+    }
+
+    val monthPrefix = remember(parsedCal) {
+        SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(parsedCal.time)
     }
 
     // Build day-by-day bar chart dataset
-    val fullMonthBars = remember(selectedMonth, records) {
+    val fullMonthBars = remember(selectedMonth, records, parsedCal) {
         val list = mutableListOf<DailyChartBarData>()
         val cal = Calendar.getInstance()
 
@@ -1725,11 +1755,8 @@ fun MonthlyAttendanceBarChartDashboard(
             val fullDateStr = "$monthPrefix-$dayStr"
 
             // Determine Day of Week
-            cal.set(2026, when {
-                selectedMonth.startsWith("September") -> Calendar.SEPTEMBER
-                selectedMonth.startsWith("August") -> Calendar.AUGUST
-                else -> Calendar.JULY
-            }, day)
+            cal.time = parsedCal.time
+            cal.set(Calendar.DAY_OF_MONTH, day)
 
             val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
             val isSunday = dayOfWeek == Calendar.SUNDAY
@@ -2268,4 +2295,62 @@ fun InspectorMetricItem(
         Spacer(modifier = Modifier.height(2.dp))
         Text(value, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = color)
     }
+}
+
+@Composable
+fun BreakOptionsDialog(
+    onDismiss: () -> Unit,
+    onSelectBreak: (String) -> Unit
+) {
+    val breakTypes = listOf(
+        "Tea Break" to Icons.Default.Coffee,
+        "Lunch Break" to Icons.Default.Restaurant,
+        "Power Nap / Rest" to Icons.Default.Bedtime,
+        "Official Meeting" to Icons.Default.Groups,
+        "Personal Break" to Icons.Default.Person
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Coffee, contentDescription = null, tint = BrandBlue)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Select Break Type", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Choose your break reason to pause shift timer:", fontSize = 13.sp, color = TextSecondary)
+                Spacer(modifier = Modifier.height(4.dp))
+                breakTypes.forEach { (type, icon) ->
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelectBreak(type) }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(icon, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(type, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                            Spacer(modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
 }

@@ -500,4 +500,61 @@ data class AuditLogEntity(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+@Entity(
+    tableName = "client_occasion_wishes",
+    indices = [
+        Index(value = ["clientPhone"]),
+        Index(value = ["occasionName"]),
+        Index(value = ["status"])
+    ]
+)
+data class ClientOccasionWishEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val clientName: String,
+    val clientPhone: String,
+    val clientCompany: String = "",
+    val occasionName: String, // e.g. "Diwali 2026", "Independence Day", "New Year", "Company Anniversary"
+    val occasionCategory: String = "Festival", // "National Holiday", "Festival", "Client Event", "Milestone"
+    val wishMessage: String,
+    val posterImageUri: String? = null,
+    val posterTheme: String = "Festive Gold", // "Festive Gold", "Tricolor Indian", "Vibrant Joy", "Corporate Elegant", "Neon Celebration"
+    val isSentViaWhatsApp: Boolean = false,
+    val sentTimestamp: Long = 0L,
+    val status: String = "Draft", // "Draft", "Scheduled", "Sent via WhatsApp", "Broadcasted"
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "written_drafts",
+    indices = [
+        Index(value = ["category"]),
+        Index(value = ["targetAudience"])
+    ]
+)
+data class WrittenDraftEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val targetAudience: String = "All Clients", // "All Clients", "Enterprise Leads", "Internal Staff", "Specific Client"
+    val category: String = "Festival & Holiday Wishes", // "Festival & Holiday Wishes", "Client Proposal", "Contract Draft", "Project Update", "Marketing Pitch", "Broadcast Notice"
+    val content: String,
+    val associatedOccasion: String? = null,
+    val posterUri: String? = null,
+    val tags: String = "Draft, Wishes",
+    val author: String = "Admin",
+    val lastEdited: Long = System.currentTimeMillis(),
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+data class FestivalOccasionItem(
+    val id: String,
+    val title: String,
+    val dateText: String,
+    val category: String, // "National Holiday", "Festival", "Client Special"
+    val defaultWishTemplate: String,
+    val defaultPosterTheme: String,
+    val iconEmoji: String,
+    val bannerGradientColors: List<Long> = listOf(0xFFF59E0B, 0xFFD97706)
+)
+
+
 

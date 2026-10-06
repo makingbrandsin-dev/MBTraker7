@@ -17,6 +17,24 @@ class MBTrakerApp : Application() {
         super.onCreate()
         instance = this
         container = AppContainer(this)
+
+        // Initialize Firebase Realtime Manager active listeners immediately on application start
+        val db = com.example.data.local.AppDatabase.getDatabase(this)
+        val appScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        com.example.data.firebase.FirebaseRealtimeManager.initialize(
+            context = this,
+            attendanceDao = db.attendanceDao(),
+            userProfileDao = db.userProfileDao(),
+            taskDao = db.taskDao(),
+            leadDao = db.leadDao(),
+            chatDao = db.chatDao(),
+            activityFeedDao = db.activityFeedDao(),
+            scope = appScope,
+            notificationDao = db.notificationDao(),
+            projectDao = db.projectDao(),
+            leaveDao = db.leaveDao(),
+            employeeDao = db.employeeDao()
+        )
         
         // Schedule periodic Lead Intent monitoring with battery and network constraints
         val constraints = Constraints.Builder()
@@ -27,11 +45,33 @@ class MBTrakerApp : Application() {
         val workRequest = PeriodicWorkRequestBuilder<com.example.workers.LeadIntentWorker>(1, TimeUnit.HOURS)
             .setConstraints(constraints)
             .build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "LeadIntentWorker",
-            ExistingPeriodicWorkPolicy.KEEP,
-            workRequest
-        )
+        try {
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "LeadIntentWorker",
+                ExistingPeriodicWorkPolicy.KEEP,
+                workRequest
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("MBTrakerApp", "WorkManager unavailable or skipped in current environment: ${e.message}")
+        }
+
+        // Schedule periodic high-security database sync when connection is restored
+        val syncConstraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val syncWorkRequest = PeriodicWorkRequestBuilder<com.example.workers.BackgroundSyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(syncConstraints)
+            .build()
+        try {
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "BackgroundSyncWorker",
+                ExistingPeriodicWorkPolicy.KEEP,
+                syncWorkRequest
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("MBTrakerApp", "WorkManager background sync registration warning: ${e.message}")
+        }
     }
 
     companion object {

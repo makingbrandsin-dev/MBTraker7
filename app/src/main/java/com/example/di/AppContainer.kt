@@ -42,6 +42,8 @@ class AppContainer(private val context: Context) {
     }
     val activityFeedDao: ActivityFeedDao by lazy { database.activityFeedDao() }
     val auditLogDao: AuditLogDao by lazy { database.auditLogDao() }
+    val clientOccasionWishDao: ClientOccasionWishDao by lazy { database.clientOccasionWishDao() }
+    val writtenDraftDao: WrittenDraftDao by lazy { database.writtenDraftDao() }
 
     // Repositories
     val employeeRepository: IEmployeeRepository by lazy {

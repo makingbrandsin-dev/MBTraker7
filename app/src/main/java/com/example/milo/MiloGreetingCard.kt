@@ -62,6 +62,8 @@ fun MiloGreetingCard(
         getTimeBasedGreeting(employeeName)
     }
 
+    val isMiloMuted by MiloVoiceHelper.isMutedFlow.collectAsState()
+
     val pendingCount = remember(allTasks) { allTasks.count { !it.isCompleted } }
     val missedLeadsCount = remember(allLeads) {
         allLeads.count {
@@ -178,22 +180,31 @@ fun MiloGreetingCard(
                         )
                         IconButton(
                             onClick = {
-                                MiloVoiceHelper.speakDailyBriefing(
-                                    context = context,
-                                    employeeName = employeeName,
-                                    pendingTasksCount = pendingCount,
-                                    activeProjectsCount = 2,
-                                    leadsCount = activeLeadsCount,
-                                    callLogsCount = 0,
-                                    force = true
-                                )
+                                val currentMuted = MiloVoiceHelper.isMuted(context)
+                                if (currentMuted) {
+                                    MiloVoiceHelper.setMuted(context, false)
+                                    MiloHaptics.performButtonTap(context)
+                                    android.widget.Toast.makeText(context, "🔊 Milo voice unmuted", android.widget.Toast.LENGTH_SHORT).show()
+                                    MiloVoiceHelper.speakDailyBriefing(
+                                        context = context,
+                                        employeeName = employeeName,
+                                        pendingTasksCount = pendingCount,
+                                        activeProjectsCount = 2,
+                                        leadsCount = activeLeadsCount,
+                                        callLogsCount = 0
+                                    )
+                                } else {
+                                    MiloVoiceHelper.setMuted(context, true)
+                                    MiloHaptics.performButtonTap(context)
+                                    android.widget.Toast.makeText(context, "🔇 Milo voice muted", android.widget.Toast.LENGTH_SHORT).show()
+                                }
                             },
                             modifier = Modifier.size(34.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.VolumeUp,
-                                contentDescription = "Listen to Milo",
-                                tint = ButtonPrimary,
+                                imageVector = if (isMiloMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                contentDescription = if (isMiloMuted) "Unmute Milo Voice" else "Mute Milo Voice",
+                                tint = if (isMiloMuted) Color(0xFFEF4444) else ButtonPrimary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }

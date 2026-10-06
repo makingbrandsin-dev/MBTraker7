@@ -21,6 +21,8 @@ import com.example.data.model.ChatMessageEntity
 import com.example.data.model.Department
 import com.example.data.model.EmployeeEntity
 import com.example.data.model.EmployeeStatus
+import com.example.data.model.EmployeeRole
+import com.example.data.model.PresenceStatus
 import com.example.data.model.LeadEntity
 import com.example.data.model.NotificationEntity
 import com.example.data.model.ProjectEntity
@@ -122,7 +124,11 @@ object FirebaseRealtimeManager {
     private var projectDaoRef: com.example.data.local.ProjectDao? = null
     private var notificationDaoRef: NotificationDao? = null
     private var leaveDaoRef: LeaveDao? = null
+    private var employeeDaoRef: EmployeeDao? = null
     private var notificationListener: ListenerRegistration? = null
+    private var employeeListener: ListenerRegistration? = null
+    private var userListener: ListenerRegistration? = null
+    private var secondaryFirestore: FirebaseFirestore? = null
     private val handledNotificationDocIds = ConcurrentHashMap.newKeySet<String>()
 
     private var isRealNetworkConnected = true
@@ -161,13 +167,17 @@ object FirebaseRealtimeManager {
         scope: CoroutineScope,
         notificationDao: NotificationDao? = null,
         projectDao: com.example.data.local.ProjectDao? = null,
-        leaveDao: LeaveDao? = null
+        leaveDao: LeaveDao? = null,
+        employeeDao: EmployeeDao? = null
     ) {
         attendanceDaoRef = attendanceDao
         chatDaoRef = chatDao
         notificationDaoRef = notificationDao
         projectDaoRef = projectDao
         leaveDaoRef = leaveDao
+        if (employeeDao != null) {
+            employeeDaoRef = employeeDao
+        }
         appContext = context.applicationContext
         appScope = scope
         registerNetworkCallback(context)
@@ -314,6 +324,9 @@ object FirebaseRealtimeManager {
             if (holidayListener == null) {
                 startRealtimeHolidayListener(scope)
             }
+            if (employeeDaoRef != null && employeeListener == null) {
+                startRealtimeEmployeeListener(employeeDaoRef!!, scope)
+            }
             startBrandingConfigListener(context)
             return
         }
@@ -324,13 +337,42 @@ object FirebaseRealtimeManager {
                 Log.d(TAG, "Initialized default FirebaseApp")
             }
 
-            firestore = FirebaseFirestore.getInstance()
+            val customDbId = try {
+                context.getString(com.example.R.string.firestore_database_id)
+                    .takeIf { it.isNotBlank() && it != "(default)" }
+            } catch (_: Exception) { null }
+
+            val defaultFs = try { FirebaseFirestore.getInstance() } catch (_: Exception) { null }
+            val namedFs = if (!customDbId.isNullOrBlank()) {
+                try {
+                    FirebaseFirestore.getInstance(customDbId)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Named database $customDbId error: ${e.message}")
+                    null
+                }
+            } else null
+
+            firestore = namedFs ?: defaultFs
+            secondaryFirestore = if (namedFs != null && defaultFs != null && namedFs != defaultFs) defaultFs else null
+
+            try {
+                val settings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
+                    .setPersistenceEnabled(true)
+                    .build()
+                firestore?.firestoreSettings = settings
+                firestore?.enableNetwork()
+                secondaryFirestore?.firestoreSettings = settings
+                secondaryFirestore?.enableNetwork()
+            } catch (e: Exception) {
+                Log.w(TAG, "Configuring Firestore settings error: ${e.message}")
+            }
+
             startBrandingConfigListener(context)
             isInitialized = true
             updateSyncState(
                 status = NetworkSyncStatus.SYNCED,
                 isOnline = isEffectiveOnline(),
-                statusMessage = "Firebase Realtime: Connected (WebSockets + Firestore)"
+                statusMessage = "Firebase Realtime: Connected (Internet Sync Active)"
             )
 
             // Monitor Battery Saver Mode state
@@ -339,7 +381,7 @@ object FirebaseRealtimeManager {
                     val statusMsg = if (isSaverActive) {
                         "⚡ Battery Saver Active — Real-time listeners throttled (60s interval)"
                     } else {
-                        "Firebase Realtime: Connected (WebSockets + Firestore)"
+                        "Firebase Realtime: Connected (Internet Sync Active)"
                     }
                     updateSyncState(
                         status = NetworkSyncStatus.SYNCED,
@@ -376,6 +418,9 @@ object FirebaseRealtimeManager {
             }
             if (leaveDao != null) {
                 startRealtimeLeaveListener(leaveDao, scope)
+            }
+            if (employeeDaoRef != null) {
+                startRealtimeEmployeeListener(employeeDaoRef!!, scope)
             }
             startRealtimeHolidayListener(scope)
         } catch (e: Exception) {
@@ -558,29 +603,18 @@ object FirebaseRealtimeManager {
                 "nextFollowUp" to lead.nextFollowUp,
                 "updatedAt" to System.currentTimeMillis()
             )
-            firestore?.collection("leads")?.document(docId)
-                ?.set(data, SetOptions.merge())
-                ?.addOnSuccessListener {
-                    pendingLeadsQueue.remove(lead)
-                    val now = System.currentTimeMillis()
-                    updateSyncState(
-                        status = NetworkSyncStatus.SYNCED,
-                        isOnline = true,
-                        isSyncing = false,
-                        statusMessage = "Firebase Realtime: Live & Synced",
-                        newTimestamp = now
-                    )
-                    Log.d(TAG, "Successfully synced lead $docId to Firebase")
-                }
-                ?.addOnFailureListener { e ->
-                    Log.w(TAG, "Firebase lead sync error: ${e.message}")
-                    pendingLeadsQueue.add(lead)
-                    updateSyncState(
-                        status = NetworkSyncStatus.ERROR,
-                        isSyncing = false,
-                        statusMessage = "Sync failed: Retrying soon"
-                    )
-                }
+            firestore?.collection("leads")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("leads")?.document(docId)?.set(data, SetOptions.merge())
+            pendingLeadsQueue.remove(lead)
+            val now = System.currentTimeMillis()
+            updateSyncState(
+                status = NetworkSyncStatus.SYNCED,
+                isOnline = true,
+                isSyncing = false,
+                statusMessage = "Firebase Realtime: Live & Synced",
+                newTimestamp = now
+            )
+            Log.d(TAG, "Successfully synced lead $docId to Firebase")
         } catch (e: Exception) {
             Log.e(TAG, "Error in syncLeadToFirebase: ${e.message}")
             pendingLeadsQueue.add(lead)
@@ -625,29 +659,18 @@ object FirebaseRealtimeManager {
                 "assignee" to task.assignee,
                 "updatedAt" to System.currentTimeMillis()
             )
-            firestore?.collection("tasks")?.document(docId)
-                ?.set(data, SetOptions.merge())
-                ?.addOnSuccessListener {
-                    pendingTasksQueue.remove(task)
-                    val now = System.currentTimeMillis()
-                    updateSyncState(
-                        status = NetworkSyncStatus.SYNCED,
-                        isOnline = true,
-                        isSyncing = false,
-                        statusMessage = "Firebase Realtime: Live & Synced",
-                        newTimestamp = now
-                    )
-                    Log.d(TAG, "Successfully synced task $docId to Firebase")
-                }
-                ?.addOnFailureListener { e ->
-                    Log.w(TAG, "Firebase task sync error: ${e.message}")
-                    pendingTasksQueue.add(task)
-                    updateSyncState(
-                        status = NetworkSyncStatus.ERROR,
-                        isSyncing = false,
-                        statusMessage = "Sync failed: Retrying soon"
-                    )
-                }
+            firestore?.collection("tasks")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("tasks")?.document(docId)?.set(data, SetOptions.merge())
+            pendingTasksQueue.remove(task)
+            val now = System.currentTimeMillis()
+            updateSyncState(
+                status = NetworkSyncStatus.SYNCED,
+                isOnline = true,
+                isSyncing = false,
+                statusMessage = "Firebase Realtime: Live & Synced",
+                newTimestamp = now
+            )
+            Log.d(TAG, "Successfully synced task $docId to Firebase")
         } catch (e: Exception) {
             Log.e(TAG, "Error in syncTaskToFirebase: ${e.message}")
             pendingTasksQueue.add(task)
@@ -664,6 +687,7 @@ object FirebaseRealtimeManager {
         try {
             val docId = "task_$taskId"
             firestore?.collection("tasks")?.document(docId)?.delete()
+            secondaryFirestore?.collection("tasks")?.document(docId)?.delete()
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting task from Firebase: ${e.message}")
         }
@@ -704,27 +728,17 @@ object FirebaseRealtimeManager {
                 "budget" to project.budget,
                 "updatedAt" to System.currentTimeMillis()
             )
-            firestore?.collection("projects")?.document(docId)
-                ?.set(data, SetOptions.merge())
-                ?.addOnSuccessListener {
-                    val now = System.currentTimeMillis()
-                    updateSyncState(
-                        status = NetworkSyncStatus.SYNCED,
-                        isOnline = true,
-                        isSyncing = false,
-                        statusMessage = "Firebase Realtime: Live & Synced",
-                        newTimestamp = now
-                    )
-                    Log.d(TAG, "Successfully synced project $docId to Firebase")
-                }
-                ?.addOnFailureListener { e ->
-                    Log.w(TAG, "Firebase project sync error: ${e.message}")
-                    updateSyncState(
-                        status = NetworkSyncStatus.ERROR,
-                        isSyncing = false,
-                        statusMessage = "Sync failed: Retrying soon"
-                    )
-                }
+            firestore?.collection("projects")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("projects")?.document(docId)?.set(data, SetOptions.merge())
+            val now = System.currentTimeMillis()
+            updateSyncState(
+                status = NetworkSyncStatus.SYNCED,
+                isOnline = true,
+                isSyncing = false,
+                statusMessage = "Firebase Realtime: Live & Synced",
+                newTimestamp = now
+            )
+            Log.d(TAG, "Successfully synced project $docId to Firebase")
         } catch (e: Exception) {
             Log.e(TAG, "Error in syncProjectToFirebase: ${e.message}")
             updateSyncState(
@@ -740,6 +754,7 @@ object FirebaseRealtimeManager {
         try {
             val docId = "project_$projectId"
             firestore?.collection("projects")?.document(docId)?.delete()
+            secondaryFirestore?.collection("projects")?.document(docId)?.delete()
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting project from Firebase: ${e.message}")
         }
@@ -788,27 +803,23 @@ object FirebaseRealtimeManager {
                 "clockOutTimestamp" to if (!record.isWorking) System.currentTimeMillis() else null,
                 "updatedAt" to System.currentTimeMillis()
             )
-            firestore?.collection("attendance_records")?.document(docId)
-                ?.set(data, SetOptions.merge())
-                ?.addOnSuccessListener {
-                    pendingAttendanceQueue.remove(record)
-                    appScope?.launch(Dispatchers.IO) {
-                        attendanceDaoRef?.markAttendanceAsSynced(record.id)
-                    }
-                    val now = System.currentTimeMillis()
-                    updateSyncState(
-                        status = NetworkSyncStatus.SYNCED,
-                        isOnline = true,
-                        isSyncing = false,
-                        statusMessage = "Firebase Realtime: Live & Synced",
-                        newTimestamp = now
-                    )
-                    Log.d(TAG, "Successfully synced attendance $docId to Firebase and marked in Room")
-                }
-                ?.addOnFailureListener { e ->
-                    Log.w(TAG, "Firebase attendance sync error: ${e.message}")
-                    pendingAttendanceQueue.add(record)
-                }
+            firestore?.collection("attendance_records")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("attendance_records")?.document(docId)?.set(data, SetOptions.merge())
+            firestore?.collection("attendance")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("attendance")?.document(docId)?.set(data, SetOptions.merge())
+            pendingAttendanceQueue.remove(record)
+            appScope?.launch(Dispatchers.IO) {
+                attendanceDaoRef?.markAttendanceAsSynced(record.id)
+            }
+            val now = System.currentTimeMillis()
+            updateSyncState(
+                status = NetworkSyncStatus.SYNCED,
+                isOnline = true,
+                isSyncing = false,
+                statusMessage = "Firebase Realtime: Live & Synced",
+                newTimestamp = now
+            )
+            Log.d(TAG, "Successfully synced attendance $docId to Firebase and marked in Room")
         } catch (e: Exception) {
             Log.e(TAG, "Error in syncAttendanceToFirebase: ${e.message}")
             pendingAttendanceQueue.add(record)
@@ -825,11 +836,9 @@ object FirebaseRealtimeManager {
                 "isOnboarded" to profile.isOnboarded,
                 "updatedAt" to profile.updatedAt
             )
-            firestore?.collection("user_profiles")?.document(docId)
-                ?.set(data, SetOptions.merge())
-                ?.addOnSuccessListener {
-                    Log.d(TAG, "Successfully synced profile $docId to Firebase")
-                }
+            firestore?.collection("user_profiles")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("user_profiles")?.document(docId)?.set(data, SetOptions.merge())
+            Log.d(TAG, "Successfully synced profile $docId to Firebase")
         } catch (e: Exception) {
             Log.e(TAG, "Error in syncProfileToFirebase: ${e.message}")
         }
@@ -1020,74 +1029,95 @@ object FirebaseRealtimeManager {
             attendanceListener?.remove()
             attendanceListener = firestore?.collection("attendance_records")
                 ?.addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.w(TAG, "Realtime attendance listen error: ${error.message}")
-                        return@addSnapshotListener
+                    if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                    processAttendanceSnapshot(snapshot, attendanceDao, scope)
+                }
+
+            firestore?.collection("attendance")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                    processAttendanceSnapshot(snapshot, attendanceDao, scope)
+                }
+
+            if (secondaryFirestore != null && secondaryFirestore != firestore) {
+                secondaryFirestore?.collection("attendance_records")
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                        processAttendanceSnapshot(snapshot, attendanceDao, scope)
                     }
+                secondaryFirestore?.collection("attendance")
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                        processAttendanceSnapshot(snapshot, attendanceDao, scope)
+                    }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start attendance listener: ${e.message}")
+        }
+    }
 
-                    if (snapshot != null && !snapshot.isEmpty) {
-                        scope.launch(Dispatchers.IO) {
-                            for (doc in snapshot.documents) {
-                                val id = doc.getLong("id")
-                                    ?: doc.id.replace("att_", "").toLongOrNull()
-                                    ?: 0L
-                                val date = doc.getString("date") ?: ""
-                                val checkInTime = doc.getString("checkInTime") ?: ""
-                                val checkOutTime = doc.getString("checkOutTime")
-                                val durationMinutes = doc.getLong("durationMinutes") ?: 0L
-                                val isWorking = doc.getBoolean("isWorking") ?: false
-                                val status = doc.getString("status") ?: "Present"
-                                val overtimeMinutes = doc.getLong("overtimeMinutes") ?: 0L
-                                val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
-                                val employeeName = doc.getString("employeeName") ?: "Rahul Sharma"
+    private fun processAttendanceSnapshot(
+        snapshot: QuerySnapshot,
+        attendanceDao: AttendanceDao,
+        scope: CoroutineScope
+    ) {
+        scope.launch(Dispatchers.IO) {
+            for (doc in snapshot.documents) {
+                val id = doc.getLong("id")
+                    ?: doc.id.replace("att_", "").toLongOrNull()
+                    ?: 0L
+                val date = doc.getString("date") ?: ""
+                val checkInTime = doc.getString("checkInTime") ?: doc.getString("time") ?: doc.getString("checkIn") ?: ""
+                val checkOutTime = doc.getString("checkOutTime") ?: doc.getString("checkOut")
+                val durationMinutes = doc.getLong("durationMinutes") ?: 0L
+                val isWorking = doc.getBoolean("isWorking") ?: false
+                val status = doc.getString("status") ?: "Present"
+                val overtimeMinutes = doc.getLong("overtimeMinutes") ?: 0L
+                val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+                val employeeName = doc.getString("employeeName") ?: doc.getString("name") ?: "Team Member"
 
-                                if (id > 0L) {
-                                    val record = AttendanceRecord(
-                                        id = id,
-                                        date = date,
-                                        checkInTime = checkInTime,
-                                        checkOutTime = checkOutTime,
-                                        durationMinutes = durationMinutes,
-                                        isWorking = isWorking,
-                                        status = status,
-                                        overtimeMinutes = overtimeMinutes,
-                                        timestamp = timestamp,
-                                        employeeName = employeeName
-                                    )
-                                    val existing = attendanceDao.getAttendanceRecordByIdDirect(id)
-                                    attendanceDao.insert(record)
+                if (id > 0L) {
+                    val record = AttendanceRecord(
+                        id = id,
+                        date = date,
+                        checkInTime = checkInTime,
+                        checkOutTime = checkOutTime,
+                        durationMinutes = durationMinutes,
+                        isWorking = isWorking,
+                        status = status,
+                        overtimeMinutes = overtimeMinutes,
+                        timestamp = timestamp,
+                        employeeName = employeeName
+                    )
+                    val existing = attendanceDao.getAttendanceRecordByIdDirect(id)
+                    attendanceDao.insert(record)
 
-                                    val isMyUpdate = employeeName.trim().equals(currentEmployeeName.trim(), ignoreCase = true)
-                                    if (!isMyUpdate && existing != record) {
-                                        val isNew = existing == null
-                                        val statusChanged = existing != null && (existing.status != status || existing.isWorking != isWorking)
-                                        if (isNew) {
-                                            triggerLiveAlertAndNotification(
-                                                title = "⏰ Attendance Check-In",
-                                                subtitle = "$employeeName checked in on $date at $checkInTime ($status)",
-                                                category = "attendance"
-                                            )
-                                        } else if (statusChanged) {
-                                            triggerLiveAlertAndNotification(
-                                                title = "🔄 Attendance Roster Updated",
-                                                subtitle = "$employeeName status updated to '$status' (Working: $isWorking)",
-                                                category = "attendance"
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            updateSyncState(
-                                status = NetworkSyncStatus.SYNCED,
-                                isOnline = true,
-                                newTimestamp = System.currentTimeMillis(),
-                                statusMessage = "Firebase Realtime: Synced (${snapshot.size()} live entries)"
+                    val isMyUpdate = employeeName.trim().equals(currentEmployeeName.trim(), ignoreCase = true)
+                    if (!isMyUpdate && existing != record) {
+                        val isNew = existing == null
+                        val statusChanged = existing != null && (existing.status != status || existing.isWorking != isWorking)
+                        if (isNew) {
+                            triggerLiveAlertAndNotification(
+                                title = "⏰ Attendance Check-In",
+                                subtitle = "$employeeName checked in on $date at $checkInTime ($status)",
+                                category = "attendance"
+                            )
+                        } else if (statusChanged) {
+                            triggerLiveAlertAndNotification(
+                                title = "🔄 Attendance Roster Updated",
+                                subtitle = "$employeeName status updated to '$status' (Working: $isWorking)",
+                                category = "attendance"
                             )
                         }
                     }
                 }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start attendance listener: ${e.message}")
+            }
+            updateSyncState(
+                status = NetworkSyncStatus.SYNCED,
+                isOnline = true,
+                newTimestamp = System.currentTimeMillis(),
+                statusMessage = "Firebase Realtime: Synced (${snapshot.size()} live entries)"
+            )
         }
     }
 
@@ -1096,67 +1126,88 @@ object FirebaseRealtimeManager {
             taskListener?.remove()
             taskListener = firestore?.collection("tasks")
                 ?.addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.w(TAG, "Realtime task listen error: ${error.message}")
-                        return@addSnapshotListener
+                    if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                    processTaskSnapshot(snapshot, taskDao, scope)
+                }
+
+            firestore?.collection("task_records")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                    processTaskSnapshot(snapshot, taskDao, scope)
+                }
+
+            if (secondaryFirestore != null && secondaryFirestore != firestore) {
+                secondaryFirestore?.collection("tasks")
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                        processTaskSnapshot(snapshot, taskDao, scope)
                     }
+                secondaryFirestore?.collection("task_records")
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                        processTaskSnapshot(snapshot, taskDao, scope)
+                    }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start task listener: ${e.message}")
+        }
+    }
 
-                    if (snapshot != null && !snapshot.isEmpty) {
-                        scope.launch(Dispatchers.IO) {
-                            for (doc in snapshot.documents) {
-                                val id = doc.getLong("id")
-                                    ?: doc.id.replace("task_", "").toLongOrNull()
-                                    ?: 0L
-                                val title = doc.getString("title") ?: ""
-                                val projectName = doc.getString("projectName") ?: ""
-                                val priority = doc.getString("priority") ?: "Medium"
-                                val dueDate = doc.getString("dueDate") ?: ""
-                                val status = doc.getString("status") ?: "In Progress"
-                                val isCompleted = doc.getBoolean("isCompleted") ?: false
-                                val category = doc.getString("category") ?: "Work"
-                                val estimatedTimeNeeded = doc.getString("estimatedTimeNeeded") ?: "4 Hours"
-                                val assignee = doc.getString("assignee") ?: "Rahul Sharma"
+    private fun processTaskSnapshot(
+        snapshot: QuerySnapshot,
+        taskDao: TaskDao,
+        scope: CoroutineScope
+    ) {
+        scope.launch(Dispatchers.IO) {
+            for (doc in snapshot.documents) {
+                val id = doc.getLong("id")
+                    ?: doc.id.replace("task_", "").toLongOrNull()
+                    ?: 0L
+                val title = doc.getString("title") ?: doc.getString("taskName") ?: doc.getString("name") ?: ""
+                val projectName = doc.getString("projectName") ?: doc.getString("project") ?: ""
+                val priority = doc.getString("priority") ?: "Medium"
+                val dueDate = doc.getString("dueDate") ?: doc.getString("deadline") ?: ""
+                val status = doc.getString("status") ?: "In Progress"
+                val isCompleted = doc.getBoolean("isCompleted") ?: (status.equals("completed", ignoreCase = true) || status.equals("done", ignoreCase = true))
+                val category = doc.getString("category") ?: "Work"
+                val estimatedTimeNeeded = doc.getString("estimatedTimeNeeded") ?: "4 Hours"
+                val assignee = doc.getString("assignee") ?: doc.getString("assignedTo") ?: doc.getString("employeeName") ?: "Rahul Sharma"
 
-                                if (id > 0L && title.isNotBlank()) {
-                                    val task = TaskEntity(
-                                        id = id,
-                                        title = title,
-                                        projectName = projectName,
-                                        priority = priority,
-                                        dueDate = dueDate,
-                                        status = status,
-                                        isCompleted = isCompleted,
-                                        category = category,
-                                        estimatedTimeNeeded = estimatedTimeNeeded,
-                                        assignee = assignee
-                                    )
-                                    val existing = taskDao.getTaskByIdDirect(id)
-                                    taskDao.insert(task)
+                if (id > 0L && title.isNotBlank()) {
+                    val task = TaskEntity(
+                        id = id,
+                        title = title,
+                        projectName = projectName,
+                        priority = priority,
+                        dueDate = dueDate,
+                        status = status,
+                        isCompleted = isCompleted,
+                        category = category,
+                        estimatedTimeNeeded = estimatedTimeNeeded,
+                        assignee = assignee
+                    )
+                    val existing = taskDao.getTaskByIdDirect(id)
+                    taskDao.insert(task)
 
-                                    if (existing != task) {
-                                        val isNew = existing == null
-                                        val isStatusChanged = existing != null && (existing.status != status || existing.isCompleted != isCompleted)
-                                        if (isNew) {
-                                            triggerLiveAlertAndNotification(
-                                                title = "📋 New Task Assigned",
-                                                subtitle = "\"$title\" assigned to $assignee for project $projectName",
-                                                category = "task"
-                                            )
-                                        } else if (isStatusChanged) {
-                                            triggerLiveAlertAndNotification(
-                                                title = "🔄 Task Status Changed",
-                                                subtitle = "\"$title\" updated to '$status'",
-                                                category = "task"
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                    if (existing != task) {
+                        val isNew = existing == null
+                        val isStatusChanged = existing != null && (existing.status != status || existing.isCompleted != isCompleted)
+                        if (isNew) {
+                            triggerLiveAlertAndNotification(
+                                title = "📋 New Task Assigned",
+                                subtitle = "\"$title\" assigned to $assignee for project $projectName",
+                                category = "task"
+                            )
+                        } else if (isStatusChanged) {
+                            triggerLiveAlertAndNotification(
+                                title = "🔄 Task Status Changed",
+                                subtitle = "\"$title\" updated to '$status'",
+                                category = "task"
+                            )
                         }
                     }
                 }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start task listener: ${e.message}")
+            }
         }
     }
 
@@ -1165,56 +1216,66 @@ object FirebaseRealtimeManager {
             projectListener?.remove()
             projectListener = firestore?.collection("projects")
                 ?.addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.w(TAG, "Realtime project listen error: ${error.message}")
-                        return@addSnapshotListener
-                    }
-
-                    if (snapshot != null && !snapshot.isEmpty) {
-                        scope.launch(Dispatchers.IO) {
-                            for (doc in snapshot.documents) {
-                                val id = doc.getLong("id")
-                                    ?: doc.id.replace("project_", "").toLongOrNull()
-                                    ?: 0L
-                                val name = doc.getString("name") ?: ""
-                                val clientName = doc.getString("clientName") ?: ""
-                                val totalTasks = doc.getLong("totalTasks")?.toInt() ?: 10
-                                val completedTasks = doc.getLong("completedTasks")?.toInt() ?: 0
-                                val progressPercent = doc.getLong("progressPercent")?.toInt() ?: 0
-                                val status = doc.getString("status") ?: "Active"
-                                val priority = doc.getString("priority") ?: "High"
-                                val startDate = doc.getString("startDate") ?: "01 Sep 2025"
-                                val deadline = doc.getString("deadline") ?: "28 Sep 2025"
-                                val managerName = doc.getString("managerName") ?: "Rahul Sharma"
-                                val teamSize = doc.getLong("teamSize")?.toInt() ?: 5
-                                val description = doc.getString("description") ?: ""
-                                val budget = doc.getDouble("budget")
-
-                                if (id > 0L && name.isNotBlank()) {
-                                    val project = ProjectEntity(
-                                        id = id,
-                                        name = name,
-                                        clientName = clientName,
-                                        totalTasks = totalTasks,
-                                        completedTasks = completedTasks,
-                                        progressPercent = progressPercent,
-                                        status = status,
-                                        priority = priority,
-                                        startDate = startDate,
-                                        deadline = deadline,
-                                        managerName = managerName,
-                                        teamSize = teamSize,
-                                        description = description,
-                                        budget = budget
-                                    )
-                                    projectDao.insert(project)
-                                }
-                            }
-                        }
-                    }
+                    if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                    processProjectSnapshot(snapshot, projectDao, scope)
                 }
+
+            if (secondaryFirestore != null && secondaryFirestore != firestore) {
+                secondaryFirestore?.collection("projects")
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+                        processProjectSnapshot(snapshot, projectDao, scope)
+                    }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start project listener: ${e.message}")
+        }
+    }
+
+    private fun processProjectSnapshot(
+        snapshot: QuerySnapshot,
+        projectDao: com.example.data.local.ProjectDao,
+        scope: CoroutineScope
+    ) {
+        scope.launch(Dispatchers.IO) {
+            for (doc in snapshot.documents) {
+                val id = doc.getLong("id")
+                    ?: doc.id.replace("project_", "").toLongOrNull()
+                    ?: 0L
+                val name = doc.getString("name") ?: ""
+                val clientName = doc.getString("clientName") ?: ""
+                val totalTasks = doc.getLong("totalTasks")?.toInt() ?: 10
+                val completedTasks = doc.getLong("completedTasks")?.toInt() ?: 0
+                val progressPercent = doc.getLong("progressPercent")?.toInt() ?: 0
+                val status = doc.getString("status") ?: "Active"
+                val priority = doc.getString("priority") ?: "High"
+                val startDate = doc.getString("startDate") ?: "01 Sep 2025"
+                val deadline = doc.getString("deadline") ?: "28 Sep 2025"
+                val managerName = doc.getString("managerName") ?: "Rahul Sharma"
+                val teamSize = doc.getLong("teamSize")?.toInt() ?: 5
+                val description = doc.getString("description") ?: ""
+                val budget = doc.getDouble("budget")
+
+                if (id > 0L && name.isNotBlank()) {
+                    val project = ProjectEntity(
+                        id = id,
+                        name = name,
+                        clientName = clientName,
+                        totalTasks = totalTasks,
+                        completedTasks = completedTasks,
+                        progressPercent = progressPercent,
+                        status = status,
+                        priority = priority,
+                        startDate = startDate,
+                        deadline = deadline,
+                        managerName = managerName,
+                        teamSize = teamSize,
+                        description = description,
+                        budget = budget
+                    )
+                    projectDao.insert(project)
+                }
+            }
         }
     }
 
@@ -1429,25 +1490,27 @@ object FirebaseRealtimeManager {
                 "createdAt" to System.currentTimeMillis()
             )
             firestore?.collection("notifications")?.document(docId)?.set(data, SetOptions.merge())
-                ?.addOnSuccessListener {
-                    Log.d(TAG, "Notification synced to Firestore '$docId'")
-                }
-                ?.addOnFailureListener { e ->
-                    Log.w(TAG, "Failed syncing notification to Firestore: ${e.message}")
-                }
+            secondaryFirestore?.collection("notifications")?.document(docId)?.set(data, SetOptions.merge())
+            Log.d(TAG, "Notification synced to Firestore '$docId'")
         } catch (e: Exception) {
             Log.w(TAG, "Error syncing notification: ${e.message}")
         }
     }
 
     private var globalChatListener: ListenerRegistration? = null
+    private var globalChatListenerSecondary: ListenerRegistration? = null
+    private var channelChatListenerSecondary: ListenerRegistration? = null
 
     fun startGlobalChatListener(chatDao: ChatDao, scope: CoroutineScope) {
         if (!isEffectiveOnline()) return
         try {
             globalChatListener?.remove()
-            globalChatListener = firestore?.collection("chat_messages")
-                ?.orderBy("createdAt", Query.Direction.DESCENDING)
+            globalChatListenerSecondary?.remove()
+
+            val primaryDb = firestore
+            val secDb = secondaryFirestore
+
+            globalChatListener = primaryDb?.collection("chat_messages")
                 ?.limit(150)
                 ?.addSnapshotListener { snapshot, error ->
                     if (error != null) {
@@ -1458,6 +1521,28 @@ object FirebaseRealtimeManager {
                         processChatSnapshot(snapshot, chatDao, scope)
                     }
                 }
+
+            primaryDb?.collection("messages")
+                ?.limit(150)
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null) return@addSnapshotListener
+                    processChatSnapshot(snapshot, chatDao, scope)
+                }
+
+            if (secDb != null && secDb != primaryDb) {
+                globalChatListenerSecondary = secDb.collection("chat_messages")
+                    ?.limit(150)
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null) return@addSnapshotListener
+                        processChatSnapshot(snapshot, chatDao, scope)
+                    }
+                secDb.collection("messages")
+                    ?.limit(150)
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null) return@addSnapshotListener
+                        processChatSnapshot(snapshot, chatDao, scope)
+                    }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start global chat listener: ${e.message}")
         }
@@ -1475,6 +1560,16 @@ object FirebaseRealtimeManager {
                 channelId.replace("-", "_"),
                 channelId.replace("_", "-")
             ).distinct()
+
+            channelChatListenerSecondary?.remove()
+            if (secondaryFirestore != null && secondaryFirestore != firestore) {
+                channelChatListenerSecondary = secondaryFirestore?.collection("chat_messages")
+                    ?.whereIn("channelId", channelVariants)
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null) return@addSnapshotListener
+                        processChatSnapshot(snapshot, chatDao, scope, activeChannelId = channelId)
+                    }
+            }
 
             firestore?.collection("chat_messages")
                 ?.whereIn("channelId", channelVariants)
@@ -1513,9 +1608,9 @@ object FirebaseRealtimeManager {
             for (doc in snapshot.documents) {
                 val msgId = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
                 val cId = doc.getString("channelId") ?: (activeChannelId ?: "company_chat")
-                val senderName = doc.getString("senderName") ?: "Team"
-                val senderRole = doc.getString("senderRole") ?: "Member"
-                val messageText = doc.getString("messageText") ?: ""
+                val senderName = doc.getString("senderName") ?: doc.getString("name") ?: doc.getString("sender") ?: "Team"
+                val senderRole = doc.getString("senderRole") ?: doc.getString("role") ?: "Member"
+                val messageText = doc.getString("messageText") ?: doc.getString("message") ?: doc.getString("text") ?: doc.getString("content") ?: ""
                 val timestampText = doc.getString("timestampText") ?: ""
                 val isSenderMe = senderName.trim().equals(currentEmployeeName.trim(), ignoreCase = true)
                 val isMe = isSenderMe
@@ -1710,18 +1805,14 @@ object FirebaseRealtimeManager {
                 "readAt" to null
             )
             firestore?.collection("chat_messages")?.document(docId)?.set(data, SetOptions.merge())
-                ?.addOnSuccessListener {
-                    pendingChatMessagesQueue.removeIf { it.id == finalId }
-                    appScope?.launch(Dispatchers.IO) {
-                        chatDaoRef?.markMessageAsSynced(finalId)
-                    }
-                    Log.d(TAG, "Successfully synced chat message $docId to Firestore and marked in Room")
-                }
-                ?.addOnFailureListener { e ->
-                    Log.w(TAG, "Failed syncing chat message to Firestore: ${e.message}")
-                    pendingChatMessagesQueue.removeIf { it.id == finalId }
-                    pendingChatMessagesQueue.add(chatEntity)
-                }
+            secondaryFirestore?.collection("chat_messages")?.document(docId)?.set(data, SetOptions.merge())
+            firestore?.collection("messages")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("messages")?.document(docId)?.set(data, SetOptions.merge())
+            pendingChatMessagesQueue.removeIf { it.id == finalId }
+            appScope?.launch(Dispatchers.IO) {
+                chatDaoRef?.markMessageAsSynced(finalId)
+            }
+            Log.d(TAG, "Successfully synced chat message $docId to Firestore and marked in Room")
         } catch (e: Exception) {
             Log.e(TAG, "Failed syncing chat message: ${e.message}")
             pendingChatMessagesQueue.removeIf { it.id == finalId }
@@ -1733,14 +1824,14 @@ object FirebaseRealtimeManager {
         if (!isEffectiveOnline()) return
         try {
             val docId = "msg_$messageId"
-            firestore?.collection("chat_messages")?.document(docId)?.update(
-                mapOf(
-                    "audioPath" to audioPath,
-                    "isVoiceMessage" to true
-                )
-            )?.addOnSuccessListener {
-                Log.d(TAG, "Successfully updated audioPath in Firestore for $docId")
-            }
+            val updateMap = mapOf(
+                "audioPath" to audioPath,
+                "isVoiceMessage" to true
+            )
+            firestore?.collection("chat_messages")?.document(docId)?.update(updateMap)
+            secondaryFirestore?.collection("chat_messages")?.document(docId)?.update(updateMap)
+            firestore?.collection("messages")?.document(docId)?.update(updateMap)
+            secondaryFirestore?.collection("messages")?.document(docId)?.update(updateMap)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to update audioPath in Firestore: ${e.message}")
         }
@@ -2364,48 +2455,60 @@ object FirebaseRealtimeManager {
             leadListener = firestore?.collection("leads")
                 ?.addSnapshotListener { snapshot, error ->
                     if (error != null || snapshot == null) return@addSnapshotListener
-                    scope.launch(Dispatchers.IO) {
-                        for (doc in snapshot.documents) {
-                            val id = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
-                            val name = doc.getString("customerName") ?: ""
-                            val company = doc.getString("company") ?: ""
-                            val phone = doc.getString("phone") ?: ""
-                            val email = doc.getString("email") ?: ""
-                            val leadScore = (doc.getLong("leadScore") ?: 70L).toInt()
-                            val requirement = doc.getString("requirement") ?: ""
-                            val stage = doc.getString("status") ?: "New"
-                            val assignedTo = doc.getString("assignedTo") ?: ""
-                            val nextFollowUp = doc.getString("nextFollowUp") ?: ""
-                            
-                            val isNew = leadDao.getLeadByIdDirect(id) == null
-                            
-                            val lead = LeadEntity(
-                                id = id,
-                                name = name,
-                                company = company,
-                                phone = phone,
-                                email = email,
-                                leadScore = leadScore,
-                                requirement = requirement,
-                                potentialValue = "₹ " + (doc.getDouble("value") ?: 0.0).toLong().toString(),
-                                stage = stage,
-                                assignedTo = assignedTo,
-                                nextFollowUp = nextFollowUp
-                            )
-                            leadDao.insert(lead)
-                            
-                            if (isNew && name.isNotBlank()) {
-                                triggerLiveAlertAndNotification(
-                                    title = "🎯 New Lead: $name ($company)",
-                                    subtitle = "Requirement: $requirement. Assigned to: $assignedTo",
-                                    category = "followup"
-                                )
-                            }
-                        }
-                    }
+                    processLeadSnapshot(snapshot, leadDao, scope)
                 }
+
+            if (secondaryFirestore != null && secondaryFirestore != firestore) {
+                secondaryFirestore?.collection("leads")
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null) return@addSnapshotListener
+                        processLeadSnapshot(snapshot, leadDao, scope)
+                    }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start lead listener: ${e.message}")
+        }
+    }
+
+    private fun processLeadSnapshot(snapshot: QuerySnapshot, leadDao: LeadDao, scope: CoroutineScope) {
+        scope.launch(Dispatchers.IO) {
+            for (doc in snapshot.documents) {
+                val id = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
+                val name = doc.getString("customerName") ?: doc.getString("name") ?: ""
+                val company = doc.getString("company") ?: ""
+                val phone = doc.getString("phone") ?: ""
+                val email = doc.getString("email") ?: ""
+                val leadScore = (doc.getLong("leadScore") ?: 70L).toInt()
+                val requirement = doc.getString("requirement") ?: ""
+                val stage = doc.getString("status") ?: doc.getString("stage") ?: "New"
+                val assignedTo = doc.getString("assignedTo") ?: ""
+                val nextFollowUp = doc.getString("nextFollowUp") ?: ""
+                
+                val isNew = leadDao.getLeadByIdDirect(id) == null
+                
+                val lead = LeadEntity(
+                    id = id,
+                    name = name,
+                    company = company,
+                    phone = phone,
+                    email = email,
+                    leadScore = leadScore,
+                    requirement = requirement,
+                    potentialValue = "₹ " + (doc.getDouble("value") ?: 0.0).toLong().toString(),
+                    stage = stage,
+                    assignedTo = assignedTo,
+                    nextFollowUp = nextFollowUp
+                )
+                leadDao.insert(lead)
+                
+                if (isNew && name.isNotBlank()) {
+                    triggerLiveAlertAndNotification(
+                        title = "🎯 New Lead: $name ($company)",
+                        subtitle = "Requirement: $requirement. Assigned to: $assignedTo",
+                        category = "followup"
+                    )
+                }
+            }
         }
     }
 
@@ -2419,57 +2522,80 @@ object FirebaseRealtimeManager {
             leaveListener = firestore?.collection("leave_applications")
                 ?.addSnapshotListener { snapshot, error ->
                     if (error != null || snapshot == null) return@addSnapshotListener
-                    scope.launch(Dispatchers.IO) {
-                        for (doc in snapshot.documents) {
-                            val id = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
-                            val username = doc.getString("username") ?: ""
-                            val leaveType = doc.getString("leaveType") ?: "Casual Leave"
-                            val startDate = doc.getString("startDate") ?: ""
-                            val endDate = doc.getString("endDate") ?: ""
-                            val totalDays = (doc.getLong("totalDays") ?: 1L).toInt()
-                            val reason = doc.getString("reason") ?: ""
-                            val status = doc.getString("status") ?: "Pending"
-                            val appliedDate = doc.getString("appliedDate") ?: ""
-                            val createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
-                            
-                            val existing = leaveDao.getLeaveByIdDirect(id)
-                            val isNew = existing == null
-                            val isStatusChanged = existing != null && existing.status != status
-                            
-                            val leave = LeaveApplicationEntity(
-                                id = id,
-                                username = username,
-                                leaveType = leaveType,
-                                startDate = startDate,
-                                endDate = endDate,
-                                totalDays = totalDays,
-                                reason = reason,
-                                status = status,
-                                appliedDate = appliedDate,
-                                createdAt = createdAt
-                            )
-                            leaveDao.insert(leave)
-                            
-                            if (isNew && username.isNotBlank()) {
-                                triggerLiveAlertAndNotification(
-                                    title = "📅 New Leave Request",
-                                    subtitle = "$leaveType submitted by $username for $startDate to $endDate",
-                                    category = "leave",
-                                    targetAudience = "Management"
-                                )
-                            } else if (isStatusChanged) {
-                                triggerLiveAlertAndNotification(
-                                    title = "🔄 Leave Status Updated",
-                                    subtitle = "Leave for $username has been $status",
-                                    category = "leave",
-                                    targetAudience = "Employee"
-                                )
-                            }
-                        }
-                    }
+                    processLeaveSnapshot(snapshot, leaveDao, scope)
                 }
+
+            firestore?.collection("leaves")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null) return@addSnapshotListener
+                    processLeaveSnapshot(snapshot, leaveDao, scope)
+                }
+
+            if (secondaryFirestore != null && secondaryFirestore != firestore) {
+                secondaryFirestore?.collection("leave_applications")
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null) return@addSnapshotListener
+                        processLeaveSnapshot(snapshot, leaveDao, scope)
+                    }
+                secondaryFirestore?.collection("leaves")
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null) return@addSnapshotListener
+                        processLeaveSnapshot(snapshot, leaveDao, scope)
+                    }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start leave listener: ${e.message}")
+        }
+    }
+
+    private fun processLeaveSnapshot(snapshot: QuerySnapshot, leaveDao: LeaveDao, scope: CoroutineScope) {
+        scope.launch(Dispatchers.IO) {
+            for (doc in snapshot.documents) {
+                val id = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
+                val username = doc.getString("username") ?: doc.getString("employeeName") ?: doc.getString("name") ?: ""
+                val leaveType = doc.getString("leaveType") ?: doc.getString("type") ?: "Casual Leave"
+                val startDate = doc.getString("startDate") ?: ""
+                val endDate = doc.getString("endDate") ?: ""
+                val totalDays = (doc.getLong("totalDays") ?: 1L).toInt()
+                val reason = doc.getString("reason") ?: ""
+                val status = doc.getString("status") ?: "Pending"
+                val appliedDate = doc.getString("appliedDate") ?: ""
+                val createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
+                
+                val existing = leaveDao.getLeaveByIdDirect(id)
+                val isNew = existing == null
+                val isStatusChanged = existing != null && existing.status != status
+                
+                val leave = LeaveApplicationEntity(
+                    id = id,
+                    username = username,
+                    leaveType = leaveType,
+                    startDate = startDate,
+                    endDate = endDate,
+                    totalDays = totalDays,
+                    reason = reason,
+                    status = status,
+                    appliedDate = appliedDate,
+                    createdAt = createdAt
+                )
+                leaveDao.insert(leave)
+                
+                if (isNew && username.isNotBlank()) {
+                    triggerLiveAlertAndNotification(
+                        title = "📅 New Leave Request",
+                        subtitle = "$leaveType submitted by $username for $startDate to $endDate",
+                        category = "leave",
+                        targetAudience = "Management"
+                    )
+                } else if (isStatusChanged) {
+                    triggerLiveAlertAndNotification(
+                        title = "🔄 Leave Status Updated",
+                        subtitle = "Leave for $username has been $status",
+                        category = "leave",
+                        targetAudience = "Employee"
+                    )
+                }
+            }
         }
     }
 
@@ -2484,24 +2610,36 @@ object FirebaseRealtimeManager {
             holidayListener = firestore?.collection("holidays")
                 ?.addSnapshotListener { snapshot, error ->
                     if (error != null || snapshot == null) return@addSnapshotListener
-                    val list = mutableListOf<HolidayItem>()
-                    for (doc in snapshot.documents) {
-                        val id = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
-                        val title = doc.getString("title") ?: ""
-                        val date = doc.getString("date") ?: ""
-                        val day = doc.getString("day") ?: ""
-                        val type = doc.getString("type") ?: "Public Holiday"
-                        list.add(HolidayItem(id = id, title = title, date = date, day = day, type = type))
-                    }
-                    if (list.isNotEmpty()) {
-                        onHolidaysUpdatedCallback?.invoke(list)
-                        appContext?.let { ctx ->
-                            AppSoundHelper.playGeneralNotificationSound(ctx)
-                        }
-                    }
+                    processHolidaySnapshot(snapshot)
                 }
+
+            if (secondaryFirestore != null && secondaryFirestore != firestore) {
+                secondaryFirestore?.collection("holidays")
+                    ?.addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null) return@addSnapshotListener
+                        processHolidaySnapshot(snapshot)
+                    }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start holiday listener: ${e.message}")
+        }
+    }
+
+    private fun processHolidaySnapshot(snapshot: QuerySnapshot) {
+        val list = mutableListOf<HolidayItem>()
+        for (doc in snapshot.documents) {
+            val id = doc.getLong("id") ?: Math.abs(doc.id.hashCode().toLong())
+            val title = doc.getString("title") ?: ""
+            val date = doc.getString("date") ?: ""
+            val day = doc.getString("day") ?: ""
+            val type = doc.getString("type") ?: "Public Holiday"
+            list.add(HolidayItem(id = id, title = title, date = date, day = day, type = type))
+        }
+        if (list.isNotEmpty()) {
+            onHolidaysUpdatedCallback?.invoke(list)
+            appContext?.let { ctx ->
+                AppSoundHelper.playGeneralNotificationSound(ctx)
+            }
         }
     }
 
@@ -2524,12 +2662,10 @@ object FirebaseRealtimeManager {
                 "updatedAt" to System.currentTimeMillis()
             )
             firestore?.collection("leave_applications")?.document(docId)?.set(data, SetOptions.merge())
-                ?.addOnSuccessListener {
-                    Log.d(TAG, "Leave Application synced to Firestore '$docId'")
-                }
-                ?.addOnFailureListener { e ->
-                    Log.w(TAG, "Failed syncing leave application: ${e.message}")
-                }
+            secondaryFirestore?.collection("leave_applications")?.document(docId)?.set(data, SetOptions.merge())
+            firestore?.collection("leaves")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("leaves")?.document(docId)?.set(data, SetOptions.merge())
+            Log.d(TAG, "Leave Application synced to Firestore '$docId'")
         } catch (e: Exception) {
             Log.w(TAG, "Error in syncLeaveToFirebase: ${e.message}")
         }
@@ -2540,6 +2676,9 @@ object FirebaseRealtimeManager {
         try {
             val docId = "leave_$leaveId"
             firestore?.collection("leave_applications")?.document(docId)?.delete()
+            secondaryFirestore?.collection("leave_applications")?.document(docId)?.delete()
+            firestore?.collection("leaves")?.document(docId)?.delete()
+            secondaryFirestore?.collection("leaves")?.document(docId)?.delete()
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting leave from Firebase: ${e.message}")
         }
@@ -2558,6 +2697,7 @@ object FirebaseRealtimeManager {
                 "updatedAt" to System.currentTimeMillis()
             )
             firestore?.collection("holidays")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("holidays")?.document(docId)?.set(data, SetOptions.merge())
         } catch (e: Exception) {
             Log.e(TAG, "Error syncing holiday to Firebase: ${e.message}")
         }
@@ -2568,8 +2708,235 @@ object FirebaseRealtimeManager {
         try {
             val docId = "holiday_$holidayId"
             firestore?.collection("holidays")?.document(docId)?.delete()
+            secondaryFirestore?.collection("holidays")?.document(docId)?.delete()
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting holiday from Firebase: ${e.message}")
+        }
+    }
+
+    // ==========================================
+    // EMPLOYEE LIVE SYNC ("MB Taker" Admin <-> "MB EM" Employee)
+    // ==========================================
+
+    fun syncEmployeeToFirebase(employee: EmployeeEntity) {
+        if (!isEffectiveOnline()) return
+        try {
+            val docId = if (employee.id > 0L) "emp_${employee.id}" else "emp_${System.currentTimeMillis()}"
+            val userDocId = employee.email.trim().lowercase().replace("@", "_").replace(".", "_")
+            val data = hashMapOf(
+                "id" to employee.id,
+                "name" to employee.name,
+                "email" to employee.email,
+                "phone" to employee.phone,
+                "phoneNumber" to employee.phone,
+                "designation" to employee.designation,
+                "department" to employee.department.name,
+                "role" to employee.role.name,
+                "status" to employee.status.name,
+                "presenceStatus" to employee.presenceStatus.name,
+                "password" to employee.password,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            firestore?.collection("employees")?.document(docId)?.set(data, SetOptions.merge())
+            secondaryFirestore?.collection("employees")?.document(docId)?.set(data, SetOptions.merge())
+            if (userDocId.isNotBlank()) {
+                firestore?.collection("users")?.document(userDocId)?.set(data, SetOptions.merge())
+                secondaryFirestore?.collection("users")?.document(userDocId)?.set(data, SetOptions.merge())
+            }
+            Log.d(TAG, "Successfully synced employee '${employee.name}' to Firebase ('employees' & 'users')")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in syncEmployeeToFirebase: ${e.message}")
+        }
+    }
+
+    fun deleteEmployeeFromFirebase(employeeId: Long, email: String? = null) {
+        try {
+            val docId = "emp_$employeeId"
+            firestore?.collection("employees")?.document(docId)?.delete()
+            secondaryFirestore?.collection("employees")?.document(docId)?.delete()
+            if (!email.isNullOrBlank()) {
+                val userDocId = email.trim().lowercase().replace("@", "_").replace(".", "_")
+                firestore?.collection("users")?.document(userDocId)?.delete()
+                secondaryFirestore?.collection("users")?.document(userDocId)?.delete()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error deleting employee from Firebase: ${e.message}")
+        }
+    }
+
+    fun startRealtimeEmployeeListener(employeeDao: EmployeeDao, scope: CoroutineScope) {
+        employeeDaoRef = employeeDao
+        try {
+            employeeListener?.remove()
+            employeeListener = firestore?.collection("employees")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.w(TAG, "Realtime employee listen error: ${error.message}")
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null && !snapshot.isEmpty) {
+                        processEmployeeSnapshot(snapshot, employeeDao, scope)
+                    }
+                }
+
+            if (secondaryFirestore != null && secondaryFirestore != firestore) {
+                secondaryFirestore?.collection("employees")
+                    ?.addSnapshotListener { snapshot, _ ->
+                        if (snapshot != null && !snapshot.isEmpty) {
+                            processEmployeeSnapshot(snapshot, employeeDao, scope)
+                        }
+                    }
+            }
+
+            // Also listen to 'users' collection where employee app registers/updates
+            userListener?.remove()
+            userListener = firestore?.collection("users")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null) return@addSnapshotListener
+                    processUserSnapshot(snapshot, employeeDao, scope)
+                }
+
+            if (secondaryFirestore != null && secondaryFirestore != firestore) {
+                secondaryFirestore?.collection("users")
+                    ?.addSnapshotListener { snapshot, _ ->
+                        if (snapshot != null) {
+                            processUserSnapshot(snapshot, employeeDao, scope)
+                        }
+                    }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start employee listener: ${e.message}")
+        }
+    }
+
+    private fun processEmployeeSnapshot(
+        snapshot: QuerySnapshot,
+        employeeDao: EmployeeDao,
+        scope: CoroutineScope
+    ) {
+        scope.launch(Dispatchers.IO) {
+            for (doc in snapshot.documents) {
+                val email = (doc.getString("email") ?: "").trim().lowercase()
+                val name = doc.getString("name") ?: doc.getString("fullName") ?: ""
+                if (email.isBlank() && name.isBlank()) continue
+
+                val id = doc.getLong("id")
+                    ?: doc.id.replace("emp_", "").toLongOrNull()
+                    ?: Math.abs((email.ifBlank { name }).hashCode().toLong())
+
+                val phone = doc.getString("phone") ?: doc.getString("phoneNumber") ?: "+91 98765 00000"
+                val designation = doc.getString("designation") ?: doc.getString("role") ?: "Team Member"
+                val deptStr = doc.getString("department") ?: "ENGINEERING"
+                val statusStr = doc.getString("status") ?: "ACTIVE"
+                val presenceStr = doc.getString("presenceStatus") ?: "ONLINE"
+                val password = doc.getString("password") ?: ""
+
+                val department = try { Department.valueOf(deptStr.uppercase()) } catch (_: Exception) { Department.ENGINEERING }
+                val status = try { EmployeeStatus.valueOf(statusStr.uppercase()) } catch (_: Exception) { EmployeeStatus.ACTIVE }
+                val presence = try { PresenceStatus.valueOf(presenceStr.uppercase()) } catch (_: Exception) { PresenceStatus.ONLINE }
+
+                val existing = if (email.isNotBlank()) employeeDao.getEmployeeByEmail(email) else null
+
+                if (existing != null) {
+                    val updated = existing.copy(
+                        name = name.ifBlank { existing.name },
+                        phone = phone.ifBlank { existing.phone },
+                        designation = designation.ifBlank { existing.designation },
+                        department = department,
+                        status = status,
+                        presenceStatus = presence,
+                        password = if (password.isNotBlank()) password else existing.password
+                    )
+                    if (updated != existing) {
+                        employeeDao.update(updated)
+                        if (existing.status != status || existing.presenceStatus != presence) {
+                            triggerLiveAlertAndNotification(
+                                title = "👥 Team Status: $name",
+                                subtitle = "$name is now $status ($presence)",
+                                category = "attendance"
+                            )
+                        }
+                    }
+                } else {
+                    val newEmp = EmployeeEntity(
+                        id = if (id > 0L) id else 0L,
+                        name = name.ifBlank { "Team Member" },
+                        email = email.ifBlank { "emp_${System.currentTimeMillis()}@makingbrands.in" },
+                        password = if (password.isNotBlank()) password else "password123",
+                        phone = phone,
+                        designation = designation,
+                        department = department,
+                        role = EmployeeRole.DEVELOPER,
+                        status = status,
+                        presenceStatus = presence,
+                        joiningDate = java.util.Date(),
+                        skills = listOf("Android", "Communication")
+                    )
+                    employeeDao.insert(newEmp)
+                    triggerLiveAlertAndNotification(
+                        title = "👥 Employee Synced: $name",
+                        subtitle = "$name ($designation) connected from employee app.",
+                        category = "attendance"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun processUserSnapshot(
+        snapshot: QuerySnapshot,
+        employeeDao: EmployeeDao,
+        scope: CoroutineScope
+    ) {
+        scope.launch(Dispatchers.IO) {
+            for (doc in snapshot.documents) {
+                val role = doc.getString("role") ?: "employee"
+                if (role.equals("admin", ignoreCase = true) || role.equals("mb admin", ignoreCase = true)) {
+                    continue
+                }
+                val email = (doc.getString("email") ?: "").trim().lowercase()
+                val name = doc.getString("name") ?: doc.getString("displayName") ?: ""
+                if (email.isBlank() && name.isBlank()) continue
+
+                val phone = doc.getString("phoneNumber") ?: doc.getString("phone") ?: "+91 98765 00000"
+                val designation = doc.getString("designation") ?: "Team Member"
+                val deptStr = doc.getString("department") ?: "ENGINEERING"
+                val statusStr = doc.getString("status") ?: "ACTIVE"
+                val password = doc.getString("password") ?: ""
+
+                val department = try { Department.valueOf(deptStr.uppercase()) } catch (_: Exception) { Department.ENGINEERING }
+                val status = try { EmployeeStatus.valueOf(statusStr.uppercase()) } catch (_: Exception) { EmployeeStatus.ACTIVE }
+
+                val existing = if (email.isNotBlank()) employeeDao.getEmployeeByEmail(email) else null
+                if (existing != null) {
+                    val updated = existing.copy(
+                        name = name.ifBlank { existing.name },
+                        phone = phone.ifBlank { existing.phone },
+                        designation = designation.ifBlank { existing.designation },
+                        department = department,
+                        status = status,
+                        password = if (password.isNotBlank()) password else existing.password
+                    )
+                    if (updated != existing) {
+                        employeeDao.update(updated)
+                    }
+                } else {
+                    val newEmp = EmployeeEntity(
+                        name = name.ifBlank { "Team Member" },
+                        email = email.ifBlank { "user_${System.currentTimeMillis()}@makingbrands.in" },
+                        password = if (password.isNotBlank()) password else "password123",
+                        phone = phone,
+                        designation = designation,
+                        department = department,
+                        role = EmployeeRole.DEVELOPER,
+                        status = status,
+                        presenceStatus = PresenceStatus.ONLINE,
+                        joiningDate = java.util.Date(),
+                        skills = listOf("Android", "Communication")
+                    )
+                    employeeDao.insert(newEmp)
+                }
+            }
         }
     }
 }

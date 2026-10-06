@@ -10,6 +10,9 @@ import android.util.Log
 import android.speech.tts.TextToSpeech
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
 /**
@@ -26,34 +29,75 @@ class MiloVoiceHelper(
 
     companion object {
         private const val TAG = "MiloVoiceHelper"
+        private const val PREFS_NAME = "mb_traker_app_prefs"
+        private const val KEY_MUTED = "milo_voice_muted"
+        private const val KEY_VOICE_OPT = "milo_voice_option"
+
         private var tts: TextToSpeech? = null
         private var isTtsInitialized = false
         private var pendingTextToSpeak: String? = null
 
+        private val _isMutedState = MutableStateFlow(false)
+        val isMutedFlow: StateFlow<Boolean> = _isMutedState.asStateFlow()
+
+        fun init(context: Context) {
+            val appContext = context.applicationContext
+            val muted = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_MUTED, false)
+            _isMutedState.value = muted
+            Log.d(TAG, "MiloVoiceHelper initialized with isMuted = $muted")
+        }
+
         fun isMuted(context: Context): Boolean {
-            return context.getSharedPreferences("mb_traker_app_prefs", Context.MODE_PRIVATE)
-                .getBoolean("milo_voice_muted", false)
+            val appContext = context.applicationContext
+            val muted = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_MUTED, false)
+            _isMutedState.value = muted
+            return muted
         }
 
         fun setMuted(context: Context, muted: Boolean) {
-            context.getSharedPreferences("mb_traker_app_prefs", Context.MODE_PRIVATE)
+            val appContext = context.applicationContext
+            appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
-                .putBoolean("milo_voice_muted", muted)
+                .putBoolean(KEY_MUTED, muted)
                 .apply()
+            _isMutedState.value = muted
+            Log.d(TAG, "Milo voice mute state updated to: $muted")
+            if (muted) {
+                stopSpeaking()
+                pendingTextToSpeak = null
+            }
+        }
+
+        fun toggleMute(context: Context): Boolean {
+            val currentMuted = isMuted(context)
+            val newMuted = !currentMuted
+            setMuted(context, newMuted)
+            return newMuted
+        }
+
+        fun isSpeaking(): Boolean {
+            return try {
+                tts?.isSpeaking == true
+            } catch (_: Exception) {
+                false
+            }
         }
 
         fun getVoiceOption(context: Context): String {
-            return context.getSharedPreferences("mb_traker_app_prefs", Context.MODE_PRIVATE)
-                .getString("milo_voice_option", "INDIAN_MALE") ?: "INDIAN_MALE"
+            return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(KEY_VOICE_OPT, "INDIAN_MALE") ?: "INDIAN_MALE"
         }
 
         fun setVoiceOption(context: Context, option: String) {
-            context.getSharedPreferences("mb_traker_app_prefs", Context.MODE_PRIVATE)
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
-                .putString("milo_voice_option", option)
+                .putString(KEY_VOICE_OPT, option)
                 .apply()
             // Reset TTS so that on next initialization, the new voice is loaded
             try {
+                tts?.stop()
                 tts?.shutdown()
             } catch (e: Exception) {
                 Log.e(TAG, "Error shutting down TTS during voice switch", e)
@@ -128,13 +172,22 @@ class MiloVoiceHelper(
                         tts?.setSpeechRate(1.02f)
                         isTtsInitialized = true
                         Log.d(TAG, "Milo TextToSpeech ($voiceOpt) initialized successfully")
-                        pendingTextToSpeak?.let { text ->
-                            speakText(context, text)
-                            pendingTextToSpeak = null
+                        
+                        // Speak pending text ONLY IF NOT MUTED
+                        if (!isMuted(context)) {
+                            pendingTextToSpeak?.let { text ->
+                                try {
+                                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error speaking pending text", e)
+                                }
+                            }
                         }
+                        pendingTextToSpeak = null
                         onReady?.invoke()
                     } else {
                         Log.w(TAG, "Milo TextToSpeech failed initialization with status $status")
+                        pendingTextToSpeak = null
                     }
                 }
             } else if (isTtsInitialized) {
@@ -151,6 +204,12 @@ class MiloVoiceHelper(
             callLogsCount: Int,
             force: Boolean = false
         ) {
+            if (isMuted(context)) {
+                Log.d(TAG, "Milo voice is muted, skipping daily briefing.")
+                stopSpeaking()
+                return
+            }
+
             val name = if (employeeName.isNotBlank() && !employeeName.equals("User", true)) employeeName else "Team Member"
             val briefingMessage = buildString {
                 append("Good day, $name! ")
@@ -175,30 +234,28 @@ class MiloVoiceHelper(
             speakText(context, briefingMessage)
         }
 
-         fun speakText(context: Context, text: String) {
-             if (isMuted(context)) {
-                 Log.d(TAG, "Milo voice is muted, skipping speakText: $text")
-                 return
-             }
-             if (tts == null || !isTtsInitialized) {
-                 pendingTextToSpeak = text
-                 initTts(context) {
-                     try {
-                         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
-                     } catch (e: Exception) {
-                         Log.e(TAG, "Error speaking text", e)
-                     }
-                 }
-             } else {
-                 try {
-                     tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
-                 } catch (e: Exception) {
-                     Log.e(TAG, "Error invoking tts.speak", e)
-                 }
-             }
+        fun speakText(context: Context, text: String) {
+            if (isMuted(context)) {
+                Log.d(TAG, "Milo voice is muted, skipping speakText: $text")
+                stopSpeaking()
+                pendingTextToSpeak = null
+                return
+            }
+
+            if (tts == null || !isTtsInitialized) {
+                pendingTextToSpeak = text
+                initTts(context)
+            } else {
+                try {
+                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "milo_speech_${System.currentTimeMillis()}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error invoking tts.speak", e)
+                }
+            }
         }
 
         fun stopSpeaking() {
+            pendingTextToSpeak = null
             try {
                 tts?.stop()
             } catch (e: Exception) {

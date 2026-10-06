@@ -101,6 +101,7 @@ fun MiloSmartAssistantSheet(
     val allCallLogs by viewModel.callLogs.collectAsState()
     val attendanceRecord by viewModel.latestAttendance.collectAsState()
     val miloState by viewModel.miloViewModel.state.collectAsState()
+    val isMiloMuted by MiloVoiceHelper.isMutedFlow.collectAsState()
 
     val (greetingTitle, greetingSubtitle) = remember(employeeName) {
         getTimeBasedGreeting(employeeName)
@@ -438,18 +439,48 @@ fun MiloSmartAssistantSheet(
                         }
                     }
 
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(Color(0xFFF1F5F9), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                val currentMuted = MiloVoiceHelper.isMuted(context)
+                                if (currentMuted) {
+                                    MiloVoiceHelper.setMuted(context, false)
+                                    MiloHaptics.performButtonTap(context)
+                                    android.widget.Toast.makeText(context, "🔊 Milo voice unmuted", android.widget.Toast.LENGTH_SHORT).show()
+                                    MiloVoiceHelper.speakText(context, "Milo voice is ready.")
+                                } else {
+                                    MiloVoiceHelper.setMuted(context, true)
+                                    MiloHaptics.performButtonTap(context)
+                                    android.widget.Toast.makeText(context, "🔇 Milo voice muted", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(if (isMiloMuted) Color(0xFFFEF2F2) else Color(0xFFF1F5F9), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = if (isMiloMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                contentDescription = if (isMiloMuted) "Unmute Milo Voice" else "Mute Milo Voice",
+                                tint = if (isMiloMuted) Color(0xFFEF4444) else TextPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color(0xFFF1F5F9), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }

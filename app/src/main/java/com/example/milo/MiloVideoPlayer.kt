@@ -699,7 +699,7 @@ fun MiloAssistantCard(
         defaultStatus.ifBlank { "Ready for duty! Toggle attendance ON or tap to ask Milo anything." }
     }
 
-    var isMiloMuted by remember { mutableStateOf(com.example.milo.MiloVoiceHelper.isMuted(context)) }
+    val isMiloMuted by com.example.milo.MiloVoiceHelper.isMutedFlow.collectAsState()
     var showTemplatesDialog by remember { mutableStateOf(false) }
 
     if (showTemplatesDialog && viewModel != null) {
@@ -850,10 +850,17 @@ fun MiloAssistantCard(
                             modifier = Modifier
                                 .size(width = 46.dp, height = 42.dp)
                                 .clickable {
-                                    val nextState = !isMiloMuted
-                                    isMiloMuted = nextState
-                                    com.example.milo.MiloVoiceHelper.setMuted(context, nextState)
-                                    com.example.util.MiloHaptics.performButtonTap(context)
+                                    val currentMuted = com.example.milo.MiloVoiceHelper.isMuted(context)
+                                    if (currentMuted) {
+                                        com.example.milo.MiloVoiceHelper.setMuted(context, false)
+                                        com.example.util.MiloHaptics.performButtonTap(context)
+                                        android.widget.Toast.makeText(context, "🔊 Milo voice unmuted", android.widget.Toast.LENGTH_SHORT).show()
+                                        com.example.milo.MiloVoiceHelper.speakText(context, "Milo voice is ready.")
+                                    } else {
+                                        com.example.milo.MiloVoiceHelper.setMuted(context, true)
+                                        com.example.util.MiloHaptics.performButtonTap(context)
+                                        android.widget.Toast.makeText(context, "🔇 Milo voice muted", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                         ) {
                             Box(contentAlignment = Alignment.Center) {

@@ -779,6 +779,150 @@ fun AdminBroadcastScreen(
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        HorizontalDivider(color = Color(0xFFE2E8F0))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = BrandBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("🔔 CUSTOM NOTIFICATION SOUNDS", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = BrandBlue)
+                        }
+                        Text("Assign unique audio alerts to each category. Tap a preset to preview & save.", fontSize = 10.sp, color = TextSecondary)
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        val soundCategories = listOf(
+                            "task" to "Task & Sprint Milestones",
+                            "lead" to "CRM Leads",
+                            "attendance" to "Attendance Logs",
+                            "chat" to "Team Chat Discussions",
+                            "system" to "Other Alerts & Broadcasts"
+                        )
+
+                        soundCategories.forEach { (catId, catLabel) ->
+                            val selectedPreset = remember(refreshTogglesKey) { com.example.util.AppPreferences.getNotificationSoundPreset(context, catId) }
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                Text(catLabel, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = TextPrimary)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(com.example.util.AppSoundType.values()) { preset ->
+                                        val isPresetSelected = selectedPreset == preset.name
+                                        FilterChip(
+                                            selected = isPresetSelected,
+                                            onClick = {
+                                                com.example.util.AppPreferences.setNotificationSoundPreset(context, catId, preset.name)
+                                                com.example.util.AppSoundHelper.playPresetSound(context, preset.name)
+                                                refreshTogglesKey++
+                                            },
+                                            label = { Text(preset.displayName, fontSize = 9.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = BrandBlue,
+                                                selectedLabelColor = Color.White,
+                                                containerColor = Color(0xFFF1F5F9),
+                                                labelColor = Color(0xFF475569)
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.height(26.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        HorizontalDivider(color = Color(0xFFE2E8F0))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CloudUpload,
+                                contentDescription = null,
+                                tint = BrandBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("🚀 SYSTEM VERSION CONTROL & UPDATE HUB", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = BrandBlue)
+                        }
+                        Text("Simulate or publish a secure application update. Newly pushed versions will show an update prompt on all active employee terminals instantly.", fontSize = 10.sp, color = TextSecondary)
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        val curVer by viewModel.currentVersion.collectAsState()
+                        val latestVer by viewModel.latestVersion.collectAsState()
+                        var targetVersionText by remember { mutableStateOf("") }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("Local Version", fontSize = 10.sp, color = TextSecondary)
+                                Text("v$curVer", fontSize = 14.sp, fontWeight = FontWeight.Black, color = TextPrimary)
+                            }
+                            Column {
+                                Text("Published Version", fontSize = 10.sp, color = TextSecondary)
+                                Text("v$latestVer", fontSize = 14.sp, fontWeight = FontWeight.Black, color = Color(0xFF16A34A))
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    viewModel.triggerLocalUpdatePrompt()
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEFF6FF), contentColor = BrandBlue),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("Test Locally", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = targetVersionText,
+                                onValueChange = { targetVersionText = it.take(8) },
+                                placeholder = { Text("e.g. 1.2", fontSize = 11.sp) },
+                                label = { Text("New Version Name", fontSize = 9.sp) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f).height(48.dp)
+                            )
+
+                            Button(
+                                onClick = {
+                                    if (targetVersionText.isNotBlank()) {
+                                        viewModel.adminPublishUpdate(targetVersionText.trim())
+                                        com.example.util.AppSoundHelper.playProjectDoneSound(context)
+                                        Toast.makeText(context, "🚀 Upgrade package published as v${targetVersionText.trim()}!", Toast.LENGTH_LONG).show()
+                                        targetVersionText = ""
+                                    } else {
+                                        Toast.makeText(context, "Please enter a valid version name!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                modifier = Modifier.height(40.dp)
+                            ) {
+                                Icon(Icons.Default.Publish, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Push Update", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }

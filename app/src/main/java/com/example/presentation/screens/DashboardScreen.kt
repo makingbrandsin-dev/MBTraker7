@@ -37,6 +37,12 @@ import com.example.domain.milo.MiloViewModel
 import com.example.presentation.components.banner.OfferBannerSlider
 import com.example.presentation.components.milo.MiloCharacter
 import com.example.ui.components.RechartsTrendDashboardWidget
+import com.example.ui.components.PerformanceTrendsDashboardWidget
+import com.example.ui.components.ScrollableActivityFeedWidget
+import com.example.ui.components.DailyActivitySummaryWidget
+import com.example.ui.components.MiloAdminCopilotWidget
+import com.example.ui.components.SmartAttendanceGpsCard
+import com.example.ui.components.OrganizationMasterOverviewCard
 import com.example.milo.MiloXpWidgetCard
 import com.example.milo.MiloWardrobeSheet
 import com.example.milo.MiloLevelUpCelebrationDialog
@@ -60,7 +66,8 @@ fun DashboardScreen(
     onNavigateToProjects: () -> Unit = {},
     onNavigateToLeadDetail: (Long) -> Unit = {},
     onNavigateToChat: () -> Unit = {},
-    onNavigateToNotifications: () -> Unit = {}
+    onNavigateToNotifications: () -> Unit = {},
+    onNavigateToClientWishes: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -188,6 +195,40 @@ fun DashboardScreen(
                 )
             }
 
+            // 🏢 Organization Master Control & Overview (Workforce, Leads, Drafts, Festivals & Wishes)
+            item {
+                OrganizationMasterOverviewCard(
+                    viewModel = viewModel,
+                    onNavigateToClientWishes = onNavigateToClientWishes,
+                    onNavigateToLeads = onNavigateToLeads,
+                    onNavigateToTasks = onNavigateToTasks,
+                    onNavigateToAttendance = onNavigateToAttendance,
+                    onNavigateToMilo = {
+                        showMiloAiDialog = true
+                        miloViewModel.handleEvent(MiloEvent.Thinking("executive copilot"))
+                    }
+                )
+            }
+
+            // 🦁 Milo Executive AI Copilot Suite (Admin Intelligence & Automations)
+            item {
+                MiloAdminCopilotWidget(
+                    viewModel = viewModel,
+                    onNavigateToTasks = onNavigateToTasks,
+                    onNavigateToAttendance = onNavigateToAttendance,
+                    onNavigateToLeads = onNavigateToLeads,
+                    onNavigateToInvoices = { /* Navigate to invoices if available */ }
+                )
+            }
+
+            // 📍 Smart Attendance Realtime GPS Location & Firebase Sync Card
+            item {
+                SmartAttendanceGpsCard(
+                    viewModel = viewModel,
+                    onNavigateToAttendance = onNavigateToAttendance
+                )
+            }
+
             // 3. Quick Action Hub
             item {
                 QuickActionHub(
@@ -218,6 +259,34 @@ fun DashboardScreen(
                     viewModel = viewModel,
                     onNavigateToAttendance = onNavigateToAttendance,
                     onNavigateToTasks = onNavigateToTasks
+                )
+            }
+
+            // ⚡ Recharts / D3 Performance Trends Widget (Average Task Completion Time for All Employees)
+            item {
+                PerformanceTrendsDashboardWidget(
+                    viewModel = viewModel,
+                    onNavigateToTasks = onNavigateToTasks
+                )
+            }
+
+            // 📋 Scrollable Unified Employee Activity Feed (Real-time Chronological Stream)
+            item {
+                ScrollableActivityFeedWidget(
+                    viewModel = viewModel,
+                    onNavigateToTasks = onNavigateToTasks,
+                    onNavigateToAttendance = onNavigateToAttendance,
+                    onNavigateToChat = onNavigateToChat
+                )
+            }
+
+            // 📊 Daily Activity Summary (Aggregated Attendance, Completed Tasks & CRM Interactions)
+            item {
+                DailyActivitySummaryWidget(
+                    viewModel = viewModel,
+                    onNavigateToAttendance = onNavigateToAttendance,
+                    onNavigateToTasks = onNavigateToTasks,
+                    onNavigateToCRM = onNavigateToLeads
                 )
             }
 
@@ -346,12 +415,39 @@ private fun DashboardTopBar(
                 }
 
                 Column {
-                    Text(
-                        text = "MB Tracker",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 17.sp,
-                        color = TextPrimary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "MB Tracker",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFDCFCE7),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF16A34A))
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    "MB EM LIVE",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF166534)
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = "$employeeName • $role",
                         fontSize = 11.sp,

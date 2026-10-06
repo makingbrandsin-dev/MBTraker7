@@ -304,4 +304,104 @@ Best regards,
     ): Boolean {
         return sendWhatsAppMessage(context, phoneNumber, initialMessage, showSuccessToast = false)
     }
+
+    /**
+     * Builds a personalized Festival or National Holiday greeting message.
+     */
+    fun buildFestivalGreetingMessage(
+        clientName: String,
+        companyName: String = "",
+        occasionName: String,
+        customMessage: String = "",
+        senderName: String = "Making Brands Team"
+    ): String {
+        val greetingIntro = if (customMessage.isNotBlank()) {
+            customMessage
+                .replace("{{client_name}}", clientName.trim())
+                .replace("{{company_name}}", if (companyName.isNotBlank()) companyName.trim() else "your esteemed organization")
+                .replace("{{occasion}}", occasionName.trim())
+                .replace("{{sender_name}}", senderName.trim())
+        } else {
+            """
+            🌟 *Wishing You & Your Team a Joyous $occasionName!* 🌟
+            
+            Dear ${clientName.trim()}${if (companyName.isNotBlank() && companyName != "Independent") " (${companyName.trim()})" else ""},
+            
+            On the wonderful occasion of *$occasionName*, we at *Making Brands* extend our warmest greetings and heartfelt wishes for prosperity, success, and continued happiness to you and your family!
+            
+            Thank you for being a valued client and partner. We look forward to reaching greater milestones together.
+            
+            Warm regards,
+            *$senderName*
+            🌐 makingbrands.in | 📞 +91 98765 43210
+            """.trimIndent()
+        }
+
+        return greetingIntro.trimIndent()
+    }
+
+    /**
+     * Sends a Festival / Holiday greeting with optional Poster image attachment via WhatsApp.
+     */
+    fun sendFestivalPosterWish(
+        context: Context,
+        phoneNumber: String,
+        clientName: String,
+        companyName: String = "",
+        occasionName: String,
+        customMessage: String = "",
+        posterUriString: String? = null,
+        senderName: String = "Making Brands Team"
+    ): Boolean {
+        val cleanPhone = sanitizePhoneNumber(phoneNumber)
+        val finalMessage = buildFestivalGreetingMessage(
+            clientName = clientName,
+            companyName = companyName,
+            occasionName = occasionName,
+            customMessage = customMessage,
+            senderName = senderName
+        )
+
+        // If a poster image URI is provided and valid, attempt share intent with image + text
+        if (!posterUriString.isNullOrBlank()) {
+            try {
+                val imageUri = Uri.parse(posterUriString)
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/*"
+                    putExtra(Intent.EXTRA_STREAM, imageUri)
+                    putExtra(Intent.EXTRA_TEXT, finalMessage)
+                    if (cleanPhone.isNotBlank()) {
+                        putExtra("jid", "$cleanPhone@s.whatsapp.net")
+                    }
+                    setPackage("com.whatsapp")
+                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(shareIntent)
+                Toast.makeText(context, "Sharing $occasionName poster to +$cleanPhone...", Toast.LENGTH_SHORT).show()
+                return true
+            } catch (e: Exception) {
+                // Try WhatsApp Business package
+                try {
+                    val imageUri = Uri.parse(posterUriString)
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "image/*"
+                        putExtra(Intent.EXTRA_STREAM, imageUri)
+                        putExtra(Intent.EXTRA_TEXT, finalMessage)
+                        if (cleanPhone.isNotBlank()) {
+                            putExtra("jid", "$cleanPhone@s.whatsapp.net")
+                        }
+                        setPackage("com.whatsapp.w4b")
+                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(shareIntent)
+                    return true
+                } catch (_: Exception) {
+                    // Fall back to direct WhatsApp text dispatch
+                }
+            }
+        }
+
+        // Direct Text Message Dispatch
+        return sendWhatsAppMessage(context, phoneNumber, finalMessage, showSuccessToast = true)
+    }
 }

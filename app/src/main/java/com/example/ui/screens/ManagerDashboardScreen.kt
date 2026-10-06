@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -54,7 +55,15 @@ import com.example.presentation.components.banner.OfferBannerSlider
 import com.example.ui.components.AppHeader
 import com.example.ui.components.MetricBadge
 import com.example.ui.components.StatusIndicatorBadge
+import com.example.ui.components.PulsingStatusDot
 import com.example.ui.components.TeamWorkloadChartCard
+import com.example.ui.components.PerformanceTrendsDashboardWidget
+import com.example.ui.components.ScrollableActivityFeedWidget
+import com.example.ui.components.DailyActivitySummaryWidget
+import com.example.ui.components.MiloAdminCopilotWidget
+import com.example.ui.components.SmartAttendanceGpsCard
+import com.example.ui.components.AttendanceHeatmapWidget
+import com.example.ui.components.OrganizationMasterOverviewCard
 import com.example.domain.milo.*
 import com.example.milo.*
 import com.example.ui.theme.*
@@ -75,7 +84,8 @@ fun ManagerDashboardScreen(
     onNavigateToCalls: () -> Unit = {},
     onNavigateToBannersAdmin: () -> Unit = {},
     onNavigateToBroadcastAdmin: () -> Unit = {},
-    onNavigateToMiloAdmin: () -> Unit = {}
+    onNavigateToMiloAdmin: () -> Unit = {},
+    onNavigateToClientWishes: () -> Unit = {}
 ) {
     BackHandler {
         onBack()
@@ -87,6 +97,7 @@ fun ManagerDashboardScreen(
     val leavesList by viewModel.leaves.collectAsState(initial = emptyList())
     val leadsList by viewModel.leads.collectAsState(initial = emptyList())
     val chatMessages by viewModel.allChatMessages.collectAsState(initial = emptyList())
+    val userRole by viewModel.userRole.collectAsState()
 
     val context = LocalContext.current
     val installDate = remember { com.example.util.AppPreferences.getAppInstallDate(context) }
@@ -106,6 +117,7 @@ fun ManagerDashboardScreen(
     }
 
     var searchQuery by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableStateOf("All") }
 
     // Employee Creation & Task Assignment Dialog States
     var showCreateEmployeeDialog by remember { mutableStateOf(false) }
@@ -143,6 +155,11 @@ fun ManagerDashboardScreen(
     var showCompanyProfileDialog by remember { mutableStateOf(false) }
     var showMiloKnowledgeDialog by remember { mutableStateOf(false) }
     var showAddMiloKnowledgeDialog by remember { mutableStateOf(false) }
+    var showMbEmConnectionHubDialog by remember { mutableStateOf(false) }
+    var isPingingMbEm by remember { mutableStateOf(false) }
+
+    val mbEmSyncState by viewModel.mbEmSyncState.collectAsState()
+    val mbEmLatestEvent by viewModel.mbEmLatestSyncEvent.collectAsState()
 
     val filteredEmployees = employees.filter { emp ->
         emp.name.contains(searchQuery, ignoreCase = true) ||
@@ -2660,6 +2677,168 @@ fun ManagerDashboardScreen(
         )
     }
 
+    // 🔗 MB EM Employee App Realtime Cloud Connection Hub & Credentials Dialog
+    if (showMbEmConnectionHubDialog) {
+        AlertDialog(
+            onDismissRequest = { showMbEmConnectionHubDialog = false },
+            icon = {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFFDCFCE7),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.CloudSync,
+                            contentDescription = null,
+                            tint = Color(0xFF16A34A),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            },
+            title = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("MB EM App Connection Hub", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text("Real-Time Synchronization with Employee Terminal", fontSize = 11.sp, color = TextSecondary)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Status Badge Card
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF0FDF4),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            PulsingStatusDot(
+                                color = Color(0xFF16A34A),
+                                dotSize = 10.dp,
+                                haloExpansion = 6.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Connected & Live",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF166534)
+                                )
+                                Text(
+                                    mbEmLatestEvent.ifBlank { "All snapshot listeners actively streaming." },
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF15803D),
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+                    }
+
+                    // Shared Cloud Architecture Info
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Cloud Firestore Architecture:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0F172A))
+                            Text("• Database: Dual Sync (Custom Project DB & Default Instance)", fontSize = 11.sp, color = TextSecondary)
+                            Text("• Protocol: Low-latency WebSockets & gRPC Snapshots", fontSize = 11.sp, color = TextSecondary)
+                            Text("• Target Platform: 'MB EM' Employee Android App", fontSize = 11.sp, color = TextSecondary)
+                        }
+                    }
+
+                    // Synchronized Collections Checklist
+                    Text("Synchronized Real-Time Channels:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF334155))
+                    listOf(
+                        "📋 Tasks & Task Records (Instant Assignment & Progress)" to "tasks, task_records",
+                        "⏰ Attendance Roster (Live Clock-In/Out & Geotags)" to "attendance_records, attendance",
+                        "👥 Employees & Presence (Active, On Break, Offline)" to "employees, users",
+                        "🏖️ Leave Approvals (Realtime Decision Sync)" to "leave_applications, leaves",
+                        "💬 Team & Channel Chat (Live Messaging & Audio)" to "chat_messages, messages",
+                        "📢 Push Broadcasts & System Alerts" to "notifications"
+                    ).forEach { (label, collections) ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFF1F5F9),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                    Text("Firestore: $collections", fontSize = 9.sp, color = BrandBlue)
+                                }
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Ping Test Action
+                    Button(
+                        onClick = {
+                            isPingingMbEm = true
+                            viewModel.sendMbEmSyncPing { success, msg ->
+                                isPingingMbEm = false
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                        shape = RoundedCornerShape(10.dp),
+                        enabled = !isPingingMbEm,
+                        modifier = Modifier.fillMaxWidth().height(44.dp)
+                    ) {
+                        if (isPingingMbEm) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Broadcasting Ping...", color = Color.White, fontSize = 12.sp)
+                        } else {
+                            Icon(Icons.Default.WifiTethering, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Test Live Sync Ping with MB EM", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showMbEmConnectionHubDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Close", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.reconnectMbEmSync()
+                        Toast.makeText(context, "Re-attaching all active MB EM listeners...", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Force Re-Sync", color = BrandBlue, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             AppHeader(
@@ -2708,37 +2887,333 @@ fun ManagerDashboardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 🦁 MILO PROACTIVE TIME-OF-DAY GREETING & SMART ASSISTANT CARD
+            // 🏷️ HORIZONTAL MENU FOR EASY NAVIGATION JUMPS
             item {
-                MiloGreetingCard(
-                    viewModel = viewModel,
-                    onOpenAskMilo = { showMiloAssistant = true },
-                    onNavigateToTasks = onNavigateToTasks,
-                    onNavigateToLeads = onNavigateToLeads
-                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val tabs = listOf(
+                        "All" to Icons.Default.Dashboard,
+                        "Milo AI" to Icons.Default.Psychology,
+                        "Offers" to Icons.Default.LocalOffer,
+                        "Control Panel" to Icons.Default.Tune,
+                        "AI Copilot" to Icons.Default.AutoAwesome,
+                        "GPS Map" to Icons.Default.LocationOn,
+                        "Sync Hub" to Icons.Default.CloudSync,
+                        "Approvals" to Icons.Default.VerifiedUser,
+                        "Heatmap" to Icons.Default.GridOn
+                    )
+                    items(tabs) { (tab, icon) ->
+                        FilterChip(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (selectedTab == tab) Color.White else BrandBlue
+                                )
+                            },
+                            label = { Text(tab, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = BrandBlue,
+                                selectedLabelColor = Color.White,
+                                containerColor = Color.White,
+                                labelColor = TextSecondary
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+            }
+
+            // 🦁 MILO PROACTIVE TIME-OF-DAY GREETING & SMART ASSISTANT CARD
+            if (selectedTab == "All" || selectedTab == "Milo AI") {
+                item {
+                    MiloGreetingCard(
+                        viewModel = viewModel,
+                        onOpenAskMilo = { showMiloAssistant = true },
+                        onNavigateToTasks = onNavigateToTasks,
+                        onNavigateToLeads = onNavigateToLeads
+                    )
+                }
             }
 
             // 🎁 EXCLUSIVE APP OFFERS & PROMOTIONS SLIDER (Directly after Milo Greeting Card)
-            item {
-                val liveBanners by viewModel.activeBanners.collectAsState()
-                OfferBannerSlider(
-                    banners = liveBanners,
-                    onBannerClick = { banner ->
-                        when (banner.routeAction) {
-                            "leads" -> onNavigateToLeads()
-                            "tasks" -> onNavigateToTasks()
-                            "projects" -> onNavigateToProjects()
-                            "chat" -> onNavigateToChat()
-                            "calls" -> onNavigateToCalls()
-                            "milo_ai" -> {
-                                showMiloAssistant = true
-                                viewModel.miloViewModel.handleEvent(MiloEvent.Thinking("Special Offers & CRM Deals"))
+            if (selectedTab == "All" || selectedTab == "Offers") {
+                item {
+                    val liveBanners by viewModel.activeBanners.collectAsState()
+                    OfferBannerSlider(
+                        banners = liveBanners,
+                        onBannerClick = { banner ->
+                            when (banner.routeAction) {
+                                "leads" -> onNavigateToLeads()
+                                "tasks" -> onNavigateToTasks()
+                                "projects" -> onNavigateToProjects()
+                                "chat" -> onNavigateToChat()
+                                "calls" -> onNavigateToCalls()
+                                "milo_ai" -> {
+                                    showMiloAssistant = true
+                                    viewModel.miloViewModel.handleEvent(MiloEvent.Thinking("Special Offers & CRM Deals"))
+                                }
+                                else -> onNavigateToLeads()
                             }
-                            else -> onNavigateToLeads()
+                        }
+                    )
+                }
+            }
+
+            // 🔒 SECURE ADMIN CRUD EMPLOYEE APPROVALS PORTAL
+            if ((selectedTab == "All" || selectedTab == "Approvals") && userRole == "MB Admin") {
+                item {
+                    EmployeeApprovalsManagerCard(
+                        viewModel = viewModel,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+            }
+
+            // 🏢 Organization Master Control & Overview (Workforce, Leads, Drafts, Festivals & Wishes)
+            if (selectedTab == "All" || selectedTab == "Control Panel") {
+                item {
+                    OrganizationMasterOverviewCard(
+                        viewModel = viewModel,
+                        onNavigateToClientWishes = onNavigateToClientWishes,
+                        onNavigateToLeads = onNavigateToLeads,
+                        onNavigateToTasks = onNavigateToTasks,
+                        onNavigateToAttendance = onNavigateToTimesheets,
+                        onNavigateToMilo = onNavigateToMiloAdmin
+                    )
+                }
+            }
+
+            // 🦁 Milo Executive AI Copilot Suite (Autonomous Admin Actions & Intelligence)
+            if (selectedTab == "All" || selectedTab == "AI Copilot") {
+                item {
+                    MiloAdminCopilotWidget(
+                        viewModel = viewModel,
+                        onNavigateToTasks = onNavigateToTasks,
+                        onNavigateToAttendance = onNavigateToTimesheets,
+                        onNavigateToLeads = onNavigateToLeads,
+                        onNavigateToInvoices = { /* Invoices */ }
+                    )
+                }
+            }
+
+            // 📍 Smart Attendance Realtime GPS Location & Firebase Sync Card
+            if (selectedTab == "All" || selectedTab == "GPS Map") {
+                item {
+                    SmartAttendanceGpsCard(
+                        viewModel = viewModel,
+                        onNavigateToAttendance = onNavigateToTimesheets
+                    )
+                }
+            }
+
+            // 📊 D3 Attendance Weekly Heatmap
+            if (selectedTab == "All" || selectedTab == "Heatmap") {
+                item {
+                    AttendanceHeatmapWidget(
+                        viewModel = viewModel,
+                        onNavigateToAttendance = onNavigateToTimesheets
+                    )
+                }
+            }
+
+            // 🔗 MB EM Employee App Realtime Cloud Connection Terminal
+            if (selectedTab == "All" || selectedTab == "Sync Hub") {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFDCFCE7),
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                Icons.Default.CloudSync,
+                                                contentDescription = null,
+                                                tint = Color(0xFF16A34A),
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            "MB EM Employee App Sync",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 15.sp,
+                                            color = Color(0xFF0F172A)
+                                        )
+                                        Text(
+                                            "Real-time Cloud Terminal & Live Firestore Listeners",
+                                            fontSize = 11.sp,
+                                            color = TextSecondary
+                                        )
+                                    }
+                                }
+
+                                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFDCFCE7)) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        PulsingStatusDot(
+                                            color = Color(0xFF16A34A),
+                                            dotSize = 6.dp,
+                                            haloExpansion = 4.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "CONNECTED",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF166534)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Live Sync Metrics Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val activeEmpCount = employees.count { it.status == EmployeeStatus.ACTIVE }
+                                val onlineEmpCount = employees.count { it.presenceStatus != PresenceStatus.OFFLINE }
+
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text("Online Staff", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("$onlineEmpCount", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                                            Text("/$activeEmpCount", fontSize = 11.sp, color = TextSecondary)
+                                        }
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text("Synced Tasks", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                                        Text("${tasks.size}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = BrandBlue)
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text("Streams Active", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                                        Text("${mbEmSyncState.activeListenersCount.coerceAtLeast(1)} Live", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4F46E5))
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Live Event Banner
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFF0FDF4),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("⚡", fontSize = 11.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = mbEmLatestEvent.ifBlank { "Synchronized with 'MB EM' mobile application." },
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF166534),
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Action Buttons
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        isPingingMbEm = true
+                                        viewModel.sendMbEmSyncPing { _, msg ->
+                                            isPingingMbEm = false
+                                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    enabled = !isPingingMbEm,
+                                    modifier = Modifier.weight(1f).height(42.dp)
+                                ) {
+                                    if (isPingingMbEm) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                    } else {
+                                        Icon(Icons.Default.WifiTethering, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Test Ping", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.White)
+                                    }
+                                }
+
+                                FilledTonalButton(
+                                    onClick = { showMbEmConnectionHubDialog = true },
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFFEFF6FF),
+                                        contentColor = BrandBlue
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1.3f).height(42.dp)
+                                ) {
+                                    Icon(Icons.Default.SettingsEthernet, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Sync Hub & Info", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = BrandBlue)
+                                }
+                            }
                         }
                     }
-                )
+                }
             }
+
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
@@ -2802,6 +3277,34 @@ fun ManagerDashboardScreen(
                 }
             }
 
+            // ⚡ Recharts / D3 Performance Trends Widget (Average Task Completion Time for All Employees)
+            item {
+                PerformanceTrendsDashboardWidget(
+                    viewModel = viewModel,
+                    onNavigateToTasks = onNavigateToTasks
+                )
+            }
+
+            // 📋 Scrollable Unified Employee Activity Feed (Real-time Chronological Stream of Actions)
+            item {
+                ScrollableActivityFeedWidget(
+                    viewModel = viewModel,
+                    onNavigateToTasks = onNavigateToTasks,
+                    onNavigateToAttendance = onNavigateToTimesheets,
+                    onNavigateToChat = onNavigateToChat
+                )
+            }
+
+            // 📊 Daily Activity Summary (Aggregated Attendance, Completed Tasks & CRM Interactions)
+            item {
+                DailyActivitySummaryWidget(
+                    viewModel = viewModel,
+                    onNavigateToAttendance = onNavigateToTimesheets,
+                    onNavigateToTasks = onNavigateToTasks,
+                    onNavigateToCRM = onNavigateToLeads
+                )
+            }
+
             // 📢 1. App Home Screen Banners Management Card (Admin Panel - Firebase Firestore & Storage)
             item {
                 Card(
@@ -2839,12 +3342,20 @@ fun ManagerDashboardScreen(
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .clip(CircleShape)
-                                                .background(if (isFirestoreBannersConnected) StatusGreen else StatusOrange)
-                                        )
+                                        if (isFirestoreBannersConnected) {
+                                            PulsingStatusDot(
+                                                color = StatusGreen,
+                                                dotSize = 6.dp,
+                                                haloExpansion = 4.dp
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(StatusOrange)
+                                            )
+                                        }
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             if (isFirestoreBannersConnected) "Firestore Live" else "Cached Mode",
@@ -3079,11 +3590,10 @@ fun ManagerDashboardScreen(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(StatusGreen)
+                                    PulsingStatusDot(
+                                        color = StatusGreen,
+                                        dotSize = 6.dp,
+                                        haloExpansion = 4.dp
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
@@ -4441,6 +4951,270 @@ fun AdminAppLogoManagerCard() {
                         if (isSelected) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Executive Employee Management & Registration Approvals Card.
+ * Allows the authenticated administrator user to view, approve, or delete newly registered employees.
+ */
+@Composable
+fun EmployeeApprovalsManagerCard(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
+    val employees by viewModel.employees.collectAsState(initial = emptyList())
+    val context = LocalContext.current
+
+    val unapprovedEmployees = remember(employees) {
+        employees.filter { it.status == com.example.data.model.EmployeeStatus.INACTIVE }
+    }
+    val approvedEmployees = remember(employees) {
+        employees.filter { it.status != com.example.data.model.EmployeeStatus.INACTIVE }
+    }
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFFEFF6FF),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = BrandBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            "Employee Approvals Portal",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            "Authorize registration & directory",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (unapprovedEmployees.isNotEmpty()) Color(0xFFFEE2E2) else Color(0xFFF1F5F9)
+                ) {
+                    Text(
+                        text = "${unapprovedEmployees.size} PENDING",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (unapprovedEmployees.isNotEmpty()) StatusRed else TextSecondary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            if (unapprovedEmployees.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF8FAFC), RoundedCornerShape(10.dp))
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.VerifiedUser,
+                            contentDescription = null,
+                            tint = Color(0xFF059669),
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "All employees are verified",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            "New signups will appear here for approval.",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    "Newly Registered (Pending Approval):",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF334155),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    unapprovedEmployees.forEach { emp ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFFFFBEB),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        emp.name,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        "${emp.designation} · ${emp.email}",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.updateEmployee(emp.copy(status = com.example.data.model.EmployeeStatus.ACTIVE))
+                                            viewModel.recordAndBroadcastNotification(
+                                                title = "✅ Employee Approved: ${emp.name}",
+                                                subtitle = "Employee account has been approved by Admin.",
+                                                category = "changes"
+                                            )
+                                            Toast.makeText(context, "Approved ${emp.name} successfully!", Toast.LENGTH_SHORT).show()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("Approve", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.deleteEmployee(emp)
+                                            Toast.makeText(context, "Deleted ${emp.name} successfully!", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = StatusRed,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Show general employee directory shortcut and CRUD controls
+            Text(
+                "Active Corporate Directory: ${approvedEmployees.size} Members",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF475569),
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+
+            if (approvedEmployees.isEmpty()) {
+                Text("No active employees currently enrolled.", fontSize = 11.sp, color = TextSecondary)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    approvedEmployees.forEach { emp ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        emp.name,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF1E293B)
+                                    )
+                                    Text(
+                                        "${emp.designation} · ${emp.email}",
+                                        fontSize = 10.sp,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.deleteEmployee(emp)
+                                            Toast.makeText(context, "Deleted active employee: ${emp.name}", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Delete Active Employee",
+                                            tint = StatusRed,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
